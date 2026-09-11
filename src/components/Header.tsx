@@ -1,0 +1,39 @@
+import Link from "next/link";
+import { useRouter } from "next/router";
+import { cn } from "@/lib/utils";
+
+const links = [
+  { href: "/admin", label: "Admin" },
+  { href: "/admin/customers", label: "Customers" },
+  { href: "/admin/subscriptions", label: "Subscriptions" },
+];
+
+export function Header({ currentPath }: { currentPath?: string }) {
+  const router = useRouter();
+  const activePath = currentPath ?? router?.pathname ?? "";
+
+  return (
+    <header className="border-b bg-background">
+      <nav className="flex items-center space-x-4 lg:space-x-6 mx-6 h-16">
+        <Link href="/" className="text-sm font-bold leading-none text-foreground">
+          SaaS Admin Template
+        </Link>
+        {links.map((link) => (
+          <Link
+            key={link.href}
+            className={cn(
+              "text-sm font-medium leading-none transition-colors",
+              activePath === link.href
+                ? "text-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+            href={link.href}
+            aria-current={activePath === link.href ? "page" : undefined}
+          >
+            {link.label}
+          </Link>
+        ))}
+      </nav>
+    </header>
+  );
+}

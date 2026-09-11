@@ -13,5 +13,17 @@
   },
   "cache": {
     "enabled": true
-  }
+  },
+  "vars": {
+    "EXAMPLE_VALUE": "example_value",
+    "API_TOKEN": "default_api_token"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "admin-db",
+      "database_id": "3009feae-2321-421c-97e8-181886710aa0",
+      "migrations_dir": "migrations"
+    }
+  ]
 }
