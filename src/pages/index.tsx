@@ -5,6 +5,7 @@ import { buttonVariants } from "@/components/ui/button";
 
 const repoLink =
   "https://github.com/cloudflare/templates/tree/main/saas-admin-template";
+const deployUrl = `https://deploy.workers.cloudflare.com/?url=${encodeURIComponent(repoLink)}`;
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -39,7 +40,7 @@ export default function HomePage() {
           Manage a SaaS application - customers, subscriptions - using Cloudflare
           Workers and D1.
         </p>
-        <div className="flex flex-wrap gap-4 mt-4">
+        <div className="flex flex-wrap items-center justify-center gap-4 mt-4">
           <Link className={buttonVariants()} href="/admin">
             <LayoutDashboard className="h-4 w-4" /> Go to admin
           </Link>
@@ -50,6 +51,18 @@ export default function HomePage() {
             rel="noreferrer"
           >
             <GithubIcon className="h-4 w-4" /> View on GitHub
+          </a>
+          <a
+            href={deployUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center transition-opacity hover:opacity-90"
+          >
+            <img
+              src="https://deploy.workers.cloudflare.com/button"
+              alt="Deploy to Cloudflare"
+              className="h-9"
+            />
           </a>
         </div>
       </main>
