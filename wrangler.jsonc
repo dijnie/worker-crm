@@ -19,7 +19,7 @@
     "API_TOKEN": "default_api_token"
   },
   "r2_buckets": [
-    { "binding": "ASSETS", "bucket_name": "crm-stogare" },
+    { "binding": "STORAGE", "bucket_name": "crm-storage" }
   ],
   "ratelimits": [
     {
