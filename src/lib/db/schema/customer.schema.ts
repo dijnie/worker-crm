@@ -1,10 +1,6 @@
 import { relations, sql } from "drizzle-orm";
-import {
-  integer,
-  sqliteTable,
-  text,
-} from "drizzle-orm/sqlite-core";
-import { customerSubscriptions } from "./subscription.schema";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { customerSubscriptions } from "./customer-subscription.schema";
 
 export const customers = sqliteTable("customers", {
   id: integer("id").primaryKey({ autoIncrement: true }),
