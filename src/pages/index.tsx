@@ -3,8 +3,7 @@ import Link from "next/link";
 import { LayoutDashboard } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 
-const repoLink =
-  "https://github.com/cloudflare/templates/tree/main/saas-admin-template";
+const repoLink = "https://github.com/dijnie/worker-crm";
 const deployUrl = `https://deploy.workers.cloudflare.com/?url=${encodeURIComponent(repoLink)}`;
 
 function GithubIcon({ className }: { className?: string }) {
