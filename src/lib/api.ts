@@ -1,10 +1,15 @@
-const safeCompare = async (a: string, b: string): Promise<boolean> => {
+const safeCompare = (a: string, b: string): boolean => {
   if (typeof a !== "string" || typeof b !== "string") return false;
   const encoder = new TextEncoder();
-  const aEncoded = encoder.encode(a);
-  const bEncoded = encoder.encode(b);
-  if (aEncoded.length !== bEncoded.length) return false;
-  return await crypto.subtle.timingSafeEqual(aEncoded, bEncoded);
+  const aBuf = encoder.encode(a);
+  const bBuf = encoder.encode(b);
+  if (aBuf.byteLength !== bBuf.byteLength) return false;
+
+  let mismatch = 0;
+  for (let i = 0; i < aBuf.byteLength; i++) {
+    mismatch |= aBuf[i] ^ bBuf[i];
+  }
+  return mismatch === 0;
 };
 
 export type RequestLike =
