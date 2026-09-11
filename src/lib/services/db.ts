@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { createDatabase, type Database } from "@/lib/db";
 
 export interface AppEnv {
   DB: D1Database;
@@ -11,6 +12,10 @@ export function getAppEnv(): AppEnv {
 
 export function getDB(): D1Database {
   return getAppEnv().DB;
+}
+
+export function getDatabase(): Database {
+  return createDatabase(getDB());
 }
 
 export function getApiToken(): string {

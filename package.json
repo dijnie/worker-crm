@@ -12,6 +12,7 @@
     "@vinext/cloudflare": "1.0.0-beta.7",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.44.0",
     "react": "latest",
     "react-dom": "latest",

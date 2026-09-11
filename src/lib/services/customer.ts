@@ -1,3 +1,11 @@
+import { asc, eq } from "drizzle-orm";
+import {
+  createDatabase,
+  customers,
+  customerSubscriptions,
+  type Database,
+} from "@/lib/db";
+
 export interface CustomerSubscriptionDetail {
   id: number;
   status: string;
@@ -16,112 +24,135 @@ export interface CustomerRecord {
   subscription?: CustomerSubscriptionDetail;
 }
 
-interface RawCustomerRow {
-  id: number;
-  name: string;
-  email: string;
-  notes?: string | null;
-  created_at: string;
-  updated_at: string;
-  subscription_id?: number | null;
-  subscription_status?: string | null;
-  subscription_name?: string | null;
-  subscription_description?: string | null;
-  subscription_price?: number | null;
-}
-
-export const CUSTOMER_QUERIES = {
-  BASE_SELECT: `
-    SELECT 
-      customers.*,
-      customer_subscriptions.id as subscription_id,
-      customer_subscriptions.status as subscription_status,
-      subscriptions.name as subscription_name,
-      subscriptions.description as subscription_description,
-      subscriptions.price as subscription_price
-    FROM customers 
-    LEFT JOIN customer_subscriptions 
-      ON customers.id = customer_subscriptions.customer_id
-    LEFT JOIN subscriptions
-      ON customer_subscriptions.subscription_id = subscriptions.id
-  `,
-  INSERT_CUSTOMER: `INSERT INTO customers (name, email, notes) VALUES (?, ?, ?)`,
-  INSERT_CUSTOMER_SUBSCRIPTION: `
-    INSERT INTO customer_subscriptions (customer_id, subscription_id, status) 
-    VALUES (?, ?, ?)
-  `,
-  GET_BY_ID: `WHERE customers.id = ?`,
-  GET_BY_EMAIL: `WHERE customers.email = ?`,
-};
-
-const processCustomerResults = (rows: unknown[]): CustomerRecord[] => {
-  const customersMap = new Map<number, CustomerRecord>();
-
-  (rows as RawCustomerRow[]).forEach((row) => {
-    if (!customersMap.has(row.id)) {
-      const customer: CustomerRecord = {
-        id: row.id,
-        name: row.name,
-        email: row.email,
-        notes: row.notes,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-      };
-
-      if (row.subscription_id && row.subscription_status) {
-        customer.subscription = {
-          id: row.subscription_id,
-          status: row.subscription_status,
-          name: row.subscription_name || "",
-          description: row.subscription_description || "",
-          price: row.subscription_price ?? 0,
-        };
-      }
-
-      customersMap.set(row.id, customer);
-    }
-  });
-
-  return Array.from(customersMap.values());
-};
-
 export class CustomerService {
-  private DB: D1Database;
+  private db: Database;
 
-  constructor(DB: D1Database) {
-    this.DB = DB;
+  constructor(dbOrBinding: Database | D1Database) {
+    if ("prepare" in dbOrBinding && typeof dbOrBinding.prepare === "function") {
+      this.db = createDatabase(dbOrBinding);
+    } else {
+      this.db = dbOrBinding as Database;
+    }
   }
 
   async getById(id: number | string): Promise<CustomerRecord | null> {
-    const query = `${CUSTOMER_QUERIES.BASE_SELECT} ${CUSTOMER_QUERIES.GET_BY_ID}`;
-    const response = await this.DB.prepare(query).bind(Number(id)).all();
+    const r = await this.db.query.customers.findFirst({
+      where: eq(customers.id, Number(id)),
+      with: {
+        customerSubscriptions: {
+          with: {
+            subscription: true,
+          },
+        },
+      },
+    });
 
-    if (response.success && response.results.length) {
-      const [customer] = processCustomerResults(response.results);
-      return customer || null;
-    }
-    return null;
+    if (!r) return null;
+
+    const activeSub =
+      r.customerSubscriptions.find((s) => s.status === "active") ||
+      r.customerSubscriptions[0];
+
+    const sub: CustomerSubscriptionDetail | undefined =
+      activeSub && activeSub.subscription
+        ? {
+            id: activeSub.subscription.id,
+            status: activeSub.status,
+            name: activeSub.subscription.name,
+            description: activeSub.subscription.description,
+            price: activeSub.subscription.price,
+          }
+        : undefined;
+
+    return {
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      notes: r.notes,
+      created_at: r.createdAt,
+      updated_at: r.updatedAt,
+      subscription: sub,
+    };
   }
 
   async getByEmail(email: string): Promise<CustomerRecord | null> {
-    const query = `${CUSTOMER_QUERIES.BASE_SELECT} ${CUSTOMER_QUERIES.GET_BY_EMAIL}`;
-    const response = await this.DB.prepare(query).bind(email).all();
+    const r = await this.db.query.customers.findFirst({
+      where: eq(customers.email, email),
+      with: {
+        customerSubscriptions: {
+          with: {
+            subscription: true,
+          },
+        },
+      },
+    });
 
-    if (response.success && response.results.length) {
-      const [customer] = processCustomerResults(response.results);
-      return customer || null;
-    }
-    return null;
+    if (!r) return null;
+
+    const activeSub =
+      r.customerSubscriptions.find((s) => s.status === "active") ||
+      r.customerSubscriptions[0];
+
+    const sub: CustomerSubscriptionDetail | undefined =
+      activeSub && activeSub.subscription
+        ? {
+            id: activeSub.subscription.id,
+            status: activeSub.status,
+            name: activeSub.subscription.name,
+            description: activeSub.subscription.description,
+            price: activeSub.subscription.price,
+          }
+        : undefined;
+
+    return {
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      notes: r.notes,
+      created_at: r.createdAt,
+      updated_at: r.updatedAt,
+      subscription: sub,
+    };
   }
 
   async getAll(): Promise<CustomerRecord[]> {
-    const query = `${CUSTOMER_QUERIES.BASE_SELECT} ORDER BY customers.id ASC`;
-    const response = await this.DB.prepare(query).all();
+    const records = await this.db.query.customers.findMany({
+      orderBy: [asc(customers.id)],
+      with: {
+        customerSubscriptions: {
+          with: {
+            subscription: true,
+          },
+        },
+      },
+    });
 
-    if (response.success && response.results.length) {
-      return processCustomerResults(response.results);
-    }
-    return [];
+    return records.map((r) => {
+      const activeSub =
+        r.customerSubscriptions.find((s) => s.status === "active") ||
+        r.customerSubscriptions[0];
+
+      const sub: CustomerSubscriptionDetail | undefined =
+        activeSub && activeSub.subscription
+          ? {
+              id: activeSub.subscription.id,
+              status: activeSub.status,
+              name: activeSub.subscription.name,
+              description: activeSub.subscription.description,
+              price: activeSub.subscription.price,
+            }
+          : undefined;
+
+      return {
+        id: r.id,
+        name: r.name,
+        email: r.email,
+        notes: r.notes,
+        created_at: r.createdAt,
+        updated_at: r.updatedAt,
+        subscription: sub,
+      };
+    });
   }
 
   async create(customerData: {
@@ -135,30 +166,32 @@ export class CustomerService {
   }): Promise<{ success: boolean; customerId?: number }> {
     const { name, email, notes, subscription } = customerData;
 
-    const customerResponse = await this.DB.prepare(
-      CUSTOMER_QUERIES.INSERT_CUSTOMER,
-    )
-      .bind(name, email, notes || null)
-      .run();
+    const [inserted] = await this.db
+      .insert(customers)
+      .values({
+        name,
+        email,
+        notes: notes || null,
+      })
+      .returning({ id: customers.id });
 
-    if (!customerResponse.success) {
+    if (!inserted?.id) {
       throw new Error("Failed to create customer");
     }
 
-    const customerId = customerResponse.meta.last_row_id;
+    if (subscription) {
+      const endsAt = new Date(
+        Date.now() + 30 * 24 * 60 * 60 * 1000,
+      ).toISOString();
 
-    if (subscription && customerId) {
-      const subscriptionResponse = await this.DB.prepare(
-        CUSTOMER_QUERIES.INSERT_CUSTOMER_SUBSCRIPTION,
-      )
-        .bind(customerId, subscription.id, subscription.status)
-        .run();
-
-      if (!subscriptionResponse.success) {
-        throw new Error("Failed to create customer subscription relationship");
-      }
+      await this.db.insert(customerSubscriptions).values({
+        customerId: inserted.id,
+        subscriptionId: subscription.id,
+        status: subscription.status,
+        subscriptionEndsAt: endsAt,
+      });
     }
 
-    return { success: true, customerId: customerId ?? undefined };
+    return { success: true, customerId: inserted.id };
   }
 }
