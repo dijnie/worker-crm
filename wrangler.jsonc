@@ -18,11 +18,21 @@
     "EXAMPLE_VALUE": "example_value",
     "API_TOKEN": "default_api_token"
   },
+  "r2_buckets": [
+    { "binding": "ASSETS", "bucket_name": "crm-stogare" },
+  ],
+  "ratelimits": [
+    {
+      "name": "INTEGRATION_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 600, "period": 60 },
+    },
+  ],
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "admin-db",
-      "database_id": "3009feae-2321-421c-97e8-181886710aa0",
+      "database_name": "crm-db",
+      "database_id": "dab41ae6-0149-4055-a65b-199b2e392710",
       "migrations_dir": "migrations"
     }
   ]
