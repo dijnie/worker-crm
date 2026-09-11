@@ -30,6 +30,7 @@
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "^6.1.1",
     "@vitejs/plugin-rsc": "^0.5.34",
+    "drizzle-kit": "^0.31.10",
     "tailwindcss": "latest",
     "typescript": "latest",
     "vite": "^8.2.2",
@@ -41,6 +42,7 @@
     "build": "vinext build",
     "start": "wrangler dev --config dist/rsc/wrangler.json --persist-to .wrangler/state",
     "deploy": "vinext-cloudflare deploy --config dist/rsc/wrangler.json",
+    "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
   },
