@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { validateApiToken } from "@/lib/api";
 import { CustomerSubscriptionService } from "@/lib/services/customer_subscription";
-import { getApiToken, getDB } from "@/lib/services/db";
+import { getApiToken } from "@/lib/db";
 
 export default async function handler(
   req: NextApiRequest,
@@ -12,7 +12,7 @@ export default async function handler(
     return res.status(401).json({ message: "Invalid API token" });
   }
 
-  const service = new CustomerSubscriptionService(getDB());
+  const service = new CustomerSubscriptionService();
 
   if (req.method === "GET") {
     try {

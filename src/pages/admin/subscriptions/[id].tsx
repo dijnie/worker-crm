@@ -12,7 +12,6 @@ import {
   SubscriptionService,
   type SubscriptionRecord,
 } from "@/lib/services/subscription";
-import { getDB } from "@/lib/services/db";
 
 export interface SubscriptionDetailPageProps {
   subscription: SubscriptionRecord;
@@ -22,8 +21,7 @@ export const getServerSideProps: GetServerSideProps<SubscriptionDetailPageProps>
   params,
 }) => {
   const id = params?.id as string;
-  const db = getDB();
-  const subscriptionService = new SubscriptionService(db);
+  const subscriptionService = new SubscriptionService();
 
   let subscription = null;
   try {

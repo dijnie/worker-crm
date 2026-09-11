@@ -3,7 +3,7 @@ import Layout from "@/layouts/Layout";
 import { CustomersTable } from "@/components/admin/customers-table";
 import { CreateCustomerButton } from "@/components/admin/create-customer";
 import { CustomerService, type CustomerRecord } from "@/lib/services/customer";
-import { getApiToken, getDB } from "@/lib/services/db";
+import { getApiToken } from "@/lib/db";
 
 export interface CustomersPageProps {
   apiToken: string;
@@ -12,9 +12,8 @@ export interface CustomersPageProps {
 }
 
 export const getServerSideProps: GetServerSideProps<CustomersPageProps> = async () => {
-  const db = getDB();
   const apiToken = getApiToken();
-  const customerService = new CustomerService(db);
+  const customerService = new CustomerService();
 
   let customers: CustomerRecord[] = [];
   try {

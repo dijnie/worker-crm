@@ -9,7 +9,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CustomerService, type CustomerRecord } from "@/lib/services/customer";
-import { getDB } from "@/lib/services/db";
 
 export interface CustomerDetailPageProps {
   customer: CustomerRecord;
@@ -19,8 +18,7 @@ export const getServerSideProps: GetServerSideProps<CustomerDetailPageProps> = a
   params,
 }) => {
   const id = params?.id as string;
-  const db = getDB();
-  const customerService = new CustomerService(db);
+  const customerService = new CustomerService();
 
   let customer = null;
   try {

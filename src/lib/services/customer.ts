@@ -1,8 +1,8 @@
 import { asc, eq } from "drizzle-orm";
 import {
-  createDatabase,
   customers,
   customerSubscriptions,
+  getDb,
   type Database,
 } from "@/lib/db";
 
@@ -27,12 +27,8 @@ export interface CustomerRecord {
 export class CustomerService {
   private db: Database;
 
-  constructor(dbOrBinding: Database | D1Database) {
-    if ("prepare" in dbOrBinding && typeof dbOrBinding.prepare === "function") {
-      this.db = createDatabase(dbOrBinding);
-    } else {
-      this.db = dbOrBinding as Database;
-    }
+  constructor(db: Database = getDb()) {
+    this.db = db;
   }
 
   async getById(id: number | string): Promise<CustomerRecord | null> {

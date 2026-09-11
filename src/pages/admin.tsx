@@ -6,7 +6,7 @@ import { APIDocumentation } from "@/components/admin/api-documentation";
 import { CustomerService } from "@/lib/services/customer";
 import { SubscriptionService } from "@/lib/services/subscription";
 import { CustomerSubscriptionService } from "@/lib/services/customer_subscription";
-import { getApiToken, getDB } from "@/lib/services/db";
+import { getApiToken } from "@/lib/db";
 
 export interface AdminPageProps {
   apiTokenSet: boolean;
@@ -16,11 +16,10 @@ export interface AdminPageProps {
 }
 
 export const getServerSideProps: GetServerSideProps<AdminPageProps> = async () => {
-  const db = getDB();
   const apiToken = getApiToken();
-  const customerService = new CustomerService(db);
-  const subscriptionService = new SubscriptionService(db);
-  const customerSubscriptionService = new CustomerSubscriptionService(db);
+  const customerService = new CustomerService();
+  const subscriptionService = new SubscriptionService();
+  const customerSubscriptionService = new CustomerSubscriptionService();
 
   let customersCount = 0;
   let subscriptionsCount = 0;

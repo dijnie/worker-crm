@@ -6,7 +6,7 @@ import {
   SubscriptionService,
   type SubscriptionRecord,
 } from "@/lib/services/subscription";
-import { getApiToken, getDB } from "@/lib/services/db";
+import { getApiToken } from "@/lib/db";
 
 export interface SubscriptionsPageProps {
   apiToken: string;
@@ -15,9 +15,8 @@ export interface SubscriptionsPageProps {
 }
 
 export const getServerSideProps: GetServerSideProps<SubscriptionsPageProps> = async () => {
-  const db = getDB();
   const apiToken = getApiToken();
-  const subscriptionService = new SubscriptionService(db);
+  const subscriptionService = new SubscriptionService();
 
   let subscriptions: SubscriptionRecord[] = [];
   try {

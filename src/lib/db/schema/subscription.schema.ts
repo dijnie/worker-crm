@@ -5,19 +5,7 @@ import {
   sqliteTable,
   text,
 } from "drizzle-orm/sqlite-core";
-
-export const customers = sqliteTable("customers", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  name: text("name").notNull(),
-  email: text("email").notNull(),
-  notes: text("notes"),
-  createdAt: text("created_at")
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text("updated_at")
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
+import { customers } from "./customer.schema";
 
 export const subscriptions = sqliteTable("subscriptions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -83,10 +71,6 @@ export const customerSubscriptions = sqliteTable("customer_subscriptions", {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const customersRelations = relations(customers, ({ many }) => ({
-  customerSubscriptions: many(customerSubscriptions),
-}));
-
 export const subscriptionsRelations = relations(subscriptions, ({ many }) => ({
   features: many(subscriptionFeatures),
   customerSubscriptions: many(customerSubscriptions),
@@ -124,8 +108,6 @@ export const customerSubscriptionsRelations = relations(
   }),
 );
 
-export type CustomerSelect = typeof customers.$inferSelect;
-export type CustomerInsert = typeof customers.$inferInsert;
 export type SubscriptionSelect = typeof subscriptions.$inferSelect;
 export type SubscriptionInsert = typeof subscriptions.$inferInsert;
 export type FeatureSelect = typeof features.$inferSelect;
