@@ -1,5 +1,3 @@
-import type { GetServerSideProps } from "next";
-import Layout from "@/layouts/Layout";
 import { SubscriptionsTable } from "@/components/admin/subscriptions-table";
 import { CreateSubscriptionButton } from "@/components/admin/create-subscription";
 import {
@@ -8,13 +6,9 @@ import {
 } from "@/lib/services/subscription";
 import { getApiToken } from "@/lib/db";
 
-export interface SubscriptionsPageProps {
-  apiToken: string;
-  apiTokenSet: boolean;
-  subscriptions: SubscriptionRecord[];
-}
+export const dynamic = "force-dynamic";
 
-export const getServerSideProps: GetServerSideProps<SubscriptionsPageProps> = async () => {
+export default async function SubscriptionsPage() {
   const apiToken = getApiToken();
   const subscriptionService = new SubscriptionService();
 
@@ -25,26 +19,13 @@ export const getServerSideProps: GetServerSideProps<SubscriptionsPageProps> = as
     console.error("Error loading subscriptions:", error);
   }
 
-  return {
-    props: {
-      apiToken,
-      apiTokenSet: Boolean(apiToken && apiToken.trim().length > 0),
-      subscriptions,
-    },
-  };
-};
-
-export default function SubscriptionsPage({
-  apiToken,
-  apiTokenSet,
-  subscriptions,
-}: SubscriptionsPageProps) {
   return (
-    <Layout
-      title="Subscriptions"
-      apiTokenSet={apiTokenSet}
-      actions={<CreateSubscriptionButton apiToken={apiToken} />}
-    >
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-3xl font-bold tracking-tight">Subscriptions</h2>
+        <CreateSubscriptionButton apiToken={apiToken} />
+      </div>
+
       {subscriptions.length ? (
         <SubscriptionsTable data={subscriptions} />
       ) : (
@@ -53,6 +34,6 @@ export default function SubscriptionsPage({
           "Create New Subscription" above.
         </p>
       )}
-    </Layout>
+    </div>
   );
 }

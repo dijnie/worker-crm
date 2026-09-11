@@ -1,5 +1,4 @@
-import type { GetServerSideProps } from "next";
-import Layout from "@/layouts/Layout";
+import { notFound } from "next/navigation";
 import {
   Table,
   TableBody,
@@ -8,16 +7,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CustomerService, type CustomerRecord } from "@/lib/services/customer";
+import { CustomerService } from "@/lib/services/customer";
 
-export interface CustomerDetailPageProps {
-  customer: CustomerRecord;
-}
+export const dynamic = "force-dynamic";
 
-export const getServerSideProps: GetServerSideProps<CustomerDetailPageProps> = async ({
+export default async function CustomerDetailPage({
   params,
-}) => {
-  const id = params?.id as string;
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
   const customerService = new CustomerService();
 
   let customer = null;
@@ -28,21 +27,15 @@ export const getServerSideProps: GetServerSideProps<CustomerDetailPageProps> = a
   }
 
   if (!customer) {
-    return { notFound: true };
+    notFound();
   }
 
-  return {
-    props: {
-      customer,
-    },
-  };
-};
-
-export default function CustomerDetailPage({
-  customer,
-}: CustomerDetailPageProps) {
   return (
-    <Layout title={customer.name}>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-3xl font-bold tracking-tight">{customer.name}</h2>
+      </div>
+
       <div className="rounded-md border p-4 space-y-4 bg-card">
         <h3 className="text-xl font-bold tracking-tight">Customer Details</h3>
         <Table>
@@ -74,6 +67,6 @@ export default function CustomerDetailPage({
           </TableBody>
         </Table>
       </div>
-    </Layout>
+    </div>
   );
 }

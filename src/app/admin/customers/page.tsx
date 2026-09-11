@@ -1,17 +1,11 @@
-import type { GetServerSideProps } from "next";
-import Layout from "@/layouts/Layout";
 import { CustomersTable } from "@/components/admin/customers-table";
 import { CreateCustomerButton } from "@/components/admin/create-customer";
 import { CustomerService, type CustomerRecord } from "@/lib/services/customer";
 import { getApiToken } from "@/lib/db";
 
-export interface CustomersPageProps {
-  apiToken: string;
-  apiTokenSet: boolean;
-  customers: CustomerRecord[];
-}
+export const dynamic = "force-dynamic";
 
-export const getServerSideProps: GetServerSideProps<CustomersPageProps> = async () => {
+export default async function CustomersPage() {
   const apiToken = getApiToken();
   const customerService = new CustomerService();
 
@@ -22,26 +16,13 @@ export const getServerSideProps: GetServerSideProps<CustomersPageProps> = async 
     console.error("Error loading customers:", error);
   }
 
-  return {
-    props: {
-      apiToken,
-      apiTokenSet: Boolean(apiToken && apiToken.trim().length > 0),
-      customers,
-    },
-  };
-};
-
-export default function CustomersPage({
-  apiToken,
-  apiTokenSet,
-  customers,
-}: CustomersPageProps) {
   return (
-    <Layout
-      title="Customers"
-      apiTokenSet={apiTokenSet}
-      actions={<CreateCustomerButton apiToken={apiToken} />}
-    >
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-3xl font-bold tracking-tight">Customers</h2>
+        <CreateCustomerButton apiToken={apiToken} />
+      </div>
+
       {customers.length ? (
         <CustomersTable data={customers} />
       ) : (
@@ -50,6 +31,6 @@ export default function CustomersPage({
           New Customer" above.
         </p>
       )}
-    </Layout>
+    </div>
   );
 }

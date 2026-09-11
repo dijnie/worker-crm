@@ -1,5 +1,4 @@
-import type { GetServerSideProps } from "next";
-import Layout from "@/layouts/Layout";
+import { notFound } from "next/navigation";
 import {
   Table,
   TableBody,
@@ -8,19 +7,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  SubscriptionService,
-  type SubscriptionRecord,
-} from "@/lib/services/subscription";
+import { SubscriptionService } from "@/lib/services/subscription";
 
-export interface SubscriptionDetailPageProps {
-  subscription: SubscriptionRecord;
-}
+export const dynamic = "force-dynamic";
 
-export const getServerSideProps: GetServerSideProps<SubscriptionDetailPageProps> = async ({
+export default async function SubscriptionDetailPage({
   params,
-}) => {
-  const id = params?.id as string;
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
   const subscriptionService = new SubscriptionService();
 
   let subscription = null;
@@ -31,21 +27,17 @@ export const getServerSideProps: GetServerSideProps<SubscriptionDetailPageProps>
   }
 
   if (!subscription) {
-    return { notFound: true };
+    notFound();
   }
 
-  return {
-    props: {
-      subscription,
-    },
-  };
-};
-
-export default function SubscriptionDetailPage({
-  subscription,
-}: SubscriptionDetailPageProps) {
   return (
-    <Layout title={subscription.name}>
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <h2 className="text-3xl font-bold tracking-tight">
+          {subscription.name}
+        </h2>
+      </div>
+
       <div className="flex flex-col gap-8">
         <div className="rounded-md border p-4 space-y-4 bg-card">
           <h3 className="text-xl font-bold tracking-tight">
@@ -112,6 +104,6 @@ export default function SubscriptionDetailPage({
           )}
         </div>
       </div>
-    </Layout>
+    </div>
   );
 }

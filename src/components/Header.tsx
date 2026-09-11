@@ -1,5 +1,7 @@
+"use client";
+
 import Link from "next/link";
-import { useRouter } from "next/router";
+import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const links = [
@@ -9,8 +11,8 @@ const links = [
 ];
 
 export function Header({ currentPath }: { currentPath?: string }) {
-  const router = useRouter();
-  const activePath = currentPath ?? router?.pathname ?? "";
+  const pathname = usePathname();
+  const activePath = currentPath ?? pathname;
 
   return (
     <header className="border-b bg-background">
