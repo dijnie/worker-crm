@@ -10,6 +10,16 @@ endpoints are retired. Existing admin URLs display a
 
 <!-- dash-content-end -->
 
+## Design intent
+
+Preserve htcrm's CRM layout and interaction flow while applying the captured
+Cloudflare dashboard theme: neutral surfaces, blue primary actions, orange brand
+accents, and Inter typography. Carbon icons retain the CRM visual language.
+The [theme stylesheet](src/styles/globals.css) owns visual tokens, and
+[programmatic tokens](src/lib/design-tokens.ts) reference those CSS values.
+The theme changes preserve component behavior and dimensions. The CRM shell
+and record workflows are implemented separately.
+
 ## Local setup
 
 Install dependencies with `npm install`. The
