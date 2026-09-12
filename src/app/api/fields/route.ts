@@ -1,13 +1,10 @@
 import { FieldService } from "@services/field.service";
-import { withApi, readJson, readQuery, type RouteContext } from "@/lib/server/api-handler";
-import { z } from "zod";
-import { FIELD_ENTITIES } from "@/lib/db/schema/constants";
-
-const query = z.object({ entity: z.enum(FIELD_ENTITIES), includeArchived: z.boolean().default(false) }).strict();
+import { withApi, readJson, readQuery } from "@/lib/server/api-handler";
+import { fieldListInput } from "@/lib/server/field-api-inputs";
 
 export function GET(request: Request) {
   return withApi(request, async db => {
-    const input = query.parse(readQuery(request));
+    const input = fieldListInput.parse(readQuery(request));
     return Response.json(await new FieldService(db).listDefinitions(input.entity, input.includeArchived));
   });
 }

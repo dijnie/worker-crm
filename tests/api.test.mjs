@@ -7,10 +7,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { build } from 'esbuild';
 import { Miniflare } from 'miniflare';
+import { assertApiResponse } from './openapi-assertions.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const token = randomUUID();
-let directory, runtime, binding, client, unauthorizedClient, ApiError, endpoints;
+let directory, runtime, binding, client, unauthorizedClient, ApiError, endpoints, openApiDocument;
 
 before(async () => {
   directory = await mkdtemp(join(tmpdir(), 'worker-api-'));
@@ -50,13 +51,17 @@ before(async () => {
     } }],
   });
   binding = await runtime.getD1Database('DB');
+  const specification = await runtime.dispatchFetch('http://api.test/api/openapi');
+  assert.equal(specification.status, 200);
+  openApiDocument = await specification.json();
+  assert.ok(!JSON.stringify(openApiDocument).includes(token));
   const migration = await readFile(join(root, 'migrations/0000_initial_schema.sql'), 'utf8');
   await binding.batch(migration.split('--> statement-breakpoint').map(statement => binding.prepare(statement.trim())).filter(Boolean));
   const clientPath = join(directory, 'client.mjs');
   await build({ stdin: { contents: `export * from './src/lib/api.ts'; export { default as endpoints } from './src/lib/api-endpoints.ts';`, resolveDir: root, loader: 'ts' }, bundle: true, platform: 'browser', format: 'esm', outfile: clientPath, logLevel: 'silent' });
   const bundledClient = await import(pathToFileURL(clientPath).href);
   ({ ApiError, endpoints } = bundledClient);
-  const fetch = (url, init) => runtime.dispatchFetch(url, init);
+  const fetch = async (url, init) => assertApiResponse(openApiDocument, url, init.method ?? 'GET', await runtime.dispatchFetch(url, init));
   client = bundledClient.createApiClient({ baseUrl: 'http://api.test', headers: { Authorization: `Bearer ${token}` }, fetch });
   unauthorizedClient = bundledClient.createApiClient({ baseUrl: 'http://api.test', fetch });
   const clientSource = await readFile(clientPath, 'utf8');
@@ -73,12 +78,14 @@ beforeEach(async () => {
   }
 });
 
-function request(path, { method = 'GET', body, authorized = true, headers = {} } = {}) {
-  return runtime.dispatchFetch(`http://api.test${path}`, {
+async function request(path, { method = 'GET', body, authorized = true, headers = {} } = {}) {
+  const url = `http://api.test${path}`;
+  const response = await runtime.dispatchFetch(url, {
     method,
     headers: { ...(authorized ? { Authorization: `Bearer ${token}` } : {}), ...headers },
     ...(body === undefined ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
   });
+  return assertApiResponse(openApiDocument, url, method, response);
 }
 
 test('all documented API methods reject requests without authorization before reading input', async () => {
@@ -100,6 +107,9 @@ test('empty database returns an array, pagination headers and zero statistics', 
   assert.equal(response.headers.get('x-page'), '1');
   assert.equal(response.headers.get('x-limit'), '25');
   assert.deepEqual(await client.stats(), { totalCompanies: 0, totalContacts: 0, totalDeals: 0, openDealValue: '0.00', currency: 'USD', activitiesThisWeek: 0 });
+  const lowercaseStats = await request('/api/stats?currency=usd');
+  assert.equal(lowercaseStats.status, 200);
+  assert.equal((await lowercaseStats.json()).currency, 'USD');
 });
 
 test('client performs record CRUD, pagination, archive/restore and exact money round trips', async () => {
@@ -109,14 +119,16 @@ test('client performs record CRUD, pagination, archive/restore and exact money r
   assert.ok(company.id);
   const contact = await client.contacts.create({ firstName: 'Lin', email: 'LIN@example.com', companyId: company.id });
   assert.equal(contact.email, 'lin@example.com');
-  const deal = await client.deals.create({ name: 'License', companyId: company.id, ownerId: 'operator', amount: '0.29' });
+  const deal = await client.deals.create({ name: 'License', companyId: company.id, ownerId: 'operator', amount: '0.29', currency: 'usd' });
   assert.equal(deal.amount, '0.29');
+  assert.equal(deal.currency, 'USD');
   assert.equal((await client.companies.get(company.id)).deals[0].amount, '0.29');
   assert.equal((await client.contacts.list({ companyId: company.id })).total, 1);
   assert.equal((await client.deals.list({ companyId: company.id })).items[0].amount, '0.29');
   assert.equal((await client.companies.update(company.id, { name: 'Updated' })).name, 'Updated');
   assert.equal((await client.contacts.update(contact.id, { phone: '123' })).phone, '123');
   assert.equal((await client.deals.update(deal.id, { amount: '12.30' })).amount, '12.30');
+  assert.ok((await client.deals.update(deal.id, {})).company);
   for (const [resource, id] of [[client.companies, company.id], [client.contacts, contact.id], [client.deals, deal.id]]) {
     await resource.archive(id);
     assert.equal((await resource.list()).total, 0);

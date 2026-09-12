@@ -1,12 +1,10 @@
 import { FieldService } from "@services/field.service";
 import { withApi, readJson, readQuery, type RouteContext } from "@/lib/server/api-handler";
-import { z } from "zod";
-
-const query = z.object({ includeArchived: z.boolean().default(false) }).strict();
+import { optionListInput } from "@/lib/server/field-api-inputs";
 
 export function GET(request: Request, context: RouteContext) {
   return withApi(request, async db => {
-    const input = query.parse(readQuery(request));
+    const input = optionListInput.parse(readQuery(request));
     return Response.json(await new FieldService(db).listOptions((await context.params).id, input.includeArchived));
   });
 }

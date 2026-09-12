@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { AppShell } from "@/components/app/app-shell";
 import "@fontsource-variable/inter/wght.css";
 import "@/styles/globals.css";
 
@@ -17,7 +16,7 @@ export default function RootLayout({
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
       </head>
       <body className="min-h-screen bg-background text-foreground antialiased">
-        <AppShell>{children}</AppShell>
+        {children}
       </body>
     </html>
   );

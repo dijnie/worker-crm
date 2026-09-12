@@ -1,0 +1,268 @@
+.api-docs {
+  min-width: 0;
+  color: var(--foreground);
+}
+
+.api-docs .swagger-ui,
+.api-docs .swagger-ui :is(button, input, select, textarea, .opblock-tag, .opblock-summary-description, .response-col_status, .response-col_links, .model-title, .model, .prop-format, .parameter__name, .parameter__type, .parameter__in, .tab li, .info .title, .info p, .info li, .info table, .info hgroup.main a, .opblock-description-wrapper p, .opblock-section-header h4, .opblock-section-header label, .responses-inner h4, .responses-inner h5, .dialog-ux .modal-ux-header h3, .dialog-ux .modal-ux-content h4) {
+  font-family: var(--font-sans);
+  color: var(--foreground);
+}
+
+.api-docs .swagger-ui .wrapper {
+  max-width: none;
+  padding: 0;
+}
+
+.api-docs .swagger-ui .info {
+  margin: 0 0 1.5rem;
+}
+
+.api-docs .swagger-ui .info .title {
+  font-size: 1.25rem;
+}
+
+.api-docs .swagger-ui :is(.info .title small, .info .title small.version-stamp) {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.api-docs .swagger-ui .info .title small pre {
+  color: inherit;
+}
+
+.api-docs .swagger-ui :is(.info a, .opblock a, .renderedMarkdown a, .response-col_links a) {
+  color: var(--link);
+}
+
+.api-docs .swagger-ui :is(.scheme-container, .opblock, .opblock-section-header, section.models, .model-container, .dialog-ux .modal-ux) {
+  border-color: var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: none;
+}
+
+.api-docs .swagger-ui .scheme-container {
+  margin: 0 0 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+}
+
+.api-docs .swagger-ui :is(.opblock-tag, .opblock-summary, table thead tr th, table thead tr td, .dialog-ux .modal-ux-header, .auth-container) {
+  border-color: var(--border);
+}
+
+.api-docs .swagger-ui .opblock-tag {
+  padding: 1rem 0;
+  gap: 0.5rem;
+  font-size: 1.125rem;
+}
+
+.api-docs .swagger-ui .opblock-tag:hover {
+  background: var(--accent);
+}
+
+.api-docs .swagger-ui .opblock.opblock-get {
+  --method-color: #1d4ed8;
+}
+
+.api-docs .swagger-ui .opblock.opblock-post {
+  --method-color: #15803d;
+}
+
+.api-docs .swagger-ui .opblock.opblock-put {
+  --method-color: #b45309;
+}
+
+.api-docs .swagger-ui .opblock.opblock-patch {
+  --method-color: #7e22ce;
+}
+
+.api-docs .swagger-ui .opblock.opblock-delete {
+  --method-color: #b91c1c;
+}
+
+.api-docs .swagger-ui .opblock .opblock-summary-method {
+  background: var(--method-color, var(--primary));
+  color: #fff;
+  text-shadow: none;
+}
+
+.api-docs .swagger-ui .opblock .opblock-summary-path {
+  min-width: 0;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+.api-docs .swagger-ui :is(.opblock-summary-control, .opblock-summary-path-description-wrapper, .opblock-summary-description) {
+  min-width: 0;
+}
+
+.api-docs .swagger-ui :is(.opblock-summary-description, .parameter__type, .parameter__in, .prop-format, .model-hint, .response-col_links) {
+  color: var(--muted-foreground);
+}
+
+.api-docs .swagger-ui :is(table thead tr td, table thead tr th, .parameter__name, .response-col_status, .model-title, .model, .model .property.primitive, .servers-title, .servers > label, .auth-container p, .auth-container h4, .auth-container label) {
+  color: var(--foreground);
+}
+
+.api-docs .swagger-ui :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select) {
+  max-width: 100%;
+  min-height: 2.75rem;
+  border-color: var(--input);
+  border-radius: var(--radius);
+  background-color: var(--control);
+  color: var(--foreground);
+  font-size: 1rem;
+  box-shadow: none;
+}
+
+.api-docs .swagger-ui :is(input, textarea)::placeholder {
+  color: var(--muted-foreground);
+  opacity: 1;
+}
+
+.api-docs .swagger-ui .btn {
+  min-height: 2.75rem;
+  border-color: var(--input);
+  border-radius: var(--radius);
+  background: var(--control);
+  color: var(--foreground);
+  box-shadow: none;
+}
+
+.api-docs .swagger-ui :is(.btn.authorize, .btn.execute) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.api-docs .swagger-ui .btn.authorize span {
+  float: none;
+  padding: 0;
+}
+
+.api-docs .swagger-ui button.btn:is(.btn.authorize, .btn.execute) {
+  color: var(--primary-foreground);
+}
+
+.api-docs .swagger-ui :is(.btn.authorize, .btn.execute):hover {
+  border-color: var(--primary-hover);
+  background: var(--primary-hover);
+}
+
+.api-docs .swagger-ui :is(.btn.authorize, .btn.execute):active {
+  background: var(--primary-active);
+}
+
+.api-docs .swagger-ui .btn:not(.authorize):not(.execute):hover {
+  background: var(--accent);
+}
+
+.api-docs .swagger-ui :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.api-docs .swagger-ui svg {
+  fill: currentColor;
+}
+
+.api-docs .swagger-ui .btn.authorize svg {
+  color: inherit;
+  fill: currentColor;
+}
+
+.api-docs .swagger-ui .dialog-ux .backdrop-ux {
+  background: var(--overlay);
+}
+
+.api-docs .swagger-ui .dialog-ux .modal-ux {
+  display: flex;
+  flex-direction: column;
+  width: calc(100% - 2rem);
+  max-width: 40rem;
+  max-height: calc(100dvh - 2rem);
+  overflow: hidden;
+}
+
+.api-docs .swagger-ui .dialog-ux .modal-ux-header {
+  flex-shrink: 0;
+}
+
+.api-docs .swagger-ui .dialog-ux :is(.modal-dialog-ux, .modal-ux-inner) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.api-docs .swagger-ui .dialog-ux .modal-ux-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1.25rem 1.25rem 1.5rem;
+}
+
+.api-docs .swagger-ui :is(.model-box, .highlight-code, .microlight, .responses-inner .renderedMarkdown p code) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.api-docs .swagger-ui .model-box {
+  background: var(--muted);
+}
+
+.api-docs .swagger-ui .model-box-control,
+.api-docs .swagger-ui .model-box-control > .pointer {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.api-docs .swagger-ui .model-box-control > .model-toggle {
+  top: 0;
+  flex-shrink: 0;
+}
+
+@media (max-width: 639px) {
+  .api-docs .swagger-ui .opblock .opblock-summary {
+    flex-wrap: wrap;
+  }
+
+  .api-docs .swagger-ui .opblock .opblock-summary-control {
+    flex-basis: calc(100% - 3rem);
+  }
+
+  .api-docs .swagger-ui .opblock .opblock-summary-path {
+    font-size: 0.75rem;
+  }
+
+  .api-docs .swagger-ui :is(.opblock-body, .responses-wrapper) {
+    overflow-x: auto;
+  }
+
+  .api-docs .swagger-ui .opblock-tag {
+    flex-wrap: wrap;
+  }
+
+  .api-docs .swagger-ui .opblock-tag small {
+    flex-basis: 100%;
+    padding: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .api-docs .swagger-ui *,
+  .api-docs .swagger-ui *::before,
+  .api-docs .swagger-ui *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

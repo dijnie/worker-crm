@@ -7,6 +7,7 @@ The database foundation and business APIs are available; interactive record scre
 still under development. The former SaaS customer/subscription tools and API
 endpoints are retired. The application shell provides direct navigation to Overview,
 Companies, Contacts, Deals, and Settings, each with an honest availability notice.
+Interactive API documentation is available from the API docs navigation item.
 
 <!-- dash-content-end -->
 
@@ -25,18 +26,22 @@ bottom-button expansion control, with no automatic expansion on hover; mobile
 navigation remains a separate drawer. Ask AI, Support, and Account are intentionally
 disabled placeholders while their capabilities are unavailable. Record workflows
 are still under development.
+The [workspace layout](src/app/(workspace)/layout.tsx) applies this shell to
+business screens. `/docs` is a standalone page with no application header or sidebar.
+It uses `swagger-ui-react` with the application's custom theme and responsive authorization modal styles.
 
 ## Routes
 
 | Route | Screen |
 | --- | --- |
-| `/` | [Overview](src/app/page.tsx) |
-| `/companies` | [Companies](src/app/companies/page.tsx) |
-| `/contacts` | [Contacts](src/app/contacts/page.tsx) |
-| `/deals` | [Deals](src/app/deals/page.tsx) |
-| `/settings` | [Settings](src/app/settings/page.tsx) |
+| `/` | [Overview](src/app/(workspace)/page.tsx) |
+| `/companies` | [Companies](src/app/(workspace)/companies/page.tsx) |
+| `/contacts` | [Contacts](src/app/(workspace)/contacts/page.tsx) |
+| `/deals` | [Deals](src/app/(workspace)/deals/page.tsx) |
+| `/settings` | [Settings](src/app/(workspace)/settings/page.tsx) |
+| `/docs` | [Interactive API documentation](src/app/docs/page.tsx) |
 
-These screens use a shared [availability state](src/components/app/app-empty-state.tsx)
+The record and settings screens use a shared [availability state](src/components/app/app-empty-state.tsx)
 and do not yet provide record management or settings controls.
 The former `/admin` routes, including customer and subscription detail URLs,
 have been removed and return 404.
@@ -77,6 +82,19 @@ for executable storage and relation checks and the [type contracts](tests/schema
 for nullable relation assertions.
 
 ## API integration
+
+Open `/docs` for Swagger UI or fetch `/api/openapi` for the OpenAPI 3.0.3 JSON
+document. Both are public and contain no application records or environment
+secrets. The [OpenAPI generator](src/lib/openapi/document.ts) reuses request
+validators and database column metadata, with explicit response relationships
+and business-rule descriptions. [Contract tests](tests/openapi.test.mjs) validate
+the document and compare it with the actual route handlers; HTTP integration
+tests also validate real responses against it.
+
+Swagger's **Try it out** calls the same application origin. Use **Authorize** to
+enter a token manually when testing protected business endpoints; authorization
+is not persisted across page reloads. Swagger assets are bundled locally and
+external schema validation is disabled.
 
 The [endpoint catalog](src/lib/api-endpoints.ts) and
 [typed client](src/lib/api.ts) own the REST integration surface. Business
