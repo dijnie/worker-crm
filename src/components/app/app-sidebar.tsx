@@ -7,7 +7,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { DialogOverlay } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils/cn";
 import { navigationItems, matchesNavigationPath } from "@/components/app/navigation-items";
 
 interface AppSidebarProps {

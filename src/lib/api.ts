@@ -1,276 +1,109 @@
-const safeCompare = (a: string, b: string): boolean => {
-  if (typeof a !== "string" || typeof b !== "string") return false;
-  const encoder = new TextEncoder();
-  const aBuf = encoder.encode(a);
-  const bBuf = encoder.encode(b);
-  if (aBuf.byteLength !== bBuf.byteLength) return false;
+import type { z } from "zod";
+import type { FieldEntity } from "./db/schema/constants";
+import type { CompanyService, CreateCompanyInput, UpdateCompanyInput } from "@services/company.service";
+import type { ContactService, CreateContactInput, UpdateContactInput } from "@services/contact.service";
+import type { DealService, CreateDealInput, UpdateDealInput, DealListInput, StageInput } from "@services/deal.service";
+import type { ActivityService, CreateActivityInput, ActivityListInput, CompleteTaskInput } from "@services/activity.service";
+import type { FieldService, createFieldInput, updateFieldInput, createOptionInput, updateOptionInput } from "@services/field.service";
+import type { StatsService } from "@services/stats.service";
+import type { Page } from "./utils/validation";
 
-  let mismatch = 0;
-  for (let i = 0; i < aBuf.byteLength; i++) {
-    mismatch |= aBuf[i] ^ bBuf[i];
-  }
-  return mismatch === 0;
-};
-
-export type RequestLike =
-  | Request
-  | {
-      headers:
-        | Headers
-        | Record<string, string | string[] | undefined>;
-    };
-
-export const getHeaderValue = (
-  req: RequestLike,
-  name: string,
-): string | null => {
-  if (!req?.headers) return null;
-  if (typeof (req.headers as Headers).get === "function") {
-    return (req.headers as Headers).get(name);
-  }
-  const val = (req.headers as Record<string, string | string[] | undefined>)[
-    name.toLowerCase()
-  ];
-  return Array.isArray(val) ? val[0] ?? null : val ?? null;
-};
-
-export const validateApiToken = async (
-  request: RequestLike,
-  apiToken?: string,
-): Promise<boolean> => {
-  try {
-    if (!request?.headers) {
-      console.error("Invalid request object");
-      return false;
-    }
-
-    if (!apiToken) {
-      console.error(
-        "No API token provided. Set one as an environment variable.",
-      );
-      return false;
-    }
-
-    const authHeader = getHeaderValue(request, "authorization");
-    const customTokenHeader = getHeaderValue(request, "x-api-token");
-
-    let tokenToValidate = customTokenHeader || "";
-
-    if (authHeader) {
-      if (authHeader.startsWith("Bearer ")) {
-        tokenToValidate = authHeader.substring(7);
-      } else if (authHeader.startsWith("Token ")) {
-        tokenToValidate = authHeader.substring(6);
-      } else {
-        tokenToValidate = authHeader;
-      }
-    }
-
-    if (!tokenToValidate || tokenToValidate.length === 0) return false;
-
-    return await safeCompare(apiToken.trim(), tokenToValidate.trim());
-  } catch (error) {
-    console.error("Error validating API token:", error);
-    return false;
-  }
-};
-
-export const validateApiTokenResponse = async (
-  request: RequestLike,
-  apiToken?: string,
-): Promise<Response | undefined> => {
-  const successful = await validateApiToken(request, apiToken);
-  if (!successful) {
-    return Response.json({ message: "Invalid API token" }, { status: 401 });
-  }
-  return undefined;
-};
-
-export interface CustomerInput {
-  name: string;
-  email: string;
-  notes?: string;
-  subscription?: {
-    id: number;
-    status: string;
-  };
+export interface RecordListQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  archived?: boolean;
 }
 
-export interface SubscriptionInput {
-  name: string;
-  description: string;
-  price: number;
-  features?: Array<{
-    name: string;
-    description?: string;
-  }>;
+export class ApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
 
-export const getCustomers = async (baseUrl: string, apiToken: string) => {
-  const url = `${baseUrl}/api/customers`;
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-    },
-  });
-  if (response.ok) {
-    const data = (await response.json()) as { customers: unknown[] };
+type Result<T extends (...args: never[]) => unknown> = Awaited<ReturnType<T>>;
+
+export function createApiClient(options: { baseUrl?: string; headers?: HeadersInit; fetch?: typeof fetch } = {}) {
+  const baseUrl = (options.baseUrl ?? "").replace(/\/$/, "");
+  const fetchRequest = options.fetch ?? globalThis.fetch.bind(globalThis);
+  const pathId = (id: string) => encodeURIComponent(id);
+
+  async function request(path: string, method = "GET", body?: unknown, query?: object) {
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries(query ?? {})) {
+      if (value !== undefined) search.set(key, String(value));
+    }
+    const headers = new Headers(options.headers);
+    if (body !== undefined) headers.set("Content-Type", "application/json");
+    const response = await fetchRequest(`${baseUrl}${path}${search.size ? `?${search}` : ""}`, {
+      method, headers, credentials: "same-origin", cache: "no-store",
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    if (!response.ok) {
+      let message = `Request failed (${response.status})`;
+      try {
+        const error: unknown = await response.json();
+        if (error && typeof error === "object" && "message" in error && typeof error.message === "string") message = error.message;
+      } catch { /* Non-JSON failures still retain their HTTP status. */ }
+      throw new ApiError(response.status, message);
+    }
+    return response;
+  }
+
+  async function json<T>(path: string, method = "GET", body?: unknown, query?: object): Promise<T> {
+    return (await request(path, method, body, query)).json() as Promise<T>;
+  }
+
+  async function list<T>(path: string, query?: object): Promise<Page<T>> {
+    const response = await request(path, "GET", undefined, query);
     return {
-      customers: data.customers,
-      success: true,
+      items: await response.json() as T[],
+      total: Number(response.headers.get("X-Total-Count")),
+      page: Number(response.headers.get("X-Page")),
+      limit: Number(response.headers.get("X-Limit")),
     };
   }
-  console.error("Failed to fetch customers");
-  return {
-    customers: [],
-    success: false,
-  };
-};
 
-export const getCustomer = async (
-  id: string | number,
-  baseUrl: string,
-  apiToken: string,
-) => {
-  const response = await fetch(`${baseUrl}/api/customers/${id}`, {
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-    },
-  });
-  if (response.ok) {
-    const data = (await response.json()) as { customer: unknown };
+  function records<Row, Detail, Create, Update, Query extends object>(resource: string) {
+    const path = `/api/${resource}`;
     return {
-      customer: data.customer,
-      success: true,
+      list: (query?: Query) => list<Row>(path, query),
+      get: (id: string) => json<Detail>(`${path}/${pathId(id)}`),
+      create: (body: Create) => json<Row>(path, "POST", body),
+      update: (id: string, body: Update) => json<Row>(`${path}/${pathId(id)}`, "PATCH", body),
+      archive: (id: string) => json<Row>(`${path}/${pathId(id)}`, "DELETE"),
+      restore: (id: string) => json<Row>(`${path}/${pathId(id)}/restore`, "POST"),
     };
   }
-  console.error("Failed to fetch customer");
-  return {
-    customer: null,
-    success: false,
-  };
-};
 
-export const createCustomer = async (
-  baseUrl: string,
-  apiToken: string,
-  customer: CustomerInput,
-) => {
-  const response = await fetch(`${baseUrl}/api/customers`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-      "Content-Type": "application/json",
+  return {
+    companies: records<Result<CompanyService["create"]>, Result<CompanyService["getById"]>, CreateCompanyInput, UpdateCompanyInput, RecordListQuery>("companies"),
+    contacts: records<Result<ContactService["create"]>, Result<ContactService["getById"]>, CreateContactInput, UpdateContactInput, RecordListQuery & { companyId?: string }>("contacts"),
+    deals: {
+      ...records<Result<DealService["create"]>, Result<DealService["getById"]>, CreateDealInput, UpdateDealInput, DealListInput>("deals"),
+      setStage: (id: string, body: StageInput) => json<Result<DealService["setStage"]>>(`/api/deals/${pathId(id)}/stage`, "POST", body),
     },
-    body: JSON.stringify(customer),
-  });
-  if (response.ok) {
-    const data = (await response.json()) as { customer?: unknown };
-    return {
-      customer: data.customer ?? null,
-      success: true,
-    };
-  }
-  console.error("Failed to create customer");
-  return {
-    customer: null,
-    success: false,
-  };
-};
-
-export const createSubscription = async (
-  baseUrl: string,
-  apiToken: string,
-  subscription: SubscriptionInput,
-) => {
-  const response = await fetch(`${baseUrl}/api/subscriptions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-      "Content-Type": "application/json",
+    activities: {
+      list: (query?: ActivityListInput) => list<Result<ActivityService["getById"]>>("/api/activities", query),
+      get: (id: string) => json<Result<ActivityService["getById"]>>(`/api/activities/${pathId(id)}`),
+      create: (body: CreateActivityInput) => json<Result<ActivityService["create"]>>("/api/activities", "POST", body),
+      complete: (id: string, body: CompleteTaskInput) => json<Result<ActivityService["completeTask"]>>(`/api/activities/${pathId(id)}/complete`, "POST", body),
+      delete: async (id: string) => { await request(`/api/activities/${pathId(id)}`, "DELETE"); },
     },
-    body: JSON.stringify(subscription),
-  });
-  if (response.ok) {
-    const data = (await response.json()) as { subscription?: unknown };
-    return {
-      subscription: data.subscription ?? null,
-      success: true,
-    };
-  }
-  console.error("Failed to create subscription");
-  return {
-    subscription: null,
-    success: false,
-  };
-};
-
-export const getSubscriptions = async (baseUrl: string, apiToken: string) => {
-  const response = await fetch(`${baseUrl}/api/subscriptions`, {
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
+    fields: {
+      list: (entity: FieldEntity, includeArchived = false) => json<Result<FieldService["listDefinitions"]>>("/api/fields", "GET", undefined, { entity, includeArchived }),
+      get: (id: string) => json<Result<FieldService["getDefinition"]>>(`/api/fields/${pathId(id)}`),
+      create: (body: z.input<typeof createFieldInput>) => json<Result<FieldService["createDefinition"]>>("/api/fields", "POST", body),
+      update: (id: string, body: z.input<typeof updateFieldInput>) => json<Result<FieldService["updateDefinition"]>>(`/api/fields/${pathId(id)}`, "PATCH", body),
+      archive: (id: string) => json<Result<FieldService["archiveDefinition"]>>(`/api/fields/${pathId(id)}`, "DELETE"),
+      restore: (id: string) => json<Result<FieldService["restoreDefinition"]>>(`/api/fields/${pathId(id)}/restore`, "POST"),
+      options: (id: string, includeArchived = false) => json<Result<FieldService["listOptions"]>>(`/api/fields/${pathId(id)}/options`, "GET", undefined, { includeArchived }),
+      createOption: (id: string, body: z.input<typeof createOptionInput>) => json<Result<FieldService["createOption"]>>(`/api/fields/${pathId(id)}/options`, "POST", body),
+      updateOption: (id: string, optionId: string, body: z.input<typeof updateOptionInput>) => json<Result<FieldService["updateOption"]>>(`/api/fields/${pathId(id)}/options/${pathId(optionId)}`, "PATCH", body),
+      values: (entity: FieldEntity, entityId: string) => json<Result<FieldService["getValues"]>>("/api/fields/values", "GET", undefined, { entity, entityId }),
+      setValue: (id: string, entity: FieldEntity, entityId: string, value: unknown) => json<Result<FieldService["upsertValue"]>>(`/api/fields/${pathId(id)}/value`, "PUT", { entity, entityId, value }),
     },
-  });
-  if (response.ok) {
-    const data = (await response.json()) as { subscriptions: unknown[] };
-    return {
-      subscriptions: data.subscriptions,
-      success: true,
-    };
-  }
-  console.error("Failed to fetch subscriptions");
-  return {
-    subscriptions: [],
-    success: false,
+    stats: (currency = "USD") => json<Result<StatsService["getStats"]>>("/api/stats", "GET", undefined, { currency }),
   };
-};
-
-export const getSubscription = async (
-  id: string | number,
-  baseUrl: string,
-  apiToken: string,
-) => {
-  const response = await fetch(`${baseUrl}/api/subscriptions/${id}`, {
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-    },
-  });
-  if (response.ok) {
-    const data = (await response.json()) as { subscription: unknown };
-    return {
-      subscription: data.subscription,
-      success: true,
-    };
-  }
-  console.error("Failed to fetch subscription");
-  return {
-    subscription: null,
-    success: false,
-  };
-};
-
-export const getCustomerSubscriptions = async (
-  baseUrl: string,
-  apiToken: string,
-) => {
-  const response = await fetch(`${baseUrl}/api/customer_subscriptions`, {
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-    },
-  });
-  if (response.ok) {
-    const data = (await response.json()) as {
-      customer_subscriptions: unknown[];
-    };
-    return {
-      customer_subscriptions: data.customer_subscriptions,
-      success: true,
-    };
-  }
-  console.error("Failed to fetch customer subscriptions");
-  return {
-    customer_subscriptions: [],
-    success: false,
-  };
-};
-
+}

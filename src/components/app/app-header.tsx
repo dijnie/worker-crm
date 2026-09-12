@@ -8,7 +8,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils/cn";
 import { navigationItems, matchesNavigationPath } from "@/components/app/navigation-items";
 
 export function AppHeader({ sidebarExpanded }: { sidebarExpanded: boolean }) {
