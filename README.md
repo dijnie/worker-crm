@@ -1,71 +1,54 @@
-# SaaS Admin Template
-
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/dijnie/worker-crm)
-
-![SaaS Admin Template](https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/52b88668-0144-489c-dd02-fe620270ba00/public)
+# Worker CRM
 
 <!-- dash-content-start -->
 
-A complete admin dashboard template built with Vinext, Shadcn UI, Drizzle ORM, and Cloudflare's developer stack. Quickly deploy a fully functional admin interface with customer and subscription management capabilities.
-
-## Features
-
-- 🎨 Modern UI built with Vinext, Pages Router, and Shadcn UI
-- 🔐 Built-in API with token authentication
-- 👥 Customer management
-- 💳 Subscription tracking
-- 🚀 Deploy to Cloudflare Workers
-- 📦 Powered by Cloudflare D1 database & Drizzle ORM
-- ✨ Clean, responsive interface
-- 🔍 Data validation with Zod
-
-## Tech Stack
-
-- Framework: [Vinext](https://vinext.dev) (Next.js Pages Router on Cloudflare Workers)
-- UI Components: [Shadcn UI](https://ui.shadcn.com)
-- Database: [Cloudflare D1](https://developers.cloudflare.com/d1)
-- ORM: [Drizzle ORM](https://orm.drizzle.team)
-- Deployment: [Cloudflare Workers](https://workers.cloudflare.com)
-- Validation: [Zod](https://github.com/colinhacks/zod)
+A CRM port built with Vinext App Router, Drizzle ORM, and Cloudflare Workers/D1.
+The database foundation is available; CRM services and interactive screens are
+still under development. The former SaaS customer/subscription tools and API
+endpoints are retired. Existing admin URLs display a
+[transition notice](src/components/admin/crm-transition.tsx).
 
 <!-- dash-content-end -->
 
-## Setup Steps
+## Local setup
 
-1. Install dependencies:
-
-```bash
-npm install
-```
-
-2. Set up your environment variables:
+Install dependencies with `npm install`. The
+[CRM migration](migrations/0000_crm_schema.sql) replaces the template migration
+history with a fresh baseline; it is **not an upgrade or data conversion** for an
+existing SaaS database. Back up any existing data before replacing a database.
+Keep existing local state and initialize a separate, fresh persistence directory:
 
 ```bash
-# Create a .dev.vars file for local development
-cp .dev.vars.example .dev.vars
-```
-
-Add your API token:
-
-```
-API_TOKEN=your_token_here
-```
-
-3. Run migrations locally:
-
-```bash
-npm run db:migrate
-```
-
-4. Run the development server:
-
-```bash
-npm run dev
-```
-
-Or build and run on the local Worker runtime:
-
-```bash
+npm run db:migrate -- --persist-to .wrangler/crm-local
 npm run build
-npm run start
+npx wrangler dev --config dist/server/wrangler.json --persist-to .wrangler/crm-local
 ```
+
+Use the same persistence directory for migration and runtime. The default
+`npm run start` uses `.wrangler/state`; it will not load the separate database
+above. For deployment, provision a fresh D1 database and update its binding in
+[wrangler.jsonc](wrangler.jsonc) before applying this baseline. Do not apply it to
+an existing SaaS database as an upgrade.
+
+No API token is needed to view the transition pages. See
+[package.json](package.json) for development, migration, build, and schema-test
+commands, and [the schema tests](tests/crm-schema.test.mjs) for executable storage
+and relation checks.
+
+## Storage decisions
+
+The [schema entry point](src/lib/db/schema/index.ts) owns the CRM model and
+relations. Deal `amount` uses integer cents to avoid floating-point money
+rounding. Other source decimal fields—`baseAmount`, `fxRate`, and
+`fieldValues.number`—retain exact decimal strings in SQLite TEXT columns rather
+than losing precision through floating-point conversion. Future services must
+handle their numeric comparison, range filtering, sorting, and arithmetic
+explicitly; ordinary SQL text ordering is lexical.
+
+User and external-system identifiers remain scalar values without foreign keys
+because their source models are outside this CRM port. They preserve integration
+references without adding authentication, email, or calendar subsystems.
+
+[Constants](src/lib/db/schema/constants.ts) follow the source model, including
+its enrichment and user-field values. The source has no lifecycle-stage field;
+future filters must follow the actual schema instead of assuming one exists.

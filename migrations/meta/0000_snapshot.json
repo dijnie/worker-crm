@@ -1,136 +1,233 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "08dc9a2a-ce40-4fdb-ba2d-d50a7a25de27",
+  "id": "65e49f4e-948f-4d85-80b7-3f3a3f092f57",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
-    "customers": {
-      "name": "customers",
+    "companies": {
+      "name": "companies",
       "columns": {
         "id": {
           "name": "id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": true,
           "notNull": true,
-          "autoincrement": true
+          "autoincrement": false
         },
         "name": {
           "name": "name",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "domain": {
+          "name": "domain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "website": {
+          "name": "website",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "logo_url": {
+          "name": "logo_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "logo_dark_url": {
+          "name": "logo_dark_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "icon_url": {
+          "name": "icon_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "icon_dark_url": {
+          "name": "icon_dark_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "icon_tone": {
+          "name": "icon_tone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "brand_color": {
+          "name": "brand_color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "industry": {
+          "name": "industry",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "sub_industry": {
+          "name": "sub_industry",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "city": {
+          "name": "city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "state_code": {
+          "name": "state_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "country": {
+          "name": "country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "country_code": {
+          "name": "country_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "email": {
           "name": "email",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
-        "notes": {
-          "name": "notes",
+        "linkedin_url": {
+          "name": "linkedin_url",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
+        "twitter_url": {
+          "name": "twitter_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "github_url": {
+          "name": "github_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pricing_url": {
+          "name": "pricing_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "careers_url": {
+          "name": "careers_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "primary_contact_id": {
+          "name": "primary_contact_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "enrichment_status": {
+          "name": "enrichment_status",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
+          "default": "'PENDING'"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "enriched_at": {
+          "name": "enriched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "enrichment_error": {
+          "name": "enrichment_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "subscriptions": {
-      "name": "subscriptions",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
+          "default": "'MANUAL'"
         },
-        "name": {
-          "name": "name",
+        "last_activity_at": {
+          "name": "last_activity_at",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "price": {
-          "name": "price",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "features": {
-      "name": "features",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "description": {
-          "name": "description",
+        "archived_at": {
+          "name": "archived_at",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -154,34 +251,219 @@
         }
       },
       "indexes": {
-        "features_name_unique": {
-          "name": "features_name_unique",
+        "companies_primary_contact_id_unique": {
+          "name": "companies_primary_contact_id_unique",
+          "columns": [
+            "primary_contact_id"
+          ],
+          "isUnique": true
+        },
+        "companies_domain_unique": {
+          "name": "companies_domain_unique",
+          "columns": [
+            "domain"
+          ],
+          "isUnique": true,
+          "where": "\"companies\".\"archived_at\" IS NULL"
+        },
+        "companies_owner_id_idx": {
+          "name": "companies_owner_id_idx",
+          "columns": [
+            "owner_id"
+          ],
+          "isUnique": false
+        },
+        "companies_name_idx": {
+          "name": "companies_name_idx",
           "columns": [
             "name"
           ],
-          "isUnique": true
+          "isUnique": false
+        },
+        "companies_last_activity_at_idx": {
+          "name": "companies_last_activity_at_idx",
+          "columns": [
+            "last_activity_at"
+          ],
+          "isUnique": false
+        },
+        "companies_archived_at_idx": {
+          "name": "companies_archived_at_idx",
+          "columns": [
+            "archived_at"
+          ],
+          "isUnique": false
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "companies_primary_contact_id_contacts_id_fk": {
+          "name": "companies_primary_contact_id_contacts_id_fk",
+          "tableFrom": "companies",
+          "tableTo": "contacts",
+          "columnsFrom": [
+            "primary_contact_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "subscription_features": {
-      "name": "subscription_features",
+    "contacts": {
+      "name": "contacts",
       "columns": {
-        "subscription_id": {
-          "name": "subscription_id",
-          "type": "integer",
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "first_name": {
+          "name": "first_name",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "feature_id": {
-          "name": "feature_id",
-          "type": "integer",
+        "last_name": {
+          "name": "last_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "seniority": {
+          "name": "seniority",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "function": {
+          "name": "function",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "linkedin_url": {
+          "name": "linkedin_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "twitter_url": {
+          "name": "twitter_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "github_url": {
+          "name": "github_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "image_url": {
+          "name": "image_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "socials_checked_at": {
+          "name": "socials_checked_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "enrichment_status": {
+          "name": "enrichment_status",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false,
+          "default": "'PENDING'"
+        },
+        "enriched_at": {
+          "name": "enriched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "enrichment_error": {
+          "name": "enrichment_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'MANUAL'"
+        },
+        "last_activity_at": {
+          "name": "last_activity_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "created_at": {
@@ -191,16 +473,340 @@
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "contacts_email_unique": {
+          "name": "contacts_email_unique",
+          "columns": [
+            "email"
+          ],
+          "isUnique": true,
+          "where": "\"contacts\".\"archived_at\" IS NULL"
+        },
+        "contacts_company_id_idx": {
+          "name": "contacts_company_id_idx",
+          "columns": [
+            "company_id"
+          ],
+          "isUnique": false
+        },
+        "contacts_owner_id_idx": {
+          "name": "contacts_owner_id_idx",
+          "columns": [
+            "owner_id"
+          ],
+          "isUnique": false
+        },
+        "contacts_last_activity_at_idx": {
+          "name": "contacts_last_activity_at_idx",
+          "columns": [
+            "last_activity_at"
+          ],
+          "isUnique": false
+        },
+        "contacts_archived_at_idx": {
+          "name": "contacts_archived_at_idx",
+          "columns": [
+            "archived_at"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
-        "subscription_features_subscription_id_subscriptions_id_fk": {
-          "name": "subscription_features_subscription_id_subscriptions_id_fk",
-          "tableFrom": "subscription_features",
-          "tableTo": "subscriptions",
+        "contacts_company_id_companies_id_fk": {
+          "name": "contacts_company_id_companies_id_fk",
+          "tableFrom": "contacts",
+          "tableTo": "companies",
           "columnsFrom": [
-            "subscription_id"
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "deals": {
+      "name": "deals",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "stage": {
+          "name": "stage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'DEMO_BOOKED'"
+        },
+        "stage_changed_at": {
+          "name": "stage_changed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "amount": {
+          "name": "amount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'USD'"
+        },
+        "expected_close_date": {
+          "name": "expected_close_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "closed_reason": {
+          "name": "closed_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "base_amount": {
+          "name": "base_amount",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "base_currency": {
+          "name": "base_currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fx_rate": {
+          "name": "fx_rate",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fx_rate_at": {
+          "name": "fx_rate_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_activity_at": {
+          "name": "last_activity_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "deals_company_id_idx": {
+          "name": "deals_company_id_idx",
+          "columns": [
+            "company_id"
+          ],
+          "isUnique": false
+        },
+        "deals_owner_id_idx": {
+          "name": "deals_owner_id_idx",
+          "columns": [
+            "owner_id"
+          ],
+          "isUnique": false
+        },
+        "deals_stage_idx": {
+          "name": "deals_stage_idx",
+          "columns": [
+            "stage"
+          ],
+          "isUnique": false
+        },
+        "deals_expected_close_date_idx": {
+          "name": "deals_expected_close_date_idx",
+          "columns": [
+            "expected_close_date"
+          ],
+          "isUnique": false
+        },
+        "deals_last_activity_at_idx": {
+          "name": "deals_last_activity_at_idx",
+          "columns": [
+            "last_activity_at"
+          ],
+          "isUnique": false
+        },
+        "deals_base_amount_idx": {
+          "name": "deals_base_amount_idx",
+          "columns": [
+            "base_amount"
+          ],
+          "isUnique": false
+        },
+        "deals_currency_idx": {
+          "name": "deals_currency_idx",
+          "columns": [
+            "currency"
+          ],
+          "isUnique": false
+        },
+        "deals_archived_at_idx": {
+          "name": "deals_archived_at_idx",
+          "columns": [
+            "archived_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "deals_company_id_companies_id_fk": {
+          "name": "deals_company_id_companies_id_fk",
+          "tableFrom": "deals",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "deal_contacts": {
+      "name": "deal_contacts",
+      "columns": {
+        "deal_id": {
+          "name": "deal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "contact_id": {
+          "name": "contact_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "deal_contacts_contact_id_idx": {
+          "name": "deal_contacts_contact_id_idx",
+          "columns": [
+            "contact_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "deal_contacts_deal_id_deals_id_fk": {
+          "name": "deal_contacts_deal_id_deals_id_fk",
+          "tableFrom": "deal_contacts",
+          "tableTo": "deals",
+          "columnsFrom": [
+            "deal_id"
           ],
           "columnsTo": [
             "id"
@@ -208,12 +814,12 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "subscription_features_feature_id_features_id_fk": {
-          "name": "subscription_features_feature_id_features_id_fk",
-          "tableFrom": "subscription_features",
-          "tableTo": "features",
+        "deal_contacts_contact_id_contacts_id_fk": {
+          "name": "deal_contacts_contact_id_contacts_id_fk",
+          "tableFrom": "deal_contacts",
+          "tableTo": "contacts",
           "columnsFrom": [
-            "feature_id"
+            "contact_id"
           ],
           "columnsTo": [
             "id"
@@ -223,59 +829,727 @@
         }
       },
       "compositePrimaryKeys": {
-        "subscription_features_subscription_id_feature_id_pk": {
+        "deal_contacts_deal_id_contact_id_pk": {
           "columns": [
-            "subscription_id",
-            "feature_id"
+            "deal_id",
+            "contact_id"
           ],
-          "name": "subscription_features_subscription_id_feature_id_pk"
+          "name": "deal_contacts_deal_id_contact_id_pk"
         }
       },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "customer_subscriptions": {
-      "name": "customer_subscriptions",
+    "activities": {
+      "name": "activities",
       "columns": {
         "id": {
           "name": "id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": true,
           "notNull": true,
-          "autoincrement": true
-        },
-        "customer_id": {
-          "name": "customer_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
           "autoincrement": false
         },
-        "subscription_id": {
-          "name": "subscription_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "status": {
-          "name": "status",
+        "type": {
+          "name": "type",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "'active'"
+          "autoincrement": false
         },
-        "subscription_starts_at": {
-          "name": "subscription_starts_at",
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "due_at": {
+          "name": "due_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "contact_id": {
+          "name": "contact_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deal_id": {
+          "name": "deal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_by_id": {
+          "name": "created_by_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "meta": {
+          "name": "meta",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "email_thread_id": {
+          "name": "email_thread_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "calendar_event_id": {
+          "name": "calendar_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "subscription_ends_at": {
-          "name": "subscription_ends_at",
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "activities_email_thread_id_unique": {
+          "name": "activities_email_thread_id_unique",
+          "columns": [
+            "email_thread_id"
+          ],
+          "isUnique": true
+        },
+        "activities_calendar_event_id_unique": {
+          "name": "activities_calendar_event_id_unique",
+          "columns": [
+            "calendar_event_id"
+          ],
+          "isUnique": true
+        },
+        "activities_company_id_created_at_idx": {
+          "name": "activities_company_id_created_at_idx",
+          "columns": [
+            "company_id",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "activities_deal_id_created_at_idx": {
+          "name": "activities_deal_id_created_at_idx",
+          "columns": [
+            "deal_id",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "activities_contact_id_created_at_idx": {
+          "name": "activities_contact_id_created_at_idx",
+          "columns": [
+            "contact_id",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "activities_due_at_idx": {
+          "name": "activities_due_at_idx",
+          "columns": [
+            "due_at"
+          ],
+          "isUnique": false
+        },
+        "activities_created_by_id_idx": {
+          "name": "activities_created_by_id_idx",
+          "columns": [
+            "created_by_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "activities_company_id_companies_id_fk": {
+          "name": "activities_company_id_companies_id_fk",
+          "tableFrom": "activities",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "activities_contact_id_contacts_id_fk": {
+          "name": "activities_contact_id_contacts_id_fk",
+          "tableFrom": "activities",
+          "tableTo": "contacts",
+          "columnsFrom": [
+            "contact_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "activities_deal_id_deals_id_fk": {
+          "name": "activities_deal_id_deals_id_fk",
+          "tableFrom": "activities",
+          "tableTo": "deals",
+          "columnsFrom": [
+            "deal_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "field_definitions": {
+      "name": "field_definitions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entity": {
+          "name": "entity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "agent_filled": {
+          "name": "agent_filled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "agent_brief": {
+          "name": "agent_brief",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "required": {
+          "name": "required",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "show_on_sheet": {
+          "name": "show_on_sheet",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "show_on_table": {
+          "name": "show_on_table",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "show_on_filter": {
+          "name": "show_on_filter",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "field_definitions_entity_key_unique": {
+          "name": "field_definitions_entity_key_unique",
+          "columns": [
+            "entity",
+            "key"
+          ],
+          "isUnique": true
+        },
+        "field_definitions_entity_position_idx": {
+          "name": "field_definitions_entity_position_idx",
+          "columns": [
+            "entity",
+            "position"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "field_options": {
+      "name": "field_options",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "field_id": {
+          "name": "field_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "field_options_field_id_position_idx": {
+          "name": "field_options_field_id_position_idx",
+          "columns": [
+            "field_id",
+            "position"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "field_options_field_id_field_definitions_id_fk": {
+          "name": "field_options_field_id_field_definitions_id_fk",
+          "tableFrom": "field_options",
+          "tableTo": "field_definitions",
+          "columnsFrom": [
+            "field_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "field_values": {
+      "name": "field_values",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "field_id": {
+          "name": "field_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "contact_id": {
+          "name": "contact_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deal_id": {
+          "name": "deal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "number": {
+          "name": "number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "bool": {
+          "name": "bool",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "option_id": {
+          "name": "option_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "field_values_field_id_company_id_unique": {
+          "name": "field_values_field_id_company_id_unique",
+          "columns": [
+            "field_id",
+            "company_id"
+          ],
+          "isUnique": true
+        },
+        "field_values_field_id_contact_id_unique": {
+          "name": "field_values_field_id_contact_id_unique",
+          "columns": [
+            "field_id",
+            "contact_id"
+          ],
+          "isUnique": true
+        },
+        "field_values_field_id_deal_id_unique": {
+          "name": "field_values_field_id_deal_id_unique",
+          "columns": [
+            "field_id",
+            "deal_id"
+          ],
+          "isUnique": true
+        },
+        "field_values_field_id_text_idx": {
+          "name": "field_values_field_id_text_idx",
+          "columns": [
+            "field_id",
+            "text"
+          ],
+          "isUnique": false
+        },
+        "field_values_field_id_number_idx": {
+          "name": "field_values_field_id_number_idx",
+          "columns": [
+            "field_id",
+            "number"
+          ],
+          "isUnique": false
+        },
+        "field_values_field_id_date_idx": {
+          "name": "field_values_field_id_date_idx",
+          "columns": [
+            "field_id",
+            "date"
+          ],
+          "isUnique": false
+        },
+        "field_values_company_id_idx": {
+          "name": "field_values_company_id_idx",
+          "columns": [
+            "company_id"
+          ],
+          "isUnique": false
+        },
+        "field_values_contact_id_idx": {
+          "name": "field_values_contact_id_idx",
+          "columns": [
+            "contact_id"
+          ],
+          "isUnique": false
+        },
+        "field_values_deal_id_idx": {
+          "name": "field_values_deal_id_idx",
+          "columns": [
+            "deal_id"
+          ],
+          "isUnique": false
+        },
+        "field_values_option_id_idx": {
+          "name": "field_values_option_id_idx",
+          "columns": [
+            "option_id"
+          ],
+          "isUnique": false
+        },
+        "field_values_user_id_idx": {
+          "name": "field_values_user_id_idx",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "field_values_field_id_field_definitions_id_fk": {
+          "name": "field_values_field_id_field_definitions_id_fk",
+          "tableFrom": "field_values",
+          "tableTo": "field_definitions",
+          "columnsFrom": [
+            "field_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "field_values_company_id_companies_id_fk": {
+          "name": "field_values_company_id_companies_id_fk",
+          "tableFrom": "field_values",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "field_values_contact_id_contacts_id_fk": {
+          "name": "field_values_contact_id_contacts_id_fk",
+          "tableFrom": "field_values",
+          "tableTo": "contacts",
+          "columnsFrom": [
+            "contact_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "field_values_deal_id_deals_id_fk": {
+          "name": "field_values_deal_id_deals_id_fk",
+          "tableFrom": "field_values",
+          "tableTo": "deals",
+          "columnsFrom": [
+            "deal_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "field_values_option_id_field_options_id_fk": {
+          "name": "field_values_option_id_field_options_id_fk",
+          "tableFrom": "field_values",
+          "tableTo": "field_options",
+          "columnsFrom": [
+            "option_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "saved_views": {
+      "name": "saved_views",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entity": {
+          "name": "entity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "shared": {
+          "name": "shared",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "filters": {
+          "name": "filters",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_id": {
+          "name": "owner_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -298,35 +1572,26 @@
           "default": "CURRENT_TIMESTAMP"
         }
       },
-      "indexes": {},
-      "foreignKeys": {
-        "customer_subscriptions_customer_id_customers_id_fk": {
-          "name": "customer_subscriptions_customer_id_customers_id_fk",
-          "tableFrom": "customer_subscriptions",
-          "tableTo": "customers",
-          "columnsFrom": [
-            "customer_id"
+      "indexes": {
+        "saved_views_entity_owner_id_name_unique": {
+          "name": "saved_views_entity_owner_id_name_unique",
+          "columns": [
+            "entity",
+            "owner_id",
+            "name"
           ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "isUnique": true
         },
-        "customer_subscriptions_subscription_id_subscriptions_id_fk": {
-          "name": "customer_subscriptions_subscription_id_subscriptions_id_fk",
-          "tableFrom": "customer_subscriptions",
-          "tableTo": "subscriptions",
-          "columnsFrom": [
-            "subscription_id"
+        "saved_views_entity_shared_idx": {
+          "name": "saved_views_entity_shared_idx",
+          "columns": [
+            "entity",
+            "shared"
           ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "isUnique": false
         }
       },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

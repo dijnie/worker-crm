@@ -43,6 +43,8 @@
     "@vitejs/plugin-react": "^6.1.1",
     "@vitejs/plugin-rsc": "^0.5.34",
     "drizzle-kit": "^0.31.10",
+    "esbuild": "0.28.1",
+    "miniflare": "5.20260910.0-alpha",
     "tailwindcss": "latest",
     "typescript": "latest",
     "vite": "^8.2.2",
@@ -52,6 +54,7 @@
   "scripts": {
     "dev": "vinext dev",
     "build": "vinext build",
+    "test:schema": "node --test tests/crm-schema.test.mjs",
     "start": "wrangler dev --config dist/server/wrangler.json --persist-to .wrangler/state",
     "deploy": "vinext-cloudflare deploy --config dist/server/wrangler.json",
     "db:generate": "drizzle-kit generate",
