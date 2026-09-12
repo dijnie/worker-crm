@@ -3,7 +3,7 @@
 <!-- dash-content-start -->
 
 A general-purpose application built with Vinext App Router, Drizzle ORM, and Cloudflare Workers/D1.
-The database foundation is available; business services and interactive screens are
+The database foundation and business APIs are available; interactive record screens are
 still under development. The former SaaS customer/subscription tools and API
 endpoints are retired. The application shell provides direct navigation to Overview,
 Companies, Contacts, Deals, and Settings, each with an honest availability notice.
@@ -75,6 +75,39 @@ No API token is needed to view the application shell and availability notices.
 migration, build, and schema-test commands. See the [schema tests](tests/schema.test.mjs)
 for executable storage and relation checks and the [type contracts](tests/schema-types.ts)
 for nullable relation assertions.
+
+## API integration
+
+The [endpoint catalog](src/lib/api-endpoints.ts) and
+[typed client](src/lib/api.ts) own the REST integration surface. Business
+[services](services) receive a database instance and do not depend on
+authentication. [HTTP integration tests](tests/api.test.mjs) exercise the route
+handlers and client against temporary D1 storage; the test scripts in
+[package.json](package.json) preserve existing local databases.
+
+Login sessions are the intended authentication model. Until login is implemented,
+the [server API boundary](src/lib/server/api-handler.ts) retains the existing
+`API_TOKEN` guard for API callers. Set a private token in the Worker environment
+and send it as an Authorization Bearer header from trusted tools or server code.
+Never embed it in browser code. The client uses same-origin credentials so session
+authentication can be connected without distributing an application secret.
+The shell remains accessible without a token.
+
+Activity actors currently remain explicit external scalar IDs because no login
+session or users table exists yet; they are attribution, not verified identities.
+Session integration must supply the actor from the authenticated user at the
+server boundary. Ordinary deal edits and stage transitions are separate actions
+so a transition cannot bypass its history entry or losing-reason requirement.
+Company records represent customers, not tenant boundaries. Activity links are
+independent: a contact may participate in another company's deal. Company
+attribution follows an explicit company, then the linked deal, then the contact's
+employer, preserving the source workflow.
+
+List bodies are arrays, with pagination metadata in response headers; the typed
+client reconstructs the page result. Monetary API values are decimal strings to
+preserve exact cents. [Stats](services/stats.service.ts) uses a requested
+currency, default USD, rather than adding amounts in different currencies; it
+does not perform FX conversion. Its weekly activity window starts Monday UTC.
 
 ## Storage decisions
 
