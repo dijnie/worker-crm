@@ -22,7 +22,7 @@ let eq;
 let migrate;
 
 before(async () => {
-  temporaryDirectory = await mkdtemp(join(tmpdir(), 'worker-crm-schema-'));
+  temporaryDirectory = await mkdtemp(join(tmpdir(), 'worker-schema-'));
   const modulePath = join(temporaryDirectory, 'schema.mjs');
   await build({
     stdin: {
@@ -50,7 +50,7 @@ before(async () => {
     workers: [{
       config: {
         type: 'worker',
-        name: 'crm-schema-tests',
+        name: 'schema-tests',
         compatibilityDate: '2026-09-11',
         manifest: {
           mainModule: 'worker.mjs',
@@ -61,7 +61,7 @@ before(async () => {
             },
           },
         },
-        env: { DB: { type: 'd1', id: 'crm-schema-tests' } },
+        env: { DB: { type: 'd1', id: 'schema-tests' } },
       },
     }],
   });
@@ -109,7 +109,7 @@ const field = (entity, values = {}) => insert(schema.fieldDefinitions, {
   entity, key: 'priority', label: 'Priority', type: 'SELECT', position: 0, ...values,
 });
 
-test('migrations create exactly the CRM tables and can be applied again', async () => {
+test('migrations create exactly the business tables and can be applied again', async () => {
   await migrate(db, { migrationsFolder: migrationFolder });
   const result = await binding.prepare(
     "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name != '__drizzle_migrations' ORDER BY name",
@@ -204,7 +204,7 @@ test('company membership and primary contact are distinct nullable relationships
   assert.equal((await db.query.companies.findFirst({ where: eq(schema.companies.id, primaryCompany.id) })).primaryContactId, null);
 });
 
-test('all forward and reverse CRM relations resolve through Drizzle relational queries', async () => {
+test('all forward and reverse relations resolve through Drizzle relational queries', async () => {
   const organization = await company();
   const person = await contact({ companyId: organization.id });
   await db.update(schema.companies).set({ primaryContactId: person.id })

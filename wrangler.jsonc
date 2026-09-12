@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "crm",
+  "name": "worker-app",
   "compatibility_date": "2026-09-11",
   "compatibility_flags": [
     "nodejs_compat"
@@ -19,7 +19,7 @@
     "API_TOKEN": "default_api_token"
   },
   "r2_buckets": [
-    { "binding": "STORAGE", "bucket_name": "crm-storage" }
+    { "binding": "STORAGE", "bucket_name": "app-storage" }
   ],
   "ratelimits": [
     {
@@ -31,7 +31,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "crm-db",
+      "database_name": "app-db",
       "database_id": "dab41ae6-0149-4055-a65b-199b2e392710",
       "migrations_dir": "migrations"
     }
