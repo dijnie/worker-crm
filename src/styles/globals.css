@@ -2,6 +2,44 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+@keyframes app-navigation-enter {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes app-navigation-exit {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+
+@keyframes app-overlay-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes app-overlay-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .app-navigation-panel[data-state="open"] {
+    animation: app-navigation-enter 300ms ease-out;
+  }
+
+  .app-navigation-panel[data-state="closed"] {
+    animation: app-navigation-exit 200ms ease-in;
+  }
+
+  .app-navigation-overlay[data-state="open"] {
+    animation: app-overlay-enter 300ms ease-out;
+  }
+
+  .app-navigation-overlay[data-state="closed"] {
+    animation: app-overlay-exit 200ms ease-in;
+  }
+}
+
 @theme inline {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --color-background: var(--background);

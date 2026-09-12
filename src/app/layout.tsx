@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
+import { AppShell } from "@/components/app/app-shell";
 import "@fontsource-variable/inter/wght.css";
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
-  title: "SaaS Admin Template",
-  description:
-    "Manage a SaaS application - customers, subscriptions - using Cloudflare Workers and D1.",
+  title: "Vinext",
+  description: "A unified workspace for your team.",
 };
 
 export default function RootLayout({
@@ -17,7 +17,7 @@ export default function RootLayout({
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
       </head>
       <body className="min-h-screen bg-background text-foreground antialiased">
-        {children}
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
