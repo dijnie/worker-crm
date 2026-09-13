@@ -17,7 +17,7 @@
   "keep_vars": true,
   "secrets": { "required": ["BETTER_AUTH_SECRET"] },
   "send_email": [
-    { "name": "EMAIL", "allowed_sender_addresses": ["noreply@example.invalid"] }
+    { "name": "EMAIL" }
   ],
   "r2_buckets": [
     { "binding": "STORAGE", "bucket_name": "app-storage" }

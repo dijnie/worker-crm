@@ -115,8 +115,9 @@ Set `AUTH_BASE_URL` in your private `.dev.vars` for local development and in the
 Worker's **Settings → Variables and Secrets** on Cloudflare for production.
 Use the canonical browser origin, including its port. Production requires HTTPS;
 HTTP is allowed only on loopback. Do not include a path, credentials, query, or
-fragment. The local example uses `http://localhost:3000`. Keep `AUTH_EMAIL_FROM` identical to the
-address in the `EMAIL` binding's `allowed_sender_addresses`.
+fragment. The local example uses `http://localhost:3000`. The email adapter reads
+its sender from runtime `AUTH_EMAIL_FROM`; the `EMAIL` binding does not hard-code
+a sender allowlist.
 
 Store a cryptographically random `BETTER_AUTH_SECRET` of at least 32 characters
 in an ignored `.dev.vars` file beside `wrangler.jsonc`. Keep secrets out of source,
@@ -160,8 +161,10 @@ Paid plan for this open-signup use case; confirm availability on the target acco
 See [Email Service](https://developers.cloudflare.com/email-service/). Onboard an
 authorized sender domain using Cloudflare DNS and complete its MX/SPF/DKIM/DMARC
 setup before real delivery, following [sender onboarding](https://developers.cloudflare.com/email-service/get-started/send-emails/).
-The sender must belong to that domain and match the
-[binding allowlist](https://developers.cloudflare.com/email-service/configuration/send-bindings/).
+The runtime sender must belong to that onboarded domain. The
+[send binding](https://developers.cloudflare.com/email-service/configuration/send-bindings/)
+is declared by name only, so changing `AUTH_EMAIL_FROM` does not require a matching
+change to a sender address in source configuration.
 There is no alternative email provider or API-key fallback.
 
 The checked-in `noreply@example.invalid` sender is a placeholder and cannot
