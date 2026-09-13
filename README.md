@@ -4,8 +4,9 @@
 
 A shared-workspace CRM built with Vinext App Router, Drizzle ORM, and Cloudflare
 Workers/D1. Verified email/password sessions protect business APIs and the workspace.
-Account and owner-only member administration are available; interactive record
-screens remain under development. The former SaaS customer/subscription tools
+Companies, Contacts and Deals have interactive lists and creation forms, alongside
+account and owner-only member administration. Record sheets, activity controls,
+custom-field interfaces and the live overview remain under development. The former SaaS customer/subscription tools
 and endpoints are retired. Interactive API documentation is public at `/docs`.
 
 <!-- dash-content-end -->
@@ -26,7 +27,7 @@ the sidebar or pressing Escape dismisses that preview. The bottom button pins it
 open or collapses it; mobile navigation remains a separate drawer.
 Ask AI and Support remain disabled placeholders.
 [Account](src/components/app/account-menu.tsx) shows the signed-in identity and role
-and provides signout. Record workflows are still under development.
+and provides signout.
 The [workspace layout](src/app/(workspace)/layout.tsx) applies this shell to
 business screens. `/docs` is a standalone page with no application header or sidebar.
 It uses locally bundled `swagger-ui-react` with the application's custom theme.
@@ -43,7 +44,25 @@ It uses locally bundled `swagger-ui-react` with the application's custom theme.
 | `/settings/members` | [Owner-only member administration](src/app/(workspace)/settings/members/page.tsx) |
 | `/docs` | [Interactive API documentation](src/app/docs/page.tsx) |
 
-The record screens use a shared [availability state](src/components/app/app-empty-state.tsx).
+The [record list](src/components/app/data-table/record-list.tsx),
+[creation forms](src/components/app/records/record-form.tsx),
+[saved views](src/components/app/data-table/saved-views.tsx) and
+[bulk actions](src/components/app/records/bulk-actions.tsx) own the list workflows.
+Search, filters, saved views and column visibility share a compact toolbar attached
+to each table. [Toolbar panels](src/components/app/data-table/toolbar-menu.tsx)
+fit the viewport and dismiss on Escape or outside interaction. Active facets appear
+as removable chips; bulk actions appear after selecting records, with results
+remaining visible after successful selections clear.
+Record links use the [URL navigation boundary](src/components/app/record-sheet/record-navigation.ts);
+the record sheet host is a later delivery. The overview retains the
+[availability state](src/components/app/app-empty-state.tsx), and custom-field
+settings are not yet available.
+
+The [workspace data provider](src/components/app/app-data-provider.tsx) and
+[invalidation store](src/lib/app-data-store.ts) are the shared integration point
+for lists, account/member controls and future record consumers. Extend that
+workspace scope for sheets and the overview so mutations and access changes
+remain consistent across screens.
 Standalone authentication pages use flat `/sign-up`, `/sign-in`, `/verify-email`,
 `/forgot-password`, `/reset-password`, and `/access-revoked` URLs; see the
 [auth route group](src/app/(auth)).
@@ -213,6 +232,16 @@ trusted account context. [HTTP integration tests](tests/api.test.mjs) exercise t
 handlers and client against temporary D1 storage; the test scripts in
 [package.json](package.json) preserve existing local databases.
 
+For list integration, start with the browser-safe
+[query contract](src/lib/record-list-contracts.ts),
+[server query implementation](services/record-list-query.ts) and
+[list tests](tests/record-lists.test.mjs). The
+[assignee service](services/assignee.service.ts) is the member-accessible assignment
+directory; owner-only member administration remains a separate boundary.
+[Saved-view ownership](services/saved-view.service.ts) is personal even in a shared
+workspace: sharing a view does not transfer editing rights to readers or workspace
+owners. Custom-field list projections and facets remain a later delivery.
+
 `API_TOKEN` clients must migrate to verified sessions; token headers no longer
 grant access. The [server API boundary](src/lib/server/api-handler.ts) requires
 a session and active membership. Private POST/PATCH/PUT/DELETE requests also
@@ -267,3 +296,19 @@ cover fresh installs and baseline upgrades; [API tests](tests/api.test.mjs) cove
 the protected HTTP boundary. These checks preserve existing local databases.
 Captured-link tests and adapter tests do not prove remote email delivery or
 production HTTPS cookie behavior; verify those in an authorized target environment.
+
+The [browser runner](scripts/run-browser-tests.mjs) owns suite registration and
+runtime modes; [the harness](tests/browser/browser-harness.mjs) owns disposable
+storage, verified browser identities and cleanup. Install its pinned Chromium
+with `npx playwright install chromium`, then run the implemented list suite from
+this directory:
+
+```bash
+node scripts/run-browser-tests.mjs --mode=both --suite=lists
+```
+
+Use `--mode=dev` or `--mode=built` for a focused run. The combined mode verifies
+the same session and record across the dev-to-built handoff; separate fresh runs
+cannot establish that continuity. Keep port 3100 free for the isolated harness.
+The [list browser suite](tests/browser/lists.test.mjs) owns the current acceptance
+scenarios; additional suites become available as their workflows are delivered.
