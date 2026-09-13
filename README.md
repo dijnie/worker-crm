@@ -111,10 +111,11 @@ owns scripts and dependency pins: Better Auth, its standalone Drizzle adapter,
 and the `auth` schema CLI are aligned at 1.7.4. Root Zod 4 satisfies dependency
 peer requirements; CRM validators retain their Zod 3 contracts via `zod/v3`.
 
-Set `AUTH_BASE_URL` in [wrangler.jsonc](wrangler.jsonc) to the canonical browser
-origin, including its port. Production requires HTTPS; HTTP is allowed only on
-loopback. Do not include a path, credentials, query, or fragment. The local example
-below uses `http://localhost:3000`. Keep `AUTH_EMAIL_FROM` identical to the
+Set `AUTH_BASE_URL` in your private `.dev.vars` for local development and in the
+Worker's **Settings → Variables and Secrets** on Cloudflare for production.
+Use the canonical browser origin, including its port. Production requires HTTPS;
+HTTP is allowed only on loopback. Do not include a path, credentials, query, or
+fragment. The local example uses `http://localhost:3000`. Keep `AUTH_EMAIL_FROM` identical to the
 address in the `EMAIL` binding's `allowed_sender_addresses`.
 
 Store a cryptographically random `BETTER_AUTH_SECRET` of at least 32 characters
@@ -126,8 +127,10 @@ Use separate local and production secrets and retain the production secret durin
 
 Use [.dev.vars.example](.dev.vars.example) as the key inventory; its empty secret
 must be replaced in your private `.dev.vars`. Local development uses
-`AUTH_BASE_URL=http://localhost:3000`. Do not copy another application's origin
-or unrelated secret keys.
+`AUTH_BASE_URL=http://localhost:3000` and `AUTH_EMAIL_FROM=noreply@example.invalid`.
+Existing local setups must include both values in `.dev.vars`; they are no longer
+provided by `wrangler.jsonc`. Do not copy another application's origin or unrelated
+secret keys.
 
 ```bash
 npm run dev
@@ -221,6 +224,17 @@ the session access boundary and newer business writes; do not restore token-only
 code or overwrite newer data with an older backup.
 
 ## Cloudflare deployment
+
+Production `AUTH_BASE_URL` and `AUTH_EMAIL_FROM` are managed in the Worker's
+**Settings → Variables and Secrets**, not in the build environment or source
+`vars`. [wrangler.jsonc](wrangler.jsonc) sets `keep_vars: true` and omits `vars`
+so redeploys preserve Dashboard values. Local examples live only in
+[.dev.vars.example](.dev.vars.example) and are not uploaded. If an earlier deploy
+overwrote a value, restore it in the Dashboard once; this setting preserves values
+but cannot recover old ones. See
+[Wrangler's configuration behavior](https://developers.cloudflare.com/workers/wrangler/configuration/#source-of-truth).
+This preserves environment variables; resource bindings remain configured in
+`wrangler.jsonc`.
 
 After verifying the production bindings, HTTPS auth origin, authorized email
 sender and secret described above, back up existing remote storage as described

@@ -14,11 +14,7 @@
   "cache": {
     "enabled": true
   },
-  "vars": {
-    "EXAMPLE_VALUE": "example_value",
-    "AUTH_BASE_URL": "http://localhost:3000",
-    "AUTH_EMAIL_FROM": "noreply@example.invalid"
-  },
+  "keep_vars": true,
   "secrets": { "required": ["BETTER_AUTH_SECRET"] },
   "send_email": [
     { "name": "EMAIL", "allowed_sender_addresses": ["noreply@example.invalid"] }

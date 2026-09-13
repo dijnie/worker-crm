@@ -2,3 +2,4 @@
 # See README.md for setup.
 BETTER_AUTH_SECRET=
 AUTH_BASE_URL=http://localhost:3000
+AUTH_EMAIL_FROM=noreply@example.invalid
