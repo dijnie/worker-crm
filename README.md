@@ -7,7 +7,7 @@ Workers/D1. Verified email/password sessions protect business APIs and the works
 Companies, Contacts and Deals have interactive lists, creation forms and nested
 record sheets with property editing and activity history, alongside account and
 owner-only member administration. Record sheets support manual activities and task
-actions; custom-field interfaces and the live overview remain under development. The former SaaS customer/subscription tools
+actions and typed custom fields; the live overview remains under development. The former SaaS customer/subscription tools
 and endpoints are retired. Interactive API documentation is public at `/docs`.
 
 <!-- dash-content-end -->
@@ -69,9 +69,20 @@ the [activity composer](src/components/app/timeline/activity-composer.tsx) and
 [task and deletion actions](src/components/app/timeline/activity-actions.tsx).
 Email and meeting entries are manual CRM logs; they do not send mail or sync
 calendars. Deleting stage history does not reverse a deal's current stage.
-The overview retains the
-[availability state](src/components/app/app-empty-state.tsx), and custom-field
-settings are not yet available.
+All active members manage custom fields in
+[Settings](src/components/app/fields/field-definition-list.tsx), including immutable
+keys, placement flags, atomic ordering, and definition/option archive and restore.
+The [custom field panel](src/components/app/fields/custom-fields-panel.tsx) supports
+all ten types, preserves exact decimal strings, and retains drafts when a save
+fails or an editor's field type changes. Required fields reject explicit clears;
+existing records do not require backfilling. SELECT and USER fields can filter
+lists and saved views. Retired selections remain readable, and unavailable field
+filters require explicit repair. Fields shown in tables are display-only columns.
+List APIs keep their default response shape; `includeFields=true` adds a typed
+map keyed by field key. The [OpenAPI contract](src/lib/openapi/document.ts)
+documents projections, `field:<key>` filters, reorder and optional `expectedType`
+write preconditions. The overview retains the
+[availability state](src/components/app/app-empty-state.tsx).
 
 The [workspace data provider](src/components/app/app-data-provider.tsx) and
 [invalidation store](src/lib/app-data-store.ts) are the shared integration point
@@ -300,7 +311,9 @@ For list integration, start with the browser-safe
 directory; owner-only member administration remains a separate boundary.
 [Saved-view ownership](services/saved-view.service.ts) is personal even in a shared
 workspace: sharing a view does not transfer editing rights to readers or workspace
-owners. Custom-field list projections and facets remain a later delivery.
+owners. The [field list query](services/field-list-query.ts) owns page-bounded
+custom-field projections and SELECT/USER facets, including retained retired
+selections and counts that exclude their own facet predicate.
 
 For independent deal participation, start with the
 [deal-contact service](services/deal-contact.service.ts) and its methods in the
@@ -382,5 +395,6 @@ Select `--suite=record-sheets` for the
 [sheet acceptance suite](tests/browser/record-sheets.test.mjs) and
 [relation scenarios](tests/browser/record-sheet-relations.test.mjs), or
 `--suite=lists` for [list acceptance](tests/browser/lists.test.mjs).
-Select `--suite=activities` for [manual activity and task acceptance](tests/browser/activities.test.mjs). The runner's
+Select `--suite=activities` for [manual activity and task acceptance](tests/browser/activities.test.mjs),
+or `--suite=fields` for [custom-field acceptance](tests/browser/fields.test.mjs). The runner's
 registry owns available suites; future workflow names are rejected until implemented.
