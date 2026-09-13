@@ -33,7 +33,7 @@ export async function createHarness(context) {
           export * from './services/stats.service.ts';
           export * from './src/lib/utils/money.ts';
           export * from './src/lib/utils/service-error.ts';
-          export * from './src/lib/server/api-auth.ts';
+          export * from './services/member.service.ts';
         `,
         resolveDir: projectRoot,
         loader: 'ts',

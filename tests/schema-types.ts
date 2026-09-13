@@ -14,3 +14,11 @@ export type PrimaryCompanyIsNullable = Assert<
 export type EmployerIsNullable = Assert<
   null extends ContactWithCompanies["company"] ? true : false
 >;
+
+export type SessionVersionIsRequiredNumber = Assert<
+  (typeof schema.session)["$inferSelect"]["accessVersion"] extends number ? true : false
+>;
+
+export type MembershipRoleIsConstrained = Assert<
+  (typeof schema.singletonMembership)["$inferSelect"]["role"] extends "owner" | "member" ? true : false
+>;

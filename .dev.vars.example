@@ -1,1 +1,4 @@
-API_TOKEN=your_token_here
+# Local development only. Generate your own secret; never reuse a production secret.
+# See README.md for setup.
+BETTER_AUTH_SECRET=
+AUTH_BASE_URL=http://localhost:3000

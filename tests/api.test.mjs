@@ -1,91 +1,44 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, test } from 'node:test';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { randomUUID } from 'node:crypto';
 import { build } from 'esbuild';
-import { Miniflare } from 'miniflare';
+import { createAuthHarness } from './auth-harness.mjs';
 import { assertApiResponse } from './openapi-assertions.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const token = randomUUID();
-let directory, runtime, binding, client, unauthorizedClient, ApiError, endpoints, openApiDocument;
+const baseUrl = 'https://crm.test';
+let harness, binding, client, unauthorizedClient, ApiError, endpoints, openApiDocument, account;
 
 before(async () => {
-  directory = await mkdtemp(join(tmpdir(), 'worker-api-'));
-  const entries = await readdir(join(root, 'src/app/api'), { recursive: true });
-  const paths = entries.filter(path => path.endsWith('route.ts'));
-  const definitions = paths.map((path, index) => {
-    const pattern = '/' + path.replace(/\/route\.ts$/, '').replace(/\[([^\]]+)\]/g, ':$1');
-    return { pattern: '/api' + pattern, index };
-  }).sort((a, b) => (a.pattern.match(/:/g)?.length ?? 0) - (b.pattern.match(/:/g)?.length ?? 0));
-  const contents = paths.map((path, index) => `import * as route${index} from './src/app/api/${path}';`).join('\n') + `
-    const routes = [${definitions.map(({ pattern, index }) => `{pattern:${JSON.stringify(pattern)},handlers:route${index}}`).join(',')}];
-    export default { async fetch(request) {
-      const pathname = new URL(request.url).pathname;
-      for (const {pattern,handlers} of routes) {
-        const names = [];
-        const expression = pattern.replace(/:([^/]+)/g, (_, name) => { names.push(name); return '([^/]+)'; });
-        const match = pathname.match(new RegExp('^' + expression + '$'));
-        if (!match) continue;
-        const handler = handlers[request.method];
-        if (!handler) return new Response(null,{status:405});
-        const params = Object.fromEntries(names.map((name,index) => [name,decodeURIComponent(match[index+1])]));
-        return handler(request,{params:Promise.resolve(params)});
-      }
-      return new Response(null,{status:404});
-    }};
-  `;
-  const worker = await build({
-    stdin: { contents, resolveDir: root, loader: 'ts' },
-    bundle: true, write: false, platform: 'browser', format: 'esm', external: ['cloudflare:workers'], logLevel: 'silent',
-  });
-  runtime = new Miniflare({
-    resourcePersistencePath: join(directory, 'storage'), telemetry: { enabled: false },
-    workers: [{ config: {
-      type: 'worker', name: 'api-tests', compatibilityDate: '2026-09-11',
-      manifest: { mainModule: 'worker.mjs', modules: { 'worker.mjs': { type: 'esm', contents: worker.outputFiles[0].text } } },
-      env: { DB: { type: 'd1', id: 'api-tests' }, API_TOKEN: { type: 'text', value: token } },
-    } }],
-  });
-  binding = await runtime.getD1Database('DB');
-  const specification = await runtime.dispatchFetch('http://api.test/api/openapi');
+  harness = await createAuthHarness();
+  binding = harness.binding;
+  const specification = await harness.request('/api/openapi');
   assert.equal(specification.status, 200);
   openApiDocument = await specification.json();
-  assert.ok(!JSON.stringify(openApiDocument).includes(token));
-  const migration = await readFile(join(root, 'migrations/0000_initial_schema.sql'), 'utf8');
-  await binding.batch(migration.split('--> statement-breakpoint').map(statement => binding.prepare(statement.trim())).filter(Boolean));
-  const clientPath = join(directory, 'client.mjs');
+  account = await harness.signupVerified();
+  const clientPath = join(harness.directory, 'client.mjs');
   await build({ stdin: { contents: `export * from './src/lib/api.ts'; export { default as endpoints } from './src/lib/api-endpoints.ts';`, resolveDir: root, loader: 'ts' }, bundle: true, platform: 'browser', format: 'esm', outfile: clientPath, logLevel: 'silent' });
   const bundledClient = await import(pathToFileURL(clientPath).href);
   ({ ApiError, endpoints } = bundledClient);
-  const fetch = async (url, init) => assertApiResponse(openApiDocument, url, init.method ?? 'GET', await runtime.dispatchFetch(url, init));
-  client = bundledClient.createApiClient({ baseUrl: 'http://api.test', headers: { Authorization: `Bearer ${token}` }, fetch });
-  unauthorizedClient = bundledClient.createApiClient({ baseUrl: 'http://api.test', fetch });
+  const fetch = async (url, init) => assertApiResponse(openApiDocument, url, init.method ?? 'GET', await harness.runtime.dispatchFetch(url, init));
+  client = bundledClient.createApiClient({ baseUrl, headers: { cookie: account.cookie, origin: baseUrl }, fetch });
+  unauthorizedClient = bundledClient.createApiClient({ baseUrl, fetch });
   const clientSource = await readFile(clientPath, 'utf8');
-  assert.doesNotMatch(clientSource, /cloudflare:workers|API_TOKEN|drizzle-orm/);
+  assert.doesNotMatch(clientSource, /cloudflare:workers|BETTER_AUTH_SECRET|drizzle-orm/);
 });
 
-after(async () => {
-  try { await runtime?.dispose(); }
-  finally { if (directory) await rm(directory, { recursive: true, force: true }); }
-});
+after(async () => { await harness?.dispose(); });
 beforeEach(async () => {
   for (const name of ['activities', 'field_values', 'field_options', 'field_definitions', 'deal_contacts', 'deals', 'companies', 'contacts', 'saved_views']) {
     await binding.prepare(`DELETE FROM ${name}`).run();
   }
 });
 
-async function request(path, { method = 'GET', body, authorized = true, headers = {} } = {}) {
-  const url = `http://api.test${path}`;
-  const response = await runtime.dispatchFetch(url, {
-    method,
-    headers: { ...(authorized ? { Authorization: `Bearer ${token}` } : {}), ...headers },
-    ...(body === undefined ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
-  });
-  return assertApiResponse(openApiDocument, url, method, response);
+async function request(path, { method = 'GET', body, authorized = true, headers = {}, origin = baseUrl } = {}) {
+  const response = await harness.request(path, { method, body, cookie: authorized ? account.cookie : undefined, headers, origin });
+  return assertApiResponse(openApiDocument, `${baseUrl}${path}`, method, response);
 }
 
 test('all documented API methods reject requests without authorization before reading input', async () => {
@@ -171,13 +124,15 @@ test('API validates JSON, queries, protected writes, missing references and conf
 test('stage actions and activity tasks update history and derived company stamps', async () => {
   const company = await client.companies.create({ name: 'Company' });
   const deal = await client.deals.create({ name: 'Deal', companyId: company.id, ownerId: 'operator', amount: '10.00' });
-  assert.equal((await client.deals.setStage(deal.id, { stage: 'QUALIFIED_TO_BUY', actorId: 'operator' })).changed, true);
-  assert.equal((await client.deals.setStage(deal.id, { stage: 'QUALIFIED_TO_BUY', actorId: 'operator' })).changed, false);
+  assert.equal((await client.deals.setStage(deal.id, { stage: 'QUALIFIED_TO_BUY' })).changed, true);
+  assert.equal((await client.deals.setStage(deal.id, { stage: 'QUALIFIED_TO_BUY' })).changed, false);
   const history = await client.activities.list({ dealId: deal.id });
   assert.equal(history.total, 1);
+  assert.equal(history.items[0].createdById, account.user.id);
   assert.deepEqual(history.items[0].meta, { from: 'DEMO_BOOKED', to: 'QUALIFIED_TO_BUY' });
-  const task = await client.activities.create({ type: 'TASK', subject: 'Call', dealId: deal.id, createdById: 'operator' });
+  const task = await client.activities.create({ type: 'TASK', subject: 'Call', dealId: deal.id });
   assert.equal(task.companyId, company.id);
+  assert.equal(task.createdById, account.user.id);
   assert.ok((await client.activities.complete(task.id, { completed: true })).completedAt);
   assert.equal((await client.activities.complete(task.id, { completed: false })).completedAt, null);
   assert.equal((await client.activities.get(task.id)).id, task.id);
@@ -207,4 +162,55 @@ test('field endpoints preserve typed values and historical options', async () =>
   await client.fields.restore(field.id);
   await client.fields.setValue(field.id, 'COMPANY', company.id, null);
   assert.equal((await client.fields.values('COMPANY', company.id))[0].value, null);
+});
+
+test('private writes require canonical Origin and JSON and token headers grant no access', async () => {
+  for (const endpoint of endpoints) {
+    const path = endpoint.path.replace(/:id|:optionId/g, 'missing');
+    for (const headers of [{ authorization: 'Bearer old-token' }, { authorization: 'Token old-token' }, { authorization: 'old-token' }, { 'x-api-token': 'old-token' }]) {
+      assert.equal((await request(path, { method: endpoint.method, authorized: false, headers })).status, 401, path);
+    }
+    if (endpoint.method === 'GET') continue;
+    for (const origin of [null, 'https://attacker.test']) {
+      assert.equal((await request(path, { method: endpoint.method, origin, body: '{' })).status, 403, path);
+    }
+    assert.equal((await request(path, { method: endpoint.method, body: '{}', headers: { 'content-type': 'text/plain' } })).status, 415, path);
+  }
+});
+
+test('public actor properties are rejected even when they match the current user', async () => {
+  const company = await client.companies.create({ name: 'Attribution' });
+  const deal = await client.deals.create({ name: 'History', companyId: company.id, ownerId: 'legacy-owner' });
+  for (const actor of ['forged-user', account.user.id]) {
+    assert.equal((await request('/api/activities', { method: 'POST', body: { type: 'NOTE', companyId: company.id, createdById: actor } })).status, 400);
+    assert.equal((await request(`/api/deals/${deal.id}/stage`, { method: 'POST', body: { stage: 'QUALIFIED_TO_BUY', actorId: actor } })).status, 400);
+  }
+  assert.equal((await client.activities.list()).total, 0);
+  assert.equal((await client.deals.get(deal.id)).ownerId, 'legacy-owner');
+});
+
+test('owner member API enforces revisions, revocation, restoration and current permissions', async () => {
+  const member = await harness.signupVerified();
+  const asMember = (path, options = {}) => harness.request(path, { cookie: member.cookie, ...options });
+  assert.equal((await asMember('/api/companies')).status, 200);
+  assert.equal((await asMember('/api/members')).status, 403);
+  assert.equal((await asMember(`/api/members/${account.user.id}`, { method: 'PATCH', body: { action: 'revoke', expectedRevision: 0 } })).status, 403);
+  const page = await client.members.list({ status: 'active' });
+  const row = page.items.find(row => row.id === member.user.id);
+  assert.ok(row);
+  assert.doesNotMatch(JSON.stringify(row), /password|token|accessVersion|secret/);
+  await assert.rejects(client.members.update(row.id, { action: 'revoke', expectedRevision: row.revision + 1 }), error => error.status === 409);
+  const promoted = await client.members.update(row.id, { action: 'change-role', role: 'owner', expectedRevision: row.revision });
+  assert.equal((await asMember('/api/members')).status, 200);
+  const revoked = await client.members.update(row.id, { action: 'revoke', expectedRevision: promoted.revision });
+  assert.equal(revoked.status, 'revoked');
+  assert.equal((await asMember('/api/companies')).status, 401);
+  const restored = await client.members.update(row.id, { action: 'restore', expectedRevision: revoked.revision });
+  assert.equal(restored.role, 'member');
+  assert.equal((await asMember('/api/companies')).status, 401);
+  const signedIn = await harness.signIn(member.email);
+  assert.equal((await harness.request('/api/companies', { cookie: signedIn.cookie })).status, 200);
+  assert.equal((await harness.request('/api/members', { cookie: signedIn.cookie })).status, 403);
+  await assert.rejects(client.members.update('missing', { action: 'revoke', expectedRevision: 0 }), error => error.status === 404);
+  await assert.rejects(client.members.update(account.user.id, { action: 'revoke', expectedRevision: 0 }), error => error.status === 409);
 });

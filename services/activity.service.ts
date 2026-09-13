@@ -1,12 +1,12 @@
 import { and, count, desc, eq, sql } from "drizzle-orm";
-import { z } from "zod";
+import { z } from "zod/v3";
 import type { Database } from "@/lib/db";
 import { activities, ACTIVITY_TYPES } from "@/lib/db/schema";
 import { ActivityStampService } from "./activity-stamp.service";
 import { requireRecord, ServiceError } from "@/lib/utils/service-error";
 import { dateTime, identifier, listInput, nullableId, optionalText } from "@/lib/utils/validation";
 
-export const createActivityInput = z.object({
+export const activityCreateShape = {
   type: z.enum(["NOTE", "CALL", "EMAIL", "MEETING", "TASK"]),
   subject: optionalText,
   body: optionalText,
@@ -15,8 +15,9 @@ export const createActivityInput = z.object({
   companyId: nullableId,
   contactId: nullableId,
   dealId: nullableId,
-  createdById: identifier,
-}).strict().superRefine((input, ctx) => {
+};
+
+export function refineActivityCreate(input: z.output<z.ZodObject<typeof activityCreateShape>>, ctx: z.RefinementCtx): void {
   if (!input.companyId && !input.contactId && !input.dealId) {
     ctx.addIssue({ code: "custom", message: "An activity needs a company, contact, or deal" });
   }
@@ -26,7 +27,12 @@ export const createActivityInput = z.object({
   if (input.type !== "TASK" && input.dueAt != null) {
     ctx.addIssue({ code: "custom", path: ["dueAt"], message: "Only tasks have a due date" });
   }
-});
+}
+
+export const createActivityInput = z.object({
+  ...activityCreateShape,
+  createdById: identifier,
+}).strict().superRefine(refineActivityCreate);
 
 export const activityListInput = listInput.pick({ page: true, limit: true }).extend({
   companyId: identifier.optional(),

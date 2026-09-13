@@ -1,5 +1,5 @@
 import { and, count, eq, isNull, notInArray, sql } from "drizzle-orm";
-import { z } from "zod";
+import { z } from "zod/v3";
 import type { Database } from "@/lib/db";
 import { activities, companies, contacts, deals } from "@/lib/db/schema";
 import { centsToDecimal } from "@/lib/utils/money";

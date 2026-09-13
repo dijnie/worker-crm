@@ -1,5 +1,5 @@
 import type { OpenAPIV3 } from "openapi-types";
-import type { z } from "zod";
+import type { z } from "zod/v3";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 export type Schema = OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject;

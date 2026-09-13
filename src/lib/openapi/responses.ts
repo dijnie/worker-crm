@@ -74,6 +74,17 @@ const dealDetail = extend(deal, {
 const error = objectOf({ message: { type: "string" } });
 
 export const responseSchemas = {
+  Member: objectOf({
+    id: { type: "string" },
+    name: { type: "string" },
+    email: { type: "string", format: "email" },
+    role: { type: "string", enum: ["owner", "member"] },
+    status: { type: "string", enum: ["active", "revoked"] },
+    revision: { type: "integer", minimum: 0 },
+    createdAt: { type: "string", format: "date-time" },
+    updatedAt: { type: "string", format: "date-time" },
+    revokedAt: { type: "string", format: "date-time", nullable: true },
+  }),
   Company: company,
   Contact: contact,
   Deal: deal,

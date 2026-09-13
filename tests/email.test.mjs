@@ -1,0 +1,29 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { build } from 'esbuild';
+
+test('native email adapter formats messages and awaits delivery success or rejection', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'worker-email-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const modulePath = join(directory, 'email.mjs');
+  await build({ entryPoints: [fileURLToPath(new URL('../src/lib/email/cloudflare-email-adapter.ts', import.meta.url))], bundle: true, platform: 'node', format: 'esm', outfile: modulePath, logLevel: 'silent' });
+  const { CloudflareEmailAdapter } = await import(pathToFileURL(modulePath).href);
+  const messages = [];
+  let resolveSend;
+  const pending = new Promise(resolve => { resolveSend = resolve; });
+  const adapter = new CloudflareEmailAdapter({ from: 'noreply@example.test', binding: { async send(message) { messages.push(message); await pending; return { messageId: 'local-unit' }; } } });
+  let completed = false;
+  const sending = adapter.sendVerification({ to: 'user@example.test', url: 'https://crm.test/api/auth/verify-email?token=local-only' }).then(() => { completed = true; });
+  await Promise.resolve(); assert.equal(completed, false);
+  resolveSend(); await sending; assert.equal(completed, true);
+  await adapter.sendPasswordReset({ to: 'user@example.test', url: 'https://crm.test/api/auth/reset-password/local-only' });
+  assert.deepEqual(messages[0], { to: 'user@example.test', from: { name: 'CRM', email: 'noreply@example.test' }, subject: 'Verify your email', text: 'Verify email: https://crm.test/api/auth/verify-email?token=local-only' });
+  assert.equal(messages[1].subject, 'Reset your password');
+  const broken = new CloudflareEmailAdapter({ from: 'noreply@example.test', binding: { async send() { throw new Error('delivery unavailable'); } } });
+  await assert.rejects(broken.sendVerification({ to: 'user@example.test', url: 'https://crm.test/link' }), /delivery unavailable/);
+  assert.throws(() => new CloudflareEmailAdapter({ from: '', binding: {} }), /incomplete/);
+});

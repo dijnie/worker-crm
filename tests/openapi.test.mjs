@@ -9,18 +9,20 @@ import SwaggerParser from '@apidevtools/swagger-parser';
 import { assertSchema, schemaValidator } from './openapi-assertions.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-let directory, document, endpointCatalog, specGET;
+let directory, document, endpointCatalog, specGET, createActivityApiInput, stageApiInput;
 before(async () => {
   directory = await mkdtemp(join(tmpdir(), 'worker-openapi-'));
   const outfile = join(directory, 'openapi.mjs');
   await build({
-    stdin: { contents: `export { openApiDocument } from './src/lib/openapi/document.ts'; export { GET } from './src/app/api/openapi/route.ts'; export { default as endpointCatalog } from './src/lib/api-endpoints.ts';`, loader: 'ts', resolveDir: root },
+    stdin: { contents: `export { openApiDocument } from './src/lib/openapi/document.ts'; export { GET } from './src/app/api/openapi/route.ts'; export { default as endpointCatalog } from './src/lib/api-endpoints.ts'; export { createActivityApiInput } from './src/lib/server/activity-api-inputs.ts'; export { stageApiInput } from './src/lib/server/deal-api-inputs.ts';`, loader: 'ts', resolveDir: root },
     bundle: true, platform: 'browser', format: 'esm', outfile, logLevel: 'silent',
   });
   const module = await import(pathToFileURL(outfile).href);
   document = module.openApiDocument;
   endpointCatalog = module.endpointCatalog;
   specGET = module.GET;
+  createActivityApiInput = module.createActivityApiInput;
+  stageApiInput = module.stageApiInput;
   const source = await readFile(outfile, 'utf8');
   assert.doesNotMatch(source, /cloudflare:workers|process\.env|from\s+["']node:/);
 });
@@ -38,7 +40,7 @@ test('the public OpenAPI response is valid and independent of Worker environment
 });
 
 test('every business route operation is documented once and agrees with the endpoint catalog', async () => {
-  const paths = (await readdir(join(root, 'src/app/api'), { recursive: true })).filter(path => path.endsWith('route.ts') && path !== 'openapi/route.ts');
+  const paths = (await readdir(join(root, 'src/app/api'), { recursive: true })).filter(path => path.endsWith('route.ts') && path !== 'openapi/route.ts' && !path.startsWith('auth/'));
   const actual = [];
   for (const file of paths) {
     const source = await readFile(join(root, 'src/app/api', file), 'utf8');
@@ -78,7 +80,11 @@ test('request schemas describe required fields, protected properties and exact f
     ['/api/deals', 'post', { name: 'Example', companyId: 'company', ownerId: 'owner', amount: '0.29' }],
     ['/api/deals', 'post', { name: 'Example', companyId: 'company', ownerId: 'owner', currency: 'usd' }],
     ['/api/deals/{id}', 'patch', { currency: ' uSd ' }],
-    ['/api/activities', 'post', { type: 'NOTE', companyId: 'company', createdById: 'actor' }],
+    ['/api/activities', 'post', { type: 'NOTE', companyId: 'company' }],
+    ['/api/deals/{id}/stage', 'post', { stage: 'CLOSED_WON' }],
+    ['/api/members/{id}', 'patch', { action: 'change-role', role: 'owner', expectedRevision: 0 }],
+    ['/api/members/{id}', 'patch', { action: 'revoke', expectedRevision: 1 }],
+    ['/api/members/{id}', 'patch', { action: 'restore', expectedRevision: 2 }],
     ['/api/fields', 'post', { entity: 'COMPANY', type: 'TEXT', label: 'Region' }],
     ['/api/fields/{id}/value', 'put', { entity: 'COMPANY', entityId: 'company', value: '12345678901234567890.12345' }],
     ['/api/fields/{id}/value', 'put', { entity: 'COMPANY', entityId: 'company', value: false }],
@@ -124,5 +130,48 @@ test('request examples satisfy their documented schemas and destructive activity
   }
   assert.ok(exampleCount > 0, 'the document provides validated examples');
   assert.equal(document.paths['/api/activities/{id}'].delete.responses['204'].content, undefined);
-  assert.equal(document.components.securitySchemes.bearerAuth.scheme, 'bearer');
+  assert.deepEqual(document.security, [{ sessionCookie: [] }, { secureSessionCookie: [] }]);
+  assert.equal(document.components.securitySchemes.sessionCookie.in, 'cookie');
+  assert.equal(document.components.securitySchemes.sessionCookie.name, 'better-auth.session_token');
+  assert.equal(document.components.securitySchemes.secureSessionCookie.name, '__Secure-better-auth.session_token');
+  assert.equal(document.components.securitySchemes.bearerAuth, undefined);
+  assert.equal(document.components.securitySchemes.apiKeyAuth, undefined);
+});
+
+
+test('public actor schemas reject forged identities and preserve activity refinements', () => {
+  const activity = { type: 'NOTE', companyId: 'company' };
+  const stage = { stage: 'CLOSED_WON' };
+  assert.equal(createActivityApiInput.safeParse(activity).success, true);
+  assert.equal(stageApiInput.safeParse(stage).success, true);
+  for (const input of [{ ...activity, createdById: 'actor' }, { ...activity, actorId: 'actor' }]) {
+    assert.equal(createActivityApiInput.safeParse(input).success, false);
+    assert.equal(schemaValidator(document, requestSchema('/api/activities', 'post'))(input), false);
+  }
+  assert.equal(stageApiInput.safeParse({ ...stage, actorId: 'actor' }).success, false);
+  assert.equal(schemaValidator(document, requestSchema('/api/deals/{id}/stage', 'post'))({ ...stage, actorId: 'actor' }), false);
+  for (const input of [
+    { type: 'NOTE' },
+    { type: 'TASK', companyId: 'company', subject: ' ' },
+    { ...activity, dueAt: '2026-09-13' },
+  ]) assert.equal(createActivityApiInput.safeParse(input).success, false);
+  assert.equal(createActivityApiInput.parse({ type: 'TASK', companyId: 'company', subject: ' Follow up ', dueAt: '2026-09-13' }).subject, 'Follow up');
+});
+
+test('member mutations require revisions and expose only safe member records', () => {
+  const validate = schemaValidator(document, requestSchema('/api/members/{id}', 'patch'));
+  for (const input of [
+    { action: 'revoke' },
+    { action: 'revoke', expectedRevision: -1 },
+    { action: 'revoke', expectedRevision: 1.5 },
+    { action: 'change-role', expectedRevision: 0 },
+    { action: 'restore', role: 'owner', expectedRevision: 0 },
+    { action: 'revoke', expectedRevision: 0, actorId: 'actor' },
+  ]) assert.equal(validate(input), false, JSON.stringify(input));
+  const member = { id: 'member', name: 'Member', email: 'member@example.test', role: 'member', status: 'active', revision: 0, createdAt: '2026-09-13T00:00:00.000Z', updatedAt: '2026-09-13T00:00:00.000Z', revokedAt: null };
+  assertSchema(document, document.components.schemas.Member, member, 'safe member');
+  assert.equal(schemaValidator(document, document.components.schemas.Member)({ ...member, accessVersion: 0 }), false);
+  assert.ok(document.paths['/api/members'].get.responses['403']);
+  assert.ok(document.paths['/api/members/{id}'].patch.responses['409']);
+  assert.equal(document.paths['/api/auth/{...all}'], undefined);
 });

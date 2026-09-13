@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 import { FIELD_ENTITIES } from "../db/schema/constants";
 import { identifier } from "../utils/validation";
 

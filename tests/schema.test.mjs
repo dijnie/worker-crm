@@ -12,7 +12,8 @@ const migrationFolder = join(projectRoot, 'migrations');
 const tableNames = [
   'activities', 'companies', 'contacts', 'deal_contacts', 'deals',
   'field_definitions', 'field_options', 'field_values', 'saved_views',
-];
+  'account', 'rate_limit', 'session', 'singleton_membership', 'singleton_workspace', 'user', 'verification',
+].sort();
 let temporaryDirectory;
 let miniflare;
 let binding;
@@ -109,7 +110,7 @@ const field = (entity, values = {}) => insert(schema.fieldDefinitions, {
   entity, key: 'priority', label: 'Priority', type: 'SELECT', position: 0, ...values,
 });
 
-test('migrations create exactly the business tables and can be applied again', async () => {
+test('migrations create business and auth tables and can be applied again', async () => {
   await migrate(db, { migrationsFolder: migrationFolder });
   const result = await binding.prepare(
     "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name != '__drizzle_migrations' ORDER BY name",
@@ -382,7 +383,7 @@ test('money remains integer cents and high precision decimal fields remain exact
   assert.deepEqual(storage, { amount_type: 'integer', base_type: 'text', rate_type: 'text' });
 });
 
-test('USER custom fields preserve external user IDs without an authentication table', async () => {
+test('USER custom fields preserve opaque user IDs without auth foreign keys', async () => {
   const person = await contact({ source: 'TRACKING', enrichmentStatus: 'COMPLETE' });
   const definition = await field('CONTACT', { type: 'USER' });
   const value = await insert(schema.fieldValues, {

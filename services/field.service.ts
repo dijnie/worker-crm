@@ -1,5 +1,5 @@
 import { and, asc, eq, getTableColumns, isNull, sql } from "drizzle-orm";
-import { z } from "zod";
+import { z } from "zod/v3";
 import type { Database } from "@/lib/db";
 import { companies, contacts, deals, fieldDefinitions, fieldOptions, fieldValues } from "@/lib/db/schema";
 import { FIELD_ENTITIES, FIELD_TYPES, type FieldEntity, type FieldType } from "@/lib/db/schema/constants";

@@ -4,7 +4,7 @@ import { requestSchemas, type RequestSchemaName } from "./requests";
 import { responseSchemas, type ResponseSchemaName } from "./responses";
 import { arrayOf, reference } from "./schema-helpers";
 
-type Tag = "Companies" | "Contacts" | "Deals" | "Activities" | "Fields" | "Stats";
+type Tag = "Companies" | "Contacts" | "Deals" | "Activities" | "Fields" | "Stats" | "Members";
 interface Contract {
   operationId: string;
   tag: Tag;
@@ -54,6 +54,9 @@ register("GET", "/api/fields/values", { operationId: "getFieldValues", tag: "Fie
 register("PUT", "/api/fields/:id/value", { operationId: "setFieldValue", tag: "Fields", body: "SetFieldValue", response: "FieldValueResult" });
 register("GET", "/api/stats", { operationId: "getStats", tag: "Stats", query: "StatsQuery", response: "Stats" });
 
+register("GET", "/api/members", { operationId: "listMembers", tag: "Members", query: "MemberQuery", response: "Member", array: true, paginated: true });
+register("PATCH", "/api/members/:id", { operationId: "mutateMember", tag: "Members", body: "MutateMember", response: "Member" });
+
 const noStore: OpenAPIV3.HeaderObject = { description: "Responses are not cached.", schema: { type: "string", enum: ["no-store"] } };
 const paginationHeaders: Record<string, OpenAPIV3.HeaderObject> = {
   "X-Total-Count": { description: "Total matching records before pagination.", schema: { type: "integer", minimum: 0 } },
@@ -62,9 +65,11 @@ const paginationHeaders: Record<string, OpenAPIV3.HeaderObject> = {
 };
 const errors: OpenAPIV3.ResponsesObject = Object.fromEntries([
   [400, "Invalid input, malformed JSON, duplicate/unknown query parameters, or invalid references.", "ValidationError"],
-  [401, "API token is missing or invalid, or no token is configured.", "Error"],
+  [401, "A valid session for a verified account is required.", "Error"],
+  [403, "Membership is inactive, owner authority is required, or the mutation Origin is missing or invalid.", "Error"],
   [404, "The requested record, field, option, or target does not exist.", "Error"],
   [409, "Uniqueness conflict or concurrent changes prevent the operation.", "Error"],
+  [415, "A nonempty mutation body requires Content-Type: application/json.", "Error"],
   [500, "Unexpected server failure. Internal details are not returned.", "Error"],
 ].map(([status, description, schema]) => [String(status), {
   description: String(description),
@@ -106,6 +111,7 @@ for (const endpoint of apiEndpoints) {
     tags: [contract.tag],
     summary: endpoint.description.split(".")[0],
     description: [endpoint.description, contract.description,
+      endpoint.method !== "GET" ? "Mutations require the configured same Origin header. JSON request bodies require Content-Type: application/json. Browsers supply Origin automatically." : undefined,
       contract.query ? "Duplicate or unknown query parameters are rejected. Booleans use true/false; page and limit use decimal digits." : undefined,
     ].filter(Boolean).join("\n\n"),
     parameters: parameters(endpoint.path, contract.query),
@@ -126,17 +132,17 @@ export const openApiDocument: OpenAPIV3.Document = {
   info: {
     title: "Vinext API",
     version: "1.0.0",
-    description: "Business APIs for companies, contacts, deals, activities, custom fields, and statistics. API-token authentication is currently required; login sessions are planned but not implemented. Actor IDs are explicit external attribution, not verified identities. This public document contains no application records or credentials.",
+    description: "Shared-workspace APIs protected by verified sessions and active membership. Sign in at /sign-in, then return here to Try it out; the browser sends same-origin HttpOnly cookies automatically. Anonymous requests return 401. Member administration requires an active owner. Mutations require the configured same Origin and JSON content type for JSON bodies. Client actor fields are rejected; attribution comes from the signed-in account. Better Auth delegates authentication operations under /api/auth/*; these dynamic routes are separate from this business API catalog. This public document contains no application records, environment values or credentials.",
   },
   servers: [{ url: "/", description: "Same-origin application server" }],
-  tags: ["Companies", "Contacts", "Deals", "Activities", "Fields", "Stats"].map(name => ({ name })),
-  security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
+  tags: ["Companies", "Contacts", "Deals", "Activities", "Fields", "Stats", "Members"].map(name => ({ name })),
+  security: [{ sessionCookie: [] }, { secureSessionCookie: [] }],
   paths,
   components: {
     schemas: { ...requestSchemas, ...responseSchemas },
     securitySchemes: {
-      bearerAuth: { type: "http", scheme: "bearer", description: "Enter the configured API token. Legacy Token-prefixed and raw Authorization values are also accepted. Authorization takes precedence over x-api-token." },
-      apiKeyAuth: { type: "apiKey", in: "header", name: "x-api-token", description: "Alternative API-token header, used when Authorization is absent." },
+      sessionCookie: { type: "apiKey", in: "cookie", name: "better-auth.session_token", description: "HTTP loopback development session cookie. Issued by sign-in, HttpOnly and SameSite=Lax. The browser supplies it automatically; no manual cookie entry is supported." },
+      secureSessionCookie: { type: "apiKey", in: "cookie", name: "__Secure-better-auth.session_token", description: "HTTPS session cookie with Secure, HttpOnly and SameSite=Lax. Issued by sign-in and sent automatically by the same-origin browser." },
     },
   },
 };

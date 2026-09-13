@@ -2,12 +2,11 @@
 
 <!-- dash-content-start -->
 
-A general-purpose application built with Vinext App Router, Drizzle ORM, and Cloudflare Workers/D1.
-The database foundation and business APIs are available; interactive record screens are
-still under development. The former SaaS customer/subscription tools and API
-endpoints are retired. The application shell provides direct navigation to Overview,
-Companies, Contacts, Deals, and Settings, each with an honest availability notice.
-Interactive API documentation is available from the API docs navigation item.
+A shared-workspace CRM built with Vinext App Router, Drizzle ORM, and Cloudflare
+Workers/D1. Verified email/password sessions protect business APIs and the workspace.
+Account and owner-only member administration are available; interactive record
+screens remain under development. The former SaaS customer/subscription tools
+and endpoints are retired. Interactive API documentation is public at `/docs`.
 
 <!-- dash-content-end -->
 
@@ -21,14 +20,16 @@ The [theme stylesheet](src/styles/globals.css) owns visual tokens, and
 [programmatic tokens](src/lib/design-tokens.ts) reference those CSS values.
 The [application shell](src/components/app/app-shell.tsx) composes the
 [header](src/components/app/app-header.tsx) and
-[desktop sidebar](src/components/app/app-sidebar.tsx). The sidebar follows Cloudflare's
-bottom-button expansion control, with no automatic expansion on hover; mobile
-navigation remains a separate drawer. Ask AI, Support, and Account are intentionally
-disabled placeholders while their capabilities are unavailable. Record workflows
-are still under development.
+[desktop sidebar](src/components/app/app-sidebar.tsx). The collapsed sidebar opens
+temporarily on mouse hover, overlaying content without shifting the page. Leaving
+the sidebar or pressing Escape dismisses that preview. The bottom button pins it
+open or collapses it; mobile navigation remains a separate drawer.
+Ask AI and Support remain disabled placeholders.
+[Account](src/components/app/account-menu.tsx) shows the signed-in identity and role
+and provides signout. Record workflows are still under development.
 The [workspace layout](src/app/(workspace)/layout.tsx) applies this shell to
 business screens. `/docs` is a standalone page with no application header or sidebar.
-It uses `swagger-ui-react` with the application's custom theme and responsive authorization modal styles.
+It uses locally bundled `swagger-ui-react` with the application's custom theme.
 
 ## Routes
 
@@ -39,47 +40,154 @@ It uses `swagger-ui-react` with the application's custom theme and responsive au
 | `/contacts` | [Contacts](src/app/(workspace)/contacts/page.tsx) |
 | `/deals` | [Deals](src/app/(workspace)/deals/page.tsx) |
 | `/settings` | [Settings](src/app/(workspace)/settings/page.tsx) |
+| `/settings/members` | [Owner-only member administration](src/app/(workspace)/settings/members/page.tsx) |
 | `/docs` | [Interactive API documentation](src/app/docs/page.tsx) |
 
-The record and settings screens use a shared [availability state](src/components/app/app-empty-state.tsx)
-and do not yet provide record management or settings controls.
+The record screens use a shared [availability state](src/components/app/app-empty-state.tsx).
+Standalone authentication pages use flat `/sign-up`, `/sign-in`, `/verify-email`,
+`/forgot-password`, `/reset-password`, and `/access-revoked` URLs; see the
+[auth route group](src/app/(auth)).
 The former `/admin` routes, including customer and subscription detail URLs,
 have been removed and return 404.
 
-## Local setup
+## Accounts and shared access
 
-Install dependencies with `npm install`. The
-[initial migration](migrations/0000_initial_schema.sql) replaces the template migration
-history with a fresh baseline; it is **not an upgrade or data conversion** for an
-existing SaaS database. Back up any existing data before replacing a database.
-Keep existing local state and initialize a separate, fresh persistence directory:
+Signup is open, but email verification is required before admission. The first
+verified account becomes owner; later verified accounts become members. The
+intended operator must complete this first-owner bootstrap before exposing signup
+to public traffic. If ownership is uncertain, inspect existing membership and use
+deliberate recovery; never reset the claim or assign the next login as owner.
+
+All active members share the existing CRM dataset. Workspace roles do not change
+business record ownership. Owners can change roles, revoke access, and restore
+accounts through Members. The last active owner cannot be removed or demoted.
+Restoration returns an account as a member and requires a fresh signin; old
+sessions remain invalid. Revocation preserves account records, business owners,
+and history, with no record reassignment. The [member service](services/member.service.ts)
+and [membership migration](migrations/0001_auth_membership.sql) own these rules.
+
+Verify the email link, then sign in explicitly. A failed signup email may leave
+an unverified account: use resend verification instead of assuming access was
+granted. Password reset uses an expiring one-use link and invalidates old sessions.
+The [auth factory](src/lib/auth/auth.ts) owns expiry, cookie, rate-limit, and
+delivery-error handling; the [request guard](src/lib/auth/request-context.ts)
+checks verified active membership for protected requests.
+
+## Local setup and email
+
+Run commands from this directory after `npm ci`. [package.json](package.json)
+owns scripts and dependency pins: Better Auth, its standalone Drizzle adapter,
+and the `auth` schema CLI are aligned at 1.7.4. Root Zod 4 satisfies dependency
+peer requirements; CRM validators retain their Zod 3 contracts via `zod/v3`.
+
+Set `AUTH_BASE_URL` in [wrangler.jsonc](wrangler.jsonc) to the canonical browser
+origin, including its port. Production requires HTTPS; HTTP is allowed only on
+loopback. Do not include a path, credentials, query, or fragment. The local example
+below uses `http://localhost:3000`. Keep `AUTH_EMAIL_FROM` identical to the
+address in the `EMAIL` binding's `allowed_sender_addresses`.
+
+Store a cryptographically random `BETTER_AUTH_SECRET` of at least 32 characters
+in an ignored `.dev.vars` file beside `wrangler.jsonc`. Keep secrets out of source,
+terminal output, and shared logs. For an approved remote environment, provision it
+through `npx wrangler secret put BETTER_AUTH_SECRET --config wrangler.jsonc`;
+see [Cloudflare secret management](https://developers.cloudflare.com/workers/configuration/secrets/).
+Use separate local and production secrets and retain the production secret during recovery.
+
+Use [.dev.vars.example](.dev.vars.example) as the key inventory; its empty secret
+must be replaced in your private `.dev.vars`. Local development uses
+`AUTH_BASE_URL=http://localhost:3000`. Do not copy another application's origin
+or unrelated secret keys.
 
 ```bash
-npm run db:migrate -- --persist-to .wrangler/app-local
-npm run build
-npx wrangler dev --config dist/server/wrangler.json --persist-to .wrangler/app-local
+npm run dev
 ```
 
-Use the same persistence directory for migration and runtime. The default
-`npm run start` uses `.wrangler/state`; it will not load the separate database
-above. Existing installations that already applied this baseline under its previous
-filename must back up their database, confirm the schema matches, and reconcile
-the applied migration record to the current filename before running migrations.
-Preserve migration history; rerunning the same baseline would attempt duplicate
-table creation. Existing persistence directories remain usable at their original paths.
+This checks the local migration history, backs up before applying pending
+migrations, then starts Vinext at `http://localhost:3000`. An incompatible legacy
+schema stops startup instead of replaying the baseline. The port is strict: stop
+the existing server before starting another. Vinext, Wrangler, and the migration
+runner all use this project's `.wrangler/state` directory. See
+[Cloudflare's local persistence documentation](https://developers.cloudflare.com/workers/local-development/local-data/).
 
-Before deployment, reconcile or provision remote resources to match
-[wrangler.jsonc](wrangler.jsonc). The configured Worker, D1 database name, and R2
-bucket use neutral application names; the existing `database_id` still identifies
-the same target. Editing these names does not rename remote resources. For a fresh
-database, set its actual binding ID before applying the baseline; do not apply this
-migration to an existing SaaS database as an upgrade.
+To inspect migration state without applying changes, run `npm run db:inspect`.
+To preview the built Worker using the same database and origin, stop the dev
+server and run:
 
-No API token is needed to view the application shell and availability notices.
-[package.json](package.json) owns the `worker-app` package identity and development,
-migration, build, and schema-test commands. See the [schema tests](tests/schema.test.mjs)
-for executable storage and relation checks and the [type contracts](tests/schema-types.ts)
-for nullable relation assertions.
+```bash
+npm run build
+npm start
+```
+
+`npm start` verifies the built configuration against source before migrating.
+
+The native [email adapter](src/lib/email/cloudflare-email-adapter.ts) uses
+Cloudflare's `EMAIL.send` binding. Email Sending is beta and requires the Workers
+Paid plan for this open-signup use case; confirm availability on the target account.
+See [Email Service](https://developers.cloudflare.com/email-service/). Onboard an
+authorized sender domain using Cloudflare DNS and complete its MX/SPF/DKIM/DMARC
+setup before real delivery, following [sender onboarding](https://developers.cloudflare.com/email-service/get-started/send-emails/).
+The sender must belong to that domain and match the
+[binding allowlist](https://developers.cloudflare.com/email-service/configuration/send-bindings/).
+There is no alternative email provider or API-key fallback.
+
+The checked-in `noreply@example.invalid` sender is a placeholder and cannot
+deliver real email. Local/production origins, sender authorization, and account
+onboarding remain environment inputs; real delivery and deployment require
+separate environment verification. Local Wrangler uses simulated email unless a
+remote binding is enabled. Treat locally captured verification/reset links as
+secrets and keep them out of shared logs; see
+[local email development](https://developers.cloudflare.com/email-service/local-development/sending/).
+Enabling a remote email binding causes real sends.
+
+After local signup or a password-reset request, the dev terminal prints a
+`Text:` file path under `.wrangler/tmp/email/`. Open that file locally and follow
+its verification/reset link; the simulated message does not arrive in an external
+inbox. Do not share the file or its token-bearing link.
+
+### Preserve storage before migrations
+
+The [initial migration](migrations/0000_initial_schema.sql) is a fresh CRM baseline,
+not a conversion of an existing SaaS database. It remains unchanged. The
+[auth migration](migrations/0001_auth_membership.sql) upgrades that baseline
+additively, preserving business records and historical owner/creator IDs.
+
+Before migrating existing storage, identify its actual D1 binding and persistence
+path, record applied migrations, and take a restorable backup outside the repository.
+The [local migration runner](scripts/d1-migrations.mjs) exports the selected D1
+database to a private, timestamped directory under `~/.worker-crm/backups` before
+applying pending migrations. It stops if export fails. Keep these backups private:
+they can contain account and business data. Verify restoration on an isolated
+copy before manually recovering or replacing existing storage.
+
+Stop local writers before copying an entire persistence directory. Copy the
+actual `.wrangler/state` used by this project; another directory is a different
+database. Startup never resets storage or rewrites incompatible migration history.
+
+For remote D1, use `npx wrangler d1 export DB --remote --output=/absolute/private/backup.sql`.
+For default local `.wrangler/state`, use the same command with `--local` instead
+of `--remote`. Choose a new private output path for each backup. The installed
+`npx wrangler d1 export --help` has no `--persist-to` option: a default local
+export does not back up a custom persistence directory. Use the stopped-directory
+copy for that case. See [D1 export/import](https://developers.cloudflare.com/d1/best-practices/import-export-data/)
+and [local persistence](https://developers.cloudflare.com/workers/local-development/local-data/).
+
+`npm run db:migrate` applies migrations to the same default local store without
+starting a server. The guarded runner intentionally does not accept a custom
+persistence path or remote target. For isolated manual validation, use Wrangler
+directly and give both migration and runtime commands the same `--persist-to`
+directory; this does not prepare the database used by `npm run dev`.
+
+Installations that applied an older baseline must verify both its schema and
+migration record before choosing recovery. A matching filename alone is not proof
+of compatibility. Preserve the old database and decide explicitly whether to
+convert its records or initialize a fresh local database.
+
+Before an authorized deployment, reconcile remote resources with
+[wrangler.jsonc](wrangler.jsonc). Renaming configured resources does not rename
+existing Cloudflare resources; verify the actual D1 ID and target before any
+remote migration. Prefer a forward fix during recovery. A rollback must preserve
+the session access boundary and newer business writes; do not restore token-only
+code or overwrite newer data with an older backup.
 
 ## API integration
 
@@ -91,31 +199,34 @@ and business-rule descriptions. [Contract tests](tests/openapi.test.mjs) validat
 the document and compare it with the actual route handlers; HTTP integration
 tests also validate real responses against it.
 
-Swagger's **Try it out** calls the same application origin. Use **Authorize** to
-enter a token manually when testing protected business endpoints; authorization
-is not persisted across page reloads. Swagger assets are bundled locally and
-external schema validation is disabled.
+Sign in through `/sign-in`, then return to Swagger's **Try it out** on the same
+origin. The browser supplies its HttpOnly session cookie automatically; there is
+no manual token or cookie entry. Swagger assets are bundled locally and external
+schema validation is disabled. Better Auth delegates `/api/auth/*` separately
+from the business OpenAPI catalog; member APIs are `/api/members` and
+`/api/members/:id`.
 
 The [endpoint catalog](src/lib/api-endpoints.ts) and
 [typed client](src/lib/api.ts) own the REST integration surface. Business
-[services](services) receive a database instance and do not depend on
-authentication. [HTTP integration tests](tests/api.test.mjs) exercise the route
+[services](services) receive a database instance; the HTTP boundary supplies
+trusted account context. [HTTP integration tests](tests/api.test.mjs) exercise the route
 handlers and client against temporary D1 storage; the test scripts in
 [package.json](package.json) preserve existing local databases.
 
-Login sessions are the intended authentication model. Until login is implemented,
-the [server API boundary](src/lib/server/api-handler.ts) retains the existing
-`API_TOKEN` guard for API callers. Set a private token in the Worker environment
-and send it as an Authorization Bearer header from trusted tools or server code.
-Never embed it in browser code. The client uses same-origin credentials so session
-authentication can be connected without distributing an application secret.
-The shell remains accessible without a token.
+`API_TOKEN` clients must migrate to verified sessions; token headers no longer
+grant access. The [server API boundary](src/lib/server/api-handler.ts) requires
+a session and active membership. Private POST/PATCH/PUT/DELETE requests also
+require `Origin` to equal `AUTH_BASE_URL`'s origin, including for non-browser
+clients, and `Content-Type: application/json` when a body is present. Missing or
+invalid sessions return 401; inactive membership or non-owner administration
+returns 403. The [typed client](src/lib/api.ts) sends same-origin credentials.
 
-Activity actors currently remain explicit external scalar IDs because no login
-session or users table exists yet; they are attribution, not verified identities.
-Session integration must supply the actor from the authenticated user at the
-server boundary. Ordinary deal edits and stage transitions are separate actions
-so a transition cannot bypass its history entry or losing-reason requirement.
+Activity creation rejects caller-supplied `createdById`; deal stage changes reject
+`actorId`. Attribution comes from the authenticated account at the HTTP boundary.
+See the public [activity](src/lib/server/activity-api-inputs.ts) and
+[stage](src/lib/server/deal-api-inputs.ts) input contracts. Existing attribution
+remains intact. Ordinary deal edits and stage transitions stay separate so a
+transition cannot bypass its history entry or losing-reason requirement.
 Company records represent customers, not tenant boundaries. Activity links are
 independent: a contact may participate in another company's deal. Company
 attribution follows an explicit company, then the linked deal, then the contact's
@@ -137,10 +248,22 @@ than losing precision through floating-point conversion. Future services must
 handle their numeric comparison, range filtering, sorting, and arithmetic
 explicitly; ordinary SQL text ordering is lexical.
 
-User and external-system identifiers remain scalar values without foreign keys
-because their source models are outside the current application scope. They preserve integration
-references without adding authentication, email, or calendar subsystems.
+Legacy business user and external-system identifiers remain scalar values without
+auth foreign keys or forced backfills. The separate auth and membership tables
+protect workspace access without rewriting those integration references.
 
 [Constants](src/lib/db/schema/constants.ts) follow the source model, including
 its enrichment and user-field values. The source has no lifecycle-stage field;
 future filters must follow the actual schema instead of assuming one exists.
+
+## Verification
+
+Run focused auth checks with `node --test tests/auth.test.mjs tests/email.test.mjs tests/members.test.mjs`;
+[package.json](package.json) owns the full test/build scripts. The
+[auth harness](tests/auth-harness.mjs) uses disposable workerd/D1 and captures
+actual Better Auth verification/reset links for HTTP consumption. It does not
+SQL-flip verification to prove successful signup. [Migration tests](tests/migration.test.mjs)
+cover fresh installs and baseline upgrades; [API tests](tests/api.test.mjs) cover
+the protected HTTP boundary. These checks preserve existing local databases.
+Captured-link tests and adapter tests do not prove remote email delivery or
+production HTTPS cookie behavior; verify those in an authorized target environment.

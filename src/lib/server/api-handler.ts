@@ -1,19 +1,25 @@
-import { ZodError } from "zod";
-import { getApiToken, getDb, type Database } from "../db";
+import { ZodError } from "zod/v3";
+import { getAuthBaseUrl, requireRequestContext, type RequestContext } from "../auth/request-context";
 import { ServiceError, translateDatabaseError } from "../utils/service-error";
 import type { Page } from "../utils/validation";
-import { validateApiToken } from "./api-auth";
 
 export type RouteContext<T extends Record<string, string> = { id: string }> = {
   params: Promise<T> | T;
 };
 
-export async function withApi(request: Request, handler: (db: Database) => Promise<Response>): Promise<Response> {
-  if (!validateApiToken(request, getApiToken())) {
-    return Response.json({ message: "Invalid API token" }, { status: 401, headers: { "Cache-Control": "no-store" } });
-  }
+export async function withApi(request: Request, handler: (context: RequestContext) => Promise<Response>): Promise<Response> {
   try {
-    const response = await handler(getDb());
+    const context = await requireRequestContext(request.headers);
+    if (["POST", "PATCH", "PUT", "DELETE"].includes(request.method)) {
+      if (request.headers.get("Origin") !== new URL(getAuthBaseUrl()).origin) {
+        throw new ServiceError(403, "A same-origin request is required");
+      }
+      const contentType = request.headers.get("Content-Type");
+      if (contentType && contentType.split(";")[0].trim().toLowerCase() !== "application/json") {
+        throw new ServiceError(415, "Expected application/json");
+      }
+    }
+    const response = await handler(context);
     response.headers.set("Cache-Control", "no-store");
     return response;
   } catch (error) {
@@ -29,6 +35,9 @@ export async function withApi(request: Request, handler: (db: Database) => Promi
 }
 
 export async function readJson(request: Request): Promise<unknown> {
+  if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
+    throw new ServiceError(415, "Expected application/json");
+  }
   try { return await request.json(); }
   catch { throw new ServiceError(400, "Expected a valid JSON body"); }
 }

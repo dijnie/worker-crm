@@ -7,21 +7,6 @@ before(async () => { harness = await createHarness(); });
 after(async () => { await harness?.dispose(); });
 beforeEach(async () => { await harness.reset(); });
 
-test('authentication rejects missing or blank configuration and preserves header precedence', () => {
-  const { validateApiToken } = harness;
-  const token = crypto.randomUUID();
-  const request = headers => new Request('http://api.test', { headers });
-  for (const authorization of [`Bearer ${token}`, `Token ${token}`, token]) {
-    assert.equal(validateApiToken(request({ authorization }), token), true);
-  }
-  assert.equal(validateApiToken(request({ 'x-api-token': token }), token), true);
-  assert.equal(validateApiToken(request({ authorization: 'wrong', 'x-api-token': token }), token), false);
-  assert.equal(validateApiToken(request({ authorization: `Bearer ${token}` }), ''), false);
-  assert.equal(validateApiToken(request({ authorization: 'Bearer    ' }), '    '), false);
-  assert.equal(validateApiToken(request({}), token), false);
-  assert.equal(validateApiToken(request({ authorization: `Bearer ${token}` }), ` ${token} `), true);
-});
-
 test('stats separates currencies and excludes archived and closed deals without losing cents', async () => {
   const { db, schema, CompanyService, ContactService, DealService, StatsService } = harness;
   const company = await new CompanyService(db).create({ name: 'Company' });

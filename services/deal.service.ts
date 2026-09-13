@@ -1,5 +1,5 @@
 import { and, count, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import { z } from "zod";
+import { z } from "zod/v3";
 import type { Database } from "@/lib/db";
 import { activities, companies, deals, DEAL_STAGES } from "@/lib/db/schema";
 import { ActivityStampService } from "./activity-stamp.service";
@@ -23,11 +23,11 @@ export const dealListInput = listInput.extend({
   companyId: identifier.optional(),
   stage: z.enum(DEAL_STAGES).optional(),
 }).strict();
-export const stageInput = z.object({
+export const stageShape = {
   stage: z.enum(DEAL_STAGES),
-  actorId: identifier,
   reason: optionalText,
-}).strict();
+};
+export const stageInput = z.object({ ...stageShape, actorId: identifier }).strict();
 export type CreateDealInput = z.input<typeof createDealInput>;
 export type UpdateDealInput = z.input<typeof updateDealInput>;
 export type DealListInput = z.input<typeof dealListInput>;

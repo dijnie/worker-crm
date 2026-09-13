@@ -21,7 +21,19 @@ function LocalValidationConfig(system: { getConfigs: () => Record<string, unknow
   };
 }
 
-const swaggerPlugins = [LocalValidationConfig];
+// Authentication belongs to the app's sign-in page. Keep cookie security metadata
+// while suppressing Swagger controls that ask users to paste HttpOnly cookies.
+function SessionAuthenticationControls() {
+  return {
+    components: {
+      authorizeBtn: () => null,
+      authorizeOperationBtn: () => null,
+      authorizationPopup: () => null,
+    },
+  };
+}
+
+const swaggerPlugins = [LocalValidationConfig, SessionAuthenticationControls];
 
 class DocumentationBoundary extends Component<DocumentationBoundaryProps, { failed: boolean }> {
   state = { failed: false };

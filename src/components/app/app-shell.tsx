@@ -5,8 +5,9 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { AppHeader } from "@/components/app/app-header";
 import { AppSidebar } from "@/components/app/app-sidebar";
+import type { AccountIdentity } from "@/lib/auth/request-context";
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, account }: { children: ReactNode; account: AccountIdentity }) {
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [desktopNavigationExpanded, setDesktopNavigationExpanded] = useState(true);
   const pathname = usePathname();
@@ -38,7 +39,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           Skip to content
         </a>
-        <AppHeader sidebarExpanded={desktopNavigationExpanded} />
+        <AppHeader sidebarExpanded={desktopNavigationExpanded} account={account} />
         <div className="flex min-h-0 flex-1">
           <AppSidebar
             expanded={desktopNavigationExpanded}

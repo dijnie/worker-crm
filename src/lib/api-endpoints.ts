@@ -15,9 +15,9 @@ const recordEndpoints: APIEndpoint[] = ["companies", "contacts", "deals"].flatMa
 
 const apiEndpoints: APIEndpoint[] = [
   ...recordEndpoints,
-  { method: "POST", path: "/api/deals/:id/stage", description: "Change stage with actorId and optional reason, recording history atomically." },
+  { method: "POST", path: "/api/deals/:id/stage", description: "Change stage with an optional reason, recording history atomically under the signed-in account. Supplied actorId is rejected." },
   { method: "GET", path: "/api/activities", description: "List activities by companyId, contactId, dealId or type, with pagination headers." },
-  { method: "POST", path: "/api/activities", description: "Create a linked activity with explicit createdById attribution." },
+  { method: "POST", path: "/api/activities", description: "Create a linked activity attributed to the signed-in account. Supplied createdById is rejected." },
   { method: "GET", path: "/api/activities/:id", description: "Get an activity." },
   { method: "DELETE", path: "/api/activities/:id", description: "Delete an activity and recompute linked activity timestamps." },
   { method: "POST", path: "/api/activities/:id/complete", description: "Complete or reopen a task using a completed boolean." },
@@ -32,6 +32,8 @@ const apiEndpoints: APIEndpoint[] = [
   { method: "PATCH", path: "/api/fields/:id/options/:optionId", description: "Edit, archive or restore an option belonging to this field." },
   { method: "GET", path: "/api/fields/values", description: "Get definitions and values for entity and entityId." },
   { method: "PUT", path: "/api/fields/:id/value", description: "Set a typed value for entity and entityId; null clears an optional value." },
+  { method: "GET", path: "/api/members", description: "Owners list workspace members with pagination headers and an optional active or revoked status filter." },
+  { method: "PATCH", path: "/api/members/:id", description: "Owners change a role, revoke access or restore access using the current expectedRevision. Restore grants the member role and requires a new sign-in. Last-owner and stale changes return 409." },
   { method: "GET", path: "/api/stats", description: "Active record counts, activity count for the UTC week, and open deal value in the requested currency (default USD)." },
 ];
 

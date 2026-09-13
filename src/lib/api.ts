@@ -1,11 +1,14 @@
-import type { z } from "zod";
+import type { z } from "zod/v3";
 import type { FieldEntity } from "./db/schema/constants";
 import type { CompanyService, CreateCompanyInput, UpdateCompanyInput } from "@services/company.service";
 import type { ContactService, CreateContactInput, UpdateContactInput } from "@services/contact.service";
-import type { DealService, CreateDealInput, UpdateDealInput, DealListInput, StageInput } from "@services/deal.service";
-import type { ActivityService, CreateActivityInput, ActivityListInput, CompleteTaskInput } from "@services/activity.service";
+import type { DealService, CreateDealInput, UpdateDealInput, DealListInput } from "@services/deal.service";
+import type { ActivityService, ActivityListInput, CompleteTaskInput } from "@services/activity.service";
 import type { FieldService, createFieldInput, updateFieldInput, createOptionInput, updateOptionInput } from "@services/field.service";
 import type { StatsService } from "@services/stats.service";
+import type { CreateActivityApiInput } from "./server/activity-api-inputs";
+import type { StageApiInput } from "./server/deal-api-inputs";
+import type { MemberListInput, MemberMutationInput, MemberRecord } from "@services/member.service";
 import type { Page } from "./utils/validation";
 
 export interface RecordListQuery {
@@ -82,12 +85,12 @@ export function createApiClient(options: { baseUrl?: string; headers?: HeadersIn
     contacts: records<Result<ContactService["create"]>, Result<ContactService["getById"]>, CreateContactInput, UpdateContactInput, RecordListQuery & { companyId?: string }>("contacts"),
     deals: {
       ...records<Result<DealService["create"]>, Result<DealService["getById"]>, CreateDealInput, UpdateDealInput, DealListInput>("deals"),
-      setStage: (id: string, body: StageInput) => json<Result<DealService["setStage"]>>(`/api/deals/${pathId(id)}/stage`, "POST", body),
+      setStage: (id: string, body: StageApiInput) => json<Result<DealService["setStage"]>>(`/api/deals/${pathId(id)}/stage`, "POST", body),
     },
     activities: {
       list: (query?: ActivityListInput) => list<Result<ActivityService["getById"]>>("/api/activities", query),
       get: (id: string) => json<Result<ActivityService["getById"]>>(`/api/activities/${pathId(id)}`),
-      create: (body: CreateActivityInput) => json<Result<ActivityService["create"]>>("/api/activities", "POST", body),
+      create: (body: CreateActivityApiInput) => json<Result<ActivityService["create"]>>("/api/activities", "POST", body),
       complete: (id: string, body: CompleteTaskInput) => json<Result<ActivityService["completeTask"]>>(`/api/activities/${pathId(id)}/complete`, "POST", body),
       delete: async (id: string) => { await request(`/api/activities/${pathId(id)}`, "DELETE"); },
     },
@@ -103,6 +106,10 @@ export function createApiClient(options: { baseUrl?: string; headers?: HeadersIn
       updateOption: (id: string, optionId: string, body: z.input<typeof updateOptionInput>) => json<Result<FieldService["updateOption"]>>(`/api/fields/${pathId(id)}/options/${pathId(optionId)}`, "PATCH", body),
       values: (entity: FieldEntity, entityId: string) => json<Result<FieldService["getValues"]>>("/api/fields/values", "GET", undefined, { entity, entityId }),
       setValue: (id: string, entity: FieldEntity, entityId: string, value: unknown) => json<Result<FieldService["upsertValue"]>>(`/api/fields/${pathId(id)}/value`, "PUT", { entity, entityId, value }),
+    },
+    members: {
+      list: (query?: MemberListInput) => list<MemberRecord>("/api/members", query),
+      update: (id: string, body: MemberMutationInput) => json<MemberRecord>(`/api/members/${pathId(id)}`, "PATCH", body),
     },
     stats: (currency = "USD") => json<Result<StatsService["getStats"]>>("/api/stats", "GET", undefined, { currency }),
   };

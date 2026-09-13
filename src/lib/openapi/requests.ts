@@ -1,9 +1,12 @@
 import type { OpenAPIV3 } from "openapi-types";
 import { createCompanyInput, updateCompanyInput } from "@services/company.service";
 import { contactListInput, createContactInput, updateContactInput } from "@services/contact.service";
-import { createDealInput, updateDealInput, dealListInput, stageInput } from "@services/deal.service";
-import { activityListInput, createActivityInput, completeTaskInput } from "@services/activity.service";
+import { createDealInput, updateDealInput, dealListInput } from "@services/deal.service";
+import { activityListInput, completeTaskInput } from "@services/activity.service";
 import { createFieldInput, updateFieldInput, createOptionInput, updateOptionInput } from "@services/field.service";
+import { createActivityApiInput } from "@/lib/server/activity-api-inputs";
+import { stageApiInput } from "@/lib/server/deal-api-inputs";
+import { memberListInput, memberMutationInput } from "@services/member.service";
 import { statsInput } from "@services/stats.service";
 import { fieldListInput, optionListInput, fieldValuesInput, fieldValueInput } from "@/lib/server/field-api-inputs";
 import { identifier, listInput } from "@/lib/utils/validation";
@@ -18,6 +21,8 @@ export const requestSchemas = {
   FieldQuery: inputSchema(fieldListInput),
   OptionQuery: inputSchema(optionListInput),
   FieldValuesQuery: inputSchema(fieldValuesInput),
+  MemberQuery: inputSchema(memberListInput),
+  MutateMember: inputSchema(memberMutationInput),
   StatsQuery: inputSchema(statsInput),
   CreateCompany: inputSchema(createCompanyInput),
   UpdateCompany: inputSchema(updateCompanyInput),
@@ -25,8 +30,8 @@ export const requestSchemas = {
   UpdateContact: inputSchema(updateContactInput),
   CreateDeal: inputSchema(createDealInput),
   UpdateDeal: inputSchema(updateDealInput),
-  ChangeStage: inputSchema(stageInput),
-  CreateActivity: inputSchema(createActivityInput),
+  ChangeStage: inputSchema(stageApiInput),
+  CreateActivity: inputSchema(createActivityApiInput),
   CompleteTask: inputSchema(completeTaskInput),
   CreateField: inputSchema(createFieldInput),
   UpdateField: inputSchema(updateFieldInput),
@@ -77,8 +82,8 @@ for (const name of ["CreateDeal", "UpdateDeal"] as const) {
 // Zod's outer optional wrapper skips the inner create default on partial updates.
 const updateCurrency = requestSchemas.UpdateDeal.properties?.currency;
 if (updateCurrency && !("$ref" in updateCurrency)) delete updateCurrency.default;
-requestSchemas.ChangeStage.description = "actorId is explicit external attribution, not a verified user identity. A changed CLOSED_LOST or UNQUALIFIED_TO_BUY stage requires a nonblank reason. A same-stage request is a no-op and may omit the reason. Reopening clears closed metadata.";
-requestSchemas.CreateActivity.description = "Requires at least one existing companyId, contactId, or dealId. TASK requires a nonblank subject; only TASK permits a non-null dueAt. createdById is explicit external attribution, not a verified user identity. A company can be derived from the deal or contact when omitted.";
+requestSchemas.ChangeStage.description = "actorId is rejected; history attribution comes from the verified session. A changed CLOSED_LOST or UNQUALIFIED_TO_BUY stage requires a nonblank reason. A same-stage request is a no-op and may omit the reason. Reopening clears closed metadata.";
+requestSchemas.CreateActivity.description = "Requires at least one existing companyId, contactId, or dealId. TASK requires a nonblank subject; only TASK permits a non-null dueAt. createdById is rejected; creator attribution comes from the verified session. A company can be derived from the deal or contact when omitted.";
 annotateProperty(requestSchemas.CreateActivity, "occurredAt", {
   description: "A valid calendar date or ISO timestamp with timezone, normalized to ISO. Defaults to the creation time when omitted; null is not accepted.",
 });
@@ -98,3 +103,5 @@ annotateProperty(requestSchemas.SetFieldValue, "value", {
 requestSchemas.SetFieldValue.description = "value must be present, including when clearing with null. The response names the entity property entityType. Archived definitions/options reject new values; concurrent definition or option changes can return 409.";
 
 export type RequestSchemaName = keyof typeof requestSchemas;
+
+requestSchemas.MutateMember.description = "Owner-only action with a nonnegative integer expectedRevision matching the current member. Successful changes increment revision. Restore always grants member and requires a fresh sign-in. Revocation and restoration invalidate sessions. Self-demotion and self-revocation require another active owner. Unknown IDs return 404; stale revisions, invalid transitions and last-owner conflicts return 409.";

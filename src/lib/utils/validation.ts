@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 
 export const identifier = z.string().trim().min(1).max(200);
 export const requiredText = z.string().trim().min(1).max(1000);

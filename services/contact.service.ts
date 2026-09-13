@@ -1,5 +1,5 @@
 import { and, count, desc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
-import { z } from "zod";
+import { z } from "zod/v3";
 import type { Database } from "@/lib/db";
 import { companies, contacts, type ContactSelect } from "@/lib/db/schema";
 import { serializeDeal } from "@/lib/utils/money";

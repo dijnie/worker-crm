@@ -3,15 +3,16 @@
 import Menu from "@carbon/icons-react/es/Menu";
 import MagicWand from "@carbon/icons-react/es/MagicWand";
 import Help from "@carbon/icons-react/es/Help";
-import UserAvatar from "@carbon/icons-react/es/UserAvatar";
 import * as Dialog from "@radix-ui/react-dialog";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
 import { navigationItems, matchesNavigationPath } from "@/components/app/navigation-items";
+import { AccountMenu } from "@/components/app/account-menu";
+import type { AccountIdentity } from "@/lib/auth/request-context";
 
-export function AppHeader({ sidebarExpanded }: { sidebarExpanded: boolean }) {
+export function AppHeader({ sidebarExpanded, account }: { sidebarExpanded: boolean; account: AccountIdentity }) {
   const pathname = usePathname();
   const pageTitle = navigationItems.find(({ href }) => matchesNavigationPath(href, pathname))?.label ?? "Vinext";
 
@@ -51,9 +52,7 @@ export function AppHeader({ sidebarExpanded }: { sidebarExpanded: boolean }) {
             <Help className="size-4" aria-hidden="true" />
             <span className="hidden sm:inline">Support</span>
           </Button>
-          <Button variant="ghost" size="icon" disabled className="size-8" aria-label="Account — coming soon">
-            <UserAvatar className="size-4" aria-hidden="true" />
-          </Button>
+          <AccountMenu account={account} />
         </div>
       </div>
     </header>

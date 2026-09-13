@@ -13,8 +13,4 @@ export function getDb(): Database {
   return createDatabase(d1);
 }
 
-export function getApiToken(): string {
-  return (env as unknown as { API_TOKEN?: string }).API_TOKEN || "";
-}
-
 export * from "./schema";
