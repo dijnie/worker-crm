@@ -220,6 +220,34 @@ remote migration. Prefer a forward fix during recovery. A rollback must preserve
 the session access boundary and newer business writes; do not restore token-only
 code or overwrite newer data with an older backup.
 
+## Cloudflare deployment
+
+After verifying the production bindings, HTTPS auth origin, authorized email
+sender and secret described above, back up existing remote storage as described
+in **Preserve storage before migrations**, then run:
+
+```bash
+npm run deploy
+```
+
+The [deploy runner](scripts/deploy.mjs) builds the app, applies pending migrations to
+the remote `DB` binding in `wrangler.jsonc`, then deploys the built Worker. A
+failed build or migration stops deployment. Already applied migrations are
+skipped; a release without new SQL files still checks for pending migrations.
+If Worker deployment fails after migration succeeds, the applied migrations
+remain in D1. Fix the deployment and rerun; do not reset the database.
+
+`npm run deploy -- --dry-run` validates setup without building, migrating or
+publishing. The runner targets the production configuration only and rejects
+other flags so a Worker override cannot silently use the production database.
+
+For Cloudflare Workers Builds, set the production **Deploy command** to
+`npm run deploy`; it includes the build step. A direct `wrangler deploy` or
+`vinext-cloudflare deploy` bypasses this project's migration step. The build's
+Cloudflare token must have access to both the Worker and its D1 database.
+Wrangler skips migration confirmation in CI; see
+[D1 migration behavior](https://developers.cloudflare.com/workers/wrangler/commands/d1/#d1-migrations-apply).
+
 ## API integration
 
 Open `/docs` for Swagger UI or fetch `/api/openapi` for the OpenAPI 3.0.3 JSON
