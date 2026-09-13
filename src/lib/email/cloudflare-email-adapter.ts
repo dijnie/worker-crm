@@ -7,8 +7,9 @@ interface CloudflareEmailAdapterOptions {
 
 export class CloudflareEmailAdapter implements AuthEmailAdapter {
   constructor(private readonly options: CloudflareEmailAdapterOptions) {
-    if (!options.binding || !options.from) {
-      throw new Error("Cloudflare Email Service configuration is incomplete");
+    const missing = [!options.binding && "EMAIL binding", !options.from && "AUTH_EMAIL_FROM"].filter(Boolean);
+    if (missing.length) {
+      throw new Error(`Cloudflare Email Service configuration is incomplete: missing ${missing.join(", ")}`);
     }
   }
 

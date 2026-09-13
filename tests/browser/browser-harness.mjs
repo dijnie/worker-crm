@@ -120,7 +120,6 @@ export async function createBrowserHarness({ onCleanup = () => {} } = {}) {
       await symlink(join(root, 'node_modules', entry), join(app, 'node_modules', entry), 'dir');
     }
     const config = parse(await readFile(join(app, 'wrangler.jsonc'), 'utf8'));
-    config.vars = { ...config.vars, AUTH_BASE_URL: origin, AUTH_EMAIL_FROM: 'noreply@example.invalid' };
     config.send_email = [{ name: 'EMAIL', allowed_sender_addresses: ['noreply@example.invalid'], remote: false }];
     for (const binding of [...(config.d1_databases ?? []), ...(config.r2_buckets ?? [])]) delete binding.remote;
     await writeFile(join(app, 'wrangler.jsonc'), JSON.stringify(config, null, 2));
@@ -128,7 +127,7 @@ export async function createBrowserHarness({ onCleanup = () => {} } = {}) {
     const viteSource = await readFile(vitePath, 'utf8');
     assert.ok(viteSource.includes('server: { strictPort: true }'), 'Update the isolated Vite override when project server configuration changes');
     await writeFile(vitePath, viteSource.replace('server: { strictPort: true }', `server: { strictPort: true, fs: { allow: [${JSON.stringify(app)}, ${JSON.stringify(join(root, 'node_modules'))}] } }`));
-    await writeFile(join(app, '.dev.vars'), `BETTER_AUTH_SECRET=${randomBytes(48).toString('base64url')}\n`, { mode: 0o600 });
+    await writeFile(join(app, '.dev.vars'), `BETTER_AUTH_SECRET=${randomBytes(48).toString('base64url')}\nAUTH_BASE_URL=${origin}\nAUTH_EMAIL_FROM=noreply@example.invalid\n`, { mode: 0o600 });
     await mkdir(state, { recursive: true });
     await cp(state, join(directory, 'pre-migration-backup'), { recursive: true });
     console.log(`[browser] Fresh disposable store backed up before migrations: ${directory}/pre-migration-backup`);

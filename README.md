@@ -147,6 +147,12 @@ Existing local setups must include both values in `.dev.vars`; they are no longe
 provided by `wrangler.jsonc`. Do not copy another application's origin or unrelated
 secret keys.
 
+Keep `secrets.required` out of the shared Wrangler configuration: it filters local
+dotenv keys and would exclude the auth origin and sender. This also means Wrangler
+does not enforce a declared secret list before deployment; provision and verify
+`BETTER_AUTH_SECRET` as described above. The application still requires a secret
+of at least 32 characters. See [Cloudflare's local variable-loading rules](https://developers.cloudflare.com/workers/configuration/secrets/#local-development-with-secrets).
+
 ```bash
 npm run dev
 ```

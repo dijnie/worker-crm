@@ -25,5 +25,7 @@ test('native email adapter formats messages and awaits delivery success or rejec
   assert.equal(messages[1].subject, 'Reset your password');
   const broken = new CloudflareEmailAdapter({ from: 'noreply@example.test', binding: { async send() { throw new Error('delivery unavailable'); } } });
   await assert.rejects(broken.sendVerification({ to: 'user@example.test', url: 'https://crm.test/link' }), /delivery unavailable/);
-  assert.throws(() => new CloudflareEmailAdapter({ from: '', binding: {} }), /incomplete/);
+  assert.throws(() => new CloudflareEmailAdapter({ from: '', binding: {} }), /incomplete: missing AUTH_EMAIL_FROM$/);
+  assert.throws(() => new CloudflareEmailAdapter({ from: 'noreply@example.test' }), /incomplete: missing EMAIL binding$/);
+  assert.throws(() => new CloudflareEmailAdapter({ from: '' }), /incomplete: missing EMAIL binding, AUTH_EMAIL_FROM$/);
 });
