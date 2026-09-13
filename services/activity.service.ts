@@ -1,4 +1,4 @@
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod/v3";
 import type { Database } from "@/lib/db";
 import { activities, ACTIVITY_TYPES } from "@/lib/db/schema";
@@ -34,12 +34,48 @@ export const createActivityInput = z.object({
   createdById: identifier,
 }).strict().superRefine(refineActivityCreate);
 
-export const activityListInput = listInput.pick({ page: true, limit: true }).extend({
+export const ACTIVITY_VIEWS = ["all", "history", "notes", "upcoming", "done", "email", "meetings"] as const;
+export type ActivityView = typeof ACTIVITY_VIEWS[number];
+export type ActivityCounts = Record<ActivityView, number>;
+export const activityCountsInput = z.object({
   companyId: identifier.optional(),
   contactId: identifier.optional(),
   dealId: identifier.optional(),
   type: z.enum(ACTIVITY_TYPES).optional(),
 }).strict();
+export type ActivityCountsInput = z.input<typeof activityCountsInput>;
+export const activityListInput = listInput.pick({ page: true, limit: true }).extend({
+  ...activityCountsInput.shape,
+  view: z.enum(ACTIVITY_VIEWS).optional(),
+}).strict();
+
+function viewPredicate(view: ActivityView = "all") {
+  switch (view) {
+    case "all": return undefined;
+    case "history": return or(ne(activities.type, "TASK"), isNotNull(activities.completedAt));
+    case "notes": return eq(activities.type, "NOTE");
+    case "email": return eq(activities.type, "EMAIL");
+    case "meetings": return eq(activities.type, "MEETING");
+    case "upcoming": return and(eq(activities.type, "TASK"), isNull(activities.completedAt));
+    case "done": return and(eq(activities.type, "TASK"), isNotNull(activities.completedAt));
+  }
+}
+
+function activityPredicate(options: ActivityCountsInput, view?: ActivityView) {
+  return and(
+    options.companyId ? eq(activities.companyId, options.companyId) : undefined,
+    options.contactId ? eq(activities.contactId, options.contactId) : undefined,
+    options.dealId ? eq(activities.dealId, options.dealId) : undefined,
+    options.type ? eq(activities.type, options.type) : undefined,
+    viewPredicate(view),
+  );
+}
+
+function activityOrder(view?: ActivityView) {
+  if (view === "upcoming") return [sql`${activities.dueAt} IS NULL`, sql`julianday(${activities.dueAt}) ASC`, sql`julianday(${activities.createdAt}) DESC`, desc(activities.id)];
+  if (view === "done") return [sql`julianday(${activities.completedAt}) DESC`, desc(activities.id)];
+  return [sql`julianday(${activities.createdAt}) DESC`, desc(activities.id)];
+}
 export const completeTaskInput = z.object({ completed: z.boolean() }).strict();
 export type CreateActivityInput = z.input<typeof createActivityInput>;
 export type ActivityListInput = z.input<typeof activityListInput>;
@@ -54,19 +90,24 @@ export class ActivityService {
 
   async list(input: unknown = {}) {
     const options = activityListInput.parse(input);
-    const where = and(
-      options.companyId ? eq(activities.companyId, options.companyId) : undefined,
-      options.contactId ? eq(activities.contactId, options.contactId) : undefined,
-      options.dealId ? eq(activities.dealId, options.dealId) : undefined,
-      options.type ? eq(activities.type, options.type) : undefined,
-    );
+    const where = activityPredicate(options, options.view);
     const [items, totals] = await this.db.batch([
       this.db.select().from(activities).where(where)
-        .orderBy(sql`julianday(${activities.createdAt}) DESC`, desc(activities.id))
+        .orderBy(...activityOrder(options.view))
         .limit(options.limit).offset((options.page - 1) * options.limit),
       this.db.select({ total: count() }).from(activities).where(where),
     ]);
     return { items, total: totals[0].total, page: options.page, limit: options.limit };
+  }
+
+  async counts(input: unknown = {}): Promise<ActivityCounts> {
+    const options = activityCountsInput.parse(input);
+    const aggregate = (view: ActivityView) => sql<number>`coalesce(sum(case when ${viewPredicate(view) ?? sql`1`} then 1 else 0 end), 0)`.mapWith(Number);
+    const [result] = await this.db.select({
+      all: count(), history: aggregate("history"), notes: aggregate("notes"),
+      upcoming: aggregate("upcoming"), done: aggregate("done"), email: aggregate("email"), meetings: aggregate("meetings"),
+    }).from(activities).where(activityPredicate(options));
+    return result;
   }
 
   async getById(id: string) {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createBrowserHarness } from '../tests/browser/browser-harness.mjs';
 
 const knownSuites = ['lists', 'record-sheets', 'activities', 'fields', 'overview', 'integration', 'all'];
-const registry = { lists: () => import('../tests/browser/lists.test.mjs') };
+const registry = { lists: () => import('../tests/browser/lists.test.mjs'), 'record-sheets': async () => { const core = await import('../tests/browser/record-sheets.test.mjs'); const relations = await import('../tests/browser/record-sheet-relations.test.mjs'); return { runSuite: async (h, context) => { await core.runSuite(h, context); await relations.runSuite(h, context); } }; } };
 let mode = 'dev', suite = 'lists';
 for (const argument of process.argv.slice(2)) {
   if (argument.startsWith('--mode=')) mode = argument.slice(7);
@@ -35,6 +35,7 @@ try {
     }
     for (const name of suites) await (await registry[name]()).runSuite(harness, { mode: currentMode, owner: identity });
     await harness.stopServer();
+    if (process.exitCode) throw new Error(`${currentMode} browser scenarios failed; resolve failures before the next mode.`);
   }
 } catch (error) {
   // Never print Playwright call logs: auth navigation URLs may contain live tokens.

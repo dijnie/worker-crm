@@ -43,6 +43,18 @@ export function normalizeRecordStack(refs: readonly RecordRef[]): RecordRef[] {
 export function parseRecordStack(
   params: URLSearchParams | string,
 ): RecordRef[] {
+  if (typeof params === "string") {
+    // URLSearchParams tolerates broken percent escapes. A record link must be
+    // decodable without silently changing the requested identity.
+    for (const entry of params.replace(/^\?/, "").split("&")) {
+      const separator = entry.indexOf("=");
+      const key = separator < 0 ? entry : entry.slice(0, separator);
+      if (new URLSearchParams(`${key}=`).has("record")) {
+        try { decodeURIComponent(entry.slice(separator + 1).replace(/\+/g, " ")); }
+        catch { throw new RecordLinkError(); }
+      }
+    }
+  }
   const search =
     typeof params === "string" ? new URLSearchParams(params) : params;
   return normalizeRecordStack(
@@ -104,10 +116,16 @@ export function writeRecordStack(
   );
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
+export const RECORD_OPEN_EVENT = "workspace-record-open";
 export function openRecord(ref: RecordRef) {
-  const previous = parseRecordStack(window.location.search);
-  const stack = previous.filter(
-    (item) => item.kind !== ref.kind || item.id !== ref.id,
-  );
-  writeRecordStack([...stack, ref], previous.length ? "replace" : "push");
+  const action = () => {
+    const previous = parseRecordStack(window.location.search);
+    const stack = previous.filter(
+      (item) => item.kind !== ref.kind || item.id !== ref.id,
+    );
+    writeRecordStack([...stack, ref], previous.length ? "replace" : "push");
+  };
+  // The mounted sheet host guards every opener, including timeline links.
+  const event = new CustomEvent(RECORD_OPEN_EVENT, { cancelable: true, detail: action });
+  if (window.dispatchEvent(event) !== false) action();
 }

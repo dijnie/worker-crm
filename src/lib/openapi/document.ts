@@ -37,6 +37,10 @@ for (const [resource, singular, tag] of [
   register("POST", `${path}/:id/restore`, { operationId: `restore${singular}`, tag, response: singular });
 }
 register("POST", "/api/deals/:id/stage", { operationId: "changeDealStage", tag: "Deals", body: "ChangeStage", response: "StageResult" });
+register("POST", "/api/deals/:id/contacts", { operationId: "attachDealContact", tag: "Deals", body: "AttachDealContact", response: "DealContact", status: 201 });
+register("PATCH", "/api/deals/:id/contacts/:contactId", { operationId: "updateDealContactRole", tag: "Deals", body: "UpdateDealContactRole", response: "DealContact" });
+register("DELETE", "/api/deals/:id/contacts/:contactId", { operationId: "detachDealContact", tag: "Deals", status: 204 });
+register("GET", "/api/activities/counts", { operationId: "countActivities", tag: "Activities", query: "ActivityCountsQuery", response: "ActivityCounts" });
 register("GET", "/api/activities", { operationId: "listActivities", tag: "Activities", query: "ActivityQuery", response: "Activity", array: true, paginated: true });
 register("POST", "/api/activities", { operationId: "createActivity", tag: "Activities", body: "CreateActivity", response: "Activity", status: 201 });
 register("GET", "/api/activities/:id", { operationId: "getActivity", tag: "Activities", response: "Activity" });

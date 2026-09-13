@@ -175,3 +175,21 @@ test('member mutations require revisions and expose only safe member records', (
   assert.ok(document.paths['/api/members/{id}'].patch.responses['409']);
   assert.equal(document.paths['/api/auth/{...all}'], undefined);
 });
+
+test('timeline views/counts and deal participation document strict additive contracts', () => {
+  const views = ['all', 'history', 'notes', 'upcoming', 'done', 'email', 'meetings'];
+  assert.deepEqual(document.paths['/api/activities'].get.parameters.find(parameter => parameter.name === 'view').schema.enum, views);
+  assert.deepEqual(document.paths['/api/activities/counts'].get.parameters.map(parameter => parameter.name), ['companyId', 'contactId', 'dealId', 'type']);
+  assertSchema(document, document.components.schemas.ActivityCounts, Object.fromEntries(views.map(view => [view, 0])), 'empty counts');
+  assert.equal(schemaValidator(document, document.components.schemas.ActivityCounts)({ all: 0 }), false);
+  const attach = schemaValidator(document, requestSchema('/api/deals/{id}/contacts', 'post'));
+  assert.equal(attach({ contactId: 'contact', role: null }), true);
+  assert.equal(attach({ contactId: 'contact' }), true);
+  assert.equal(attach({ contactId: 'contact', actorId: 'actor' }), false);
+  const role = schemaValidator(document, requestSchema('/api/deals/{id}/contacts/{contactId}', 'patch'));
+  assert.equal(role({ role: null }), true);
+  assert.equal(role({ role: ' ' }), true);
+  assert.equal(role({}), false);
+  assert.equal(role({ role: 'x'.repeat(81) }), false);
+  assert.equal(document.paths['/api/deals/{id}/contacts/{contactId}'].delete.responses['204'].content, undefined);
+});

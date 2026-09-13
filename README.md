@@ -4,9 +4,10 @@
 
 A shared-workspace CRM built with Vinext App Router, Drizzle ORM, and Cloudflare
 Workers/D1. Verified email/password sessions protect business APIs and the workspace.
-Companies, Contacts and Deals have interactive lists and creation forms, alongside
-account and owner-only member administration. Record sheets, activity controls,
-custom-field interfaces and the live overview remain under development. The former SaaS customer/subscription tools
+Companies, Contacts and Deals have interactive lists, creation forms and nested
+record sheets with property editing and activity history, alongside account and
+owner-only member administration. Manual activity controls, custom-field interfaces
+and the live overview remain under development. The former SaaS customer/subscription tools
 and endpoints are retired. Interactive API documentation is public at `/docs`.
 
 <!-- dash-content-end -->
@@ -53,15 +54,26 @@ to each table. [Toolbar panels](src/components/app/data-table/toolbar-menu.tsx)
 fit the viewport and dismiss on Escape or outside interaction. Active facets appear
 as removable chips; bulk actions appear after selecting records, with results
 remaining visible after successful selections clear.
-Record links use the [URL navigation boundary](src/components/app/record-sheet/record-navigation.ts);
-the record sheet host is a later delivery. The overview retains the
+Record links use the [URL navigation boundary](src/components/app/record-sheet/record-navigation.ts)
+and [sheet host](src/components/app/record-sheet/record-sheet-host.tsx). The
+[property panel](src/components/app/record-sheet/property-panel.tsx),
+[edit lifecycle](src/components/app/record-sheet/inline-field.tsx) and
+[navigation guard](src/components/app/record-sheet/use-record-stack.ts) own editing
+and recovery of unsaved changes. Company primary contact, contact employer and
+deal participation are independent business relationships; the
+[relation controls](src/components/app/record-sheet/related-records.tsx) preserve
+that distinction. [Record actions](src/components/app/record-sheet/record-actions.tsx)
+use archive/restore because historical records must remain viewable. The
+[timeline](src/components/app/timeline/timeline-panel.tsx) reads paginated activity
+history; logging activities and changing tasks are a later delivery.
+The overview retains the
 [availability state](src/components/app/app-empty-state.tsx), and custom-field
 settings are not yet available.
 
 The [workspace data provider](src/components/app/app-data-provider.tsx) and
 [invalidation store](src/lib/app-data-store.ts) are the shared integration point
-for lists, account/member controls and future record consumers. Extend that
-workspace scope for sheets and the overview so mutations and access changes
+for lists, sheets and account/member controls. Extend that
+workspace scope for the overview so mutations and access changes
 remain consistent across screens.
 Standalone authentication pages use flat `/sign-up`, `/sign-in`, `/verify-email`,
 `/forgot-password`, `/reset-password`, and `/access-revoked` URLs; see the
@@ -242,6 +254,14 @@ directory; owner-only member administration remains a separate boundary.
 workspace: sharing a view does not transfer editing rights to readers or workspace
 owners. Custom-field list projections and facets remain a later delivery.
 
+For independent deal participation, start with the
+[deal-contact service](services/deal-contact.service.ts) and its methods in the
+typed client. The [activity service](services/activity.service.ts) owns named
+timeline views and `/api/activities/counts`; tab counts cover the matching dataset,
+so consumers must not infer totals or outstanding tasks from embedded detail
+previews. Their public routes and validation remain in the endpoint catalog and
+OpenAPI document above.
+
 `API_TOKEN` clients must migrate to verified sessions; token headers no longer
 grant access. The [server API boundary](src/lib/server/api-handler.ts) requires
 a session and active membership. Private POST/PATCH/PUT/DELETE requests also
@@ -300,7 +320,7 @@ production HTTPS cookie behavior; verify those in an authorized target environme
 The [browser runner](scripts/run-browser-tests.mjs) owns suite registration and
 runtime modes; [the harness](tests/browser/browser-harness.mjs) owns disposable
 storage, verified browser identities and cleanup. Install its pinned Chromium
-with `npx playwright install chromium`, then run the implemented list suite from
+with `npx playwright install chromium`, then run the list suite from
 this directory:
 
 ```bash
@@ -310,5 +330,8 @@ node scripts/run-browser-tests.mjs --mode=both --suite=lists
 Use `--mode=dev` or `--mode=built` for a focused run. The combined mode verifies
 the same session and record across the dev-to-built handoff; separate fresh runs
 cannot establish that continuity. Keep port 3100 free for the isolated harness.
-The [list browser suite](tests/browser/lists.test.mjs) owns the current acceptance
-scenarios; additional suites become available as their workflows are delivered.
+Select `--suite=record-sheets` for the
+[sheet acceptance suite](tests/browser/record-sheets.test.mjs) and
+[relation scenarios](tests/browser/record-sheet-relations.test.mjs), or
+`--suite=lists` for [list acceptance](tests/browser/lists.test.mjs). The runner's
+registry owns available suites; future workflow names are rejected until implemented.

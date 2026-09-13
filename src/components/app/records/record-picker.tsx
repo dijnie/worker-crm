@@ -13,6 +13,7 @@ interface PickerProps {
   required?: boolean;
   disabled?: boolean;
   selectedLabel?: string;
+  excludeIds?: readonly string[];
 }
 export function RecordPicker({
   kind,
@@ -22,6 +23,7 @@ export function RecordPicker({
   required,
   disabled,
   selectedLabel,
+  excludeIds = [],
 }: PickerProps) {
   const { api, generation } = useAppData();
   const id = useId();
@@ -71,7 +73,7 @@ export function RecordPicker({
       };
     },
   );
-  const items = result.data?.items ?? [];
+  const items = (result.data?.items ?? []).filter(item => !excludeIds.includes(item.id));
   const missingSelected = value && !items.some((item) => item.id === value);
   return (
     <div className="space-y-2">

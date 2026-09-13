@@ -1,3 +1,4 @@
+import { attachDealContactInput, updateDealContactRoleInput } from "@services/deal-contact.service";
 import { recordListInput, recordFacetInput, RECORD_SORTS, RECORD_FACETS } from "@/lib/record-list-contracts";
 import { assigneeListInput } from "@services/assignee.service";
 import { createSavedViewInput, updateSavedViewInput, savedViewListInput } from "@services/saved-view.service";
@@ -5,7 +6,7 @@ import type { OpenAPIV3 } from "openapi-types";
 import { createCompanyInput, updateCompanyInput } from "@services/company.service";
 import { contactListInput, createContactInput, updateContactInput } from "@services/contact.service";
 import { createDealInput, updateDealInput, dealListInput } from "@services/deal.service";
-import { activityListInput, completeTaskInput } from "@services/activity.service";
+import { activityListInput, activityCountsInput, completeTaskInput } from "@services/activity.service";
 import { createFieldInput, updateFieldInput, createOptionInput, updateOptionInput } from "@services/field.service";
 import { createActivityApiInput } from "@/lib/server/activity-api-inputs";
 import { stageApiInput } from "@/lib/server/deal-api-inputs";
@@ -28,6 +29,9 @@ export const requestSchemas = {
   ContactQuery: inputSchema(contactListInput),
   DealQuery: inputSchema(dealListInput),
   ActivityQuery: inputSchema(activityListInput),
+  ActivityCountsQuery: inputSchema(activityCountsInput),
+  AttachDealContact: inputSchema(attachDealContactInput),
+  UpdateDealContactRole: inputSchema(updateDealContactRoleInput),
   FieldQuery: inputSchema(fieldListInput),
   OptionQuery: inputSchema(optionListInput),
   FieldValuesQuery: inputSchema(fieldValuesInput),
@@ -127,3 +131,10 @@ for (const [entity, name] of [["company", "Company"], ["contact", "Contact"], ["
 }
 requestSchemas.CreateSavedView.description = "Only entity/name/shared/filters are accepted. Owner is the signed-in account. filters stores q/sort/dir/archived/filters, validated against its entity; no page, selection, identity or record stack. Duplicate name per entity and owner returns 409.";
 requestSchemas.UpdateSavedView.description = "Only creator may change name/shared/filters. Foreign or absent views return 404, including for workspace owners.";
+
+requestSchemas.AttachDealContact.description = "Requires an existing deal (404 if missing) and contact (400 if missing). Employer and primary-contact relationships are independent; archived records may participate. Duplicate links, including concurrent attempts, return 409. Unknown properties are rejected.";
+requestSchemas.UpdateDealContactRole.description = "role is required: trimmed text up to 80 characters, blank or null clears it. Missing parent deal or link returns 404. Unknown properties are rejected.";
+for (const name of ["AttachDealContact", "UpdateDealContactRole"] as const) annotateProperty(requestSchemas[name], "role", { description: "Trimmed text up to 80 characters. Blank text or null clears the role; attach omission defaults to null." });
+requestSchemas.ActivityQuery.description = "No view or all keeps createdAt descending then ID descending. history excludes incomplete tasks; notes/email/meetings match their respective types. upcoming includes all incomplete tasks, overdue and undated, ordered by dueAt ascending (nulls last), createdAt descending and ID descending. done includes completed tasks ordered by completedAt descending then ID descending. Dates compare as instants with julianday. Type and anchors intersect with the view, so contradictory filters return an empty result.";
+annotateProperty(requestSchemas.ActivityQuery, "view", { description: requestSchemas.ActivityQuery.description });
+requestSchemas.ActivityCountsQuery.description = "Counts the entire matching dataset for all seven views using the list predicates; anchors and type intersect. view, page, limit and unknown query keys are rejected.";

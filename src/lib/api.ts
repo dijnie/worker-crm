@@ -1,9 +1,11 @@
+export type { ActivityView, ActivityCounts, ActivityCountsInput, ActivityListInput } from "@services/activity.service";
+import type { DealContactService, AttachDealContactInput, UpdateDealContactRoleInput } from "@services/deal-contact.service";
 import type { z } from "zod/v3";
 import type { FieldEntity } from "./db/schema/constants";
 import type { CompanyService, CreateCompanyInput, UpdateCompanyInput } from "@services/company.service";
 import type { ContactService, CreateContactInput, UpdateContactInput } from "@services/contact.service";
 import type { DealService, CreateDealInput, UpdateDealInput, DealListInput } from "@services/deal.service";
-import type { ActivityService, ActivityListInput, CompleteTaskInput } from "@services/activity.service";
+import type { ActivityService, ActivityListInput, ActivityCountsInput, ActivityCounts, CompleteTaskInput } from "@services/activity.service";
 import type { FieldService, createFieldInput, updateFieldInput, createOptionInput, updateOptionInput } from "@services/field.service";
 import type { StatsService } from "@services/stats.service";
 import type { CreateActivityApiInput } from "./server/activity-api-inputs";
@@ -94,11 +96,15 @@ export function createApiClient(options: { baseUrl?: string; headers?: HeadersIn
     companies: records<Result<CompanyService["create"]>, Result<CompanyService["getById"]>, CreateCompanyInput, UpdateCompanyInput, RecordListQuery>("companies"),
     contacts: records<Result<ContactService["create"]>, Result<ContactService["getById"]>, CreateContactInput, UpdateContactInput, RecordListQuery & { companyId?: string }>("contacts"),
     deals: {
+      attachContact: (id: string, body: AttachDealContactInput) => json<Result<DealContactService["attach"]>>(`/api/deals/${pathId(id)}/contacts`, "POST", body),
+      updateContactRole: (id: string, contactId: string, body: UpdateDealContactRoleInput) => json<Result<DealContactService["updateRole"]>>(`/api/deals/${pathId(id)}/contacts/${pathId(contactId)}`, "PATCH", body),
+      detachContact: async (id: string, contactId: string) => { await request(`/api/deals/${pathId(id)}/contacts/${pathId(contactId)}`, "DELETE"); },
       ...records<Result<DealService["create"]>, Result<DealService["getById"]>, CreateDealInput, UpdateDealInput, DealListInput>("deals"),
       setStage: (id: string, body: StageApiInput) => json<Result<DealService["setStage"]>>(`/api/deals/${pathId(id)}/stage`, "POST", body),
     },
     activities: {
-      list: (query?: ActivityListInput) => list<Result<ActivityService["getById"]>>("/api/activities", query),
+      list: (query?: ActivityListInput, transport?: ApiRequestOptions) => list<Result<ActivityService["getById"]>>("/api/activities", query, transport),
+      counts: (query?: ActivityCountsInput, transport?: ApiRequestOptions) => json<ActivityCounts>("/api/activities/counts", "GET", undefined, query, transport),
       get: (id: string) => json<Result<ActivityService["getById"]>>(`/api/activities/${pathId(id)}`),
       create: (body: CreateActivityApiInput) => json<Result<ActivityService["create"]>>("/api/activities", "POST", body),
       complete: (id: string, body: CompleteTaskInput) => json<Result<ActivityService["completeTask"]>>(`/api/activities/${pathId(id)}/complete`, "POST", body),

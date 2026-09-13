@@ -1,6 +1,6 @@
 import { getTableColumns, type Table } from "drizzle-orm";
 import type { OpenAPIV3 } from "openapi-types";
-import { savedViews, companies, contacts, deals, activities, fieldDefinitions, fieldOptions, fieldValues, FIELD_ENTITIES, DEAL_STAGES } from "@/lib/db/schema";
+import { dealContacts, savedViews, companies, contacts, deals, activities, fieldDefinitions, fieldOptions, fieldValues, FIELD_ENTITIES, DEAL_STAGES } from "@/lib/db/schema";
 import { arrayOf, objectOf, reference, type Schema } from "./schema-helpers";
 
 function tableSchema(table: Table): OpenAPIV3.SchemaObject {
@@ -105,6 +105,12 @@ export const responseSchemas = {
   Contact: contact,
   Deal: deal,
   Activity: activity,
+  DealContact: tableSchema(dealContacts),
+  ActivityCounts: objectOf({
+    all: { type: "integer", minimum: 0 }, history: { type: "integer", minimum: 0 },
+    notes: { type: "integer", minimum: 0 }, upcoming: { type: "integer", minimum: 0 },
+    done: { type: "integer", minimum: 0 }, email: { type: "integer", minimum: 0 }, meetings: { type: "integer", minimum: 0 },
+  }),
   FieldDefinition: definition,
   FieldOption: option,
   FieldValue: fieldValue,

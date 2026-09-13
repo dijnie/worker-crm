@@ -43,7 +43,7 @@ async function request(path, { method = 'GET', body, authorized = true, headers 
 
 test('all documented API methods reject requests without authorization before reading input', async () => {
   for (const endpoint of endpoints) {
-    const path = endpoint.path.replace(/:id|:optionId/g, 'missing');
+    const path = endpoint.path.replace(/:id|:optionId|:contactId/g, 'missing');
     const response = await request(path, { method: endpoint.method, authorized: false, ...(endpoint.method === 'GET' ? {} : { body: '{' }) });
     assert.equal(response.status, 401, `${endpoint.method} ${path}`);
     assert.equal(response.headers.get('cache-control'), 'no-store');
@@ -167,7 +167,7 @@ test('field endpoints preserve typed values and historical options', async () =>
 
 test('private writes require canonical Origin and JSON and token headers grant no access', async () => {
   for (const endpoint of endpoints) {
-    const path = endpoint.path.replace(/:id|:optionId/g, 'missing');
+    const path = endpoint.path.replace(/:id|:optionId|:contactId/g, 'missing');
     for (const headers of [{ authorization: 'Bearer old-token' }, { authorization: 'Token old-token' }, { authorization: 'old-token' }, { 'x-api-token': 'old-token' }]) {
       assert.equal((await request(path, { method: endpoint.method, authorized: false, headers })).status, 401, path);
     }
@@ -214,4 +214,65 @@ test('owner member API enforces revisions, revocation, restoration and current p
   assert.equal((await harness.request('/api/members', { cookie: signedIn.cookie })).status, 403);
   await assert.rejects(client.members.update('missing', { action: 'revoke', expectedRevision: 0 }), error => error.status === 404);
   await assert.rejects(client.members.update(account.user.id, { action: 'revoke', expectedRevision: 0 }), error => error.status === 409);
+});
+
+test('ordinary members attach external participants, update roles and detach through strict protected APIs', async () => {
+  const member = await harness.signupVerified();
+  const memberRequest = async (path, options = {}) => assertApiResponse(openApiDocument, `${baseUrl}${path}`, options.method ?? 'GET', await harness.request(path, { cookie: member.cookie, ...options }));
+  const company = await client.companies.create({ name: 'Deal company' });
+  const employer = await client.companies.create({ name: 'External employer' });
+  const contact = await client.contacts.create({ firstName: 'Advisor', companyId: employer.id });
+  const deal = await client.deals.create({ name: 'Deal', companyId: company.id, ownerId: 'historical' });
+  const path = `/api/deals/${deal.id}/contacts`;
+  const response = await memberRequest(path, { method: 'POST', body: { contactId: contact.id, role: '  Advisor  ' } });
+  assert.equal(response.status, 201);
+  assert.deepEqual(await response.json(), { dealId: deal.id, contactId: contact.id, role: 'Advisor' });
+  assert.equal((await client.deals.get(deal.id)).contacts[0].firstName, 'Advisor');
+  assert.equal((await client.contacts.get(contact.id)).companyId, employer.id);
+  await assert.rejects(client.deals.attachContact(deal.id, { contactId: contact.id }), error => error.status === 409);
+  assert.equal((await client.deals.updateContactRole(deal.id, contact.id, { role: ' ' })).role, null);
+  assert.equal((await memberRequest(`${path}/${contact.id}`, { method: 'PATCH', body: { role: 'Buyer' } })).status, 200);
+  for (const body of [{}, { role: 'x'.repeat(81) }, { role: null, actorId: member.user.id }]) {
+    assert.equal((await memberRequest(`${path}/${contact.id}`, { method: 'PATCH', body })).status, 400);
+  }
+  assert.equal((await memberRequest(`${path}/${contact.id}`, { method: 'DELETE' })).status, 204);
+  await assert.rejects(client.deals.detachContact(deal.id, contact.id), error => error.status === 404);
+  assert.equal((await memberRequest(path, { method: 'POST', body: { contactId: 'missing' } })).status, 400);
+  assert.equal((await memberRequest('/api/deals/missing/contacts', { method: 'POST', body: { contactId: contact.id } })).status, 404);
+  const attempts = await Promise.all(Array.from({ length: 3 }, () => memberRequest(path, { method: 'POST', body: { contactId: contact.id } })));
+  assert.deepEqual(attempts.map(result => result.status).sort(), [201, 409, 409]);
+  await client.deals.detachContact(deal.id, contact.id);
+  assert.equal((await client.deals.get(deal.id)).contacts.length, 0);
+});
+
+test('activity view HTTP pagination, counts, strict filters and abortable client reads match the public contract', async () => {
+  const company = await client.companies.create({ name: 'Timeline' });
+  for (let index = 0; index < 31; index++) await client.activities.create({ type: 'NOTE', body: `Note ${index}`, companyId: company.id });
+  const task = await client.activities.create({ type: 'TASK', subject: 'Old outstanding', dueAt: '2000-01-01', companyId: company.id });
+  await client.activities.create({ type: 'EMAIL', companyId: company.id });
+  await client.activities.create({ type: 'MEETING', companyId: company.id });
+  const done = await client.activities.create({ type: 'TASK', subject: 'Completed', companyId: company.id });
+  await client.activities.complete(done.id, { completed: true });
+  const context = { companyId: company.id };
+  assert.deepEqual(await client.activities.counts(context), { all: 35, history: 34, notes: 31, upcoming: 1, done: 1, email: 1, meetings: 1 });
+  const page = await client.activities.list({ ...context, view: 'notes', page: 2, limit: 30 });
+  assert.equal(page.total, 31);
+  assert.equal(page.items.length, 1);
+  assert.equal(page.page, 2);
+  assert.equal(page.limit, 30);
+  assert.equal((await client.activities.list({ ...context, view: 'upcoming' })).items[0].id, task.id);
+  assert.equal((await client.activities.list({ ...context, view: 'upcoming', type: 'NOTE' })).total, 0);
+  for (const query of ['view=all', 'page=1', 'limit=10', 'companyId=a&companyId=b', 'type=BAD']) {
+    assert.equal((await request(`/api/activities/counts?${query}`)).status, 400);
+  }
+  assert.equal((await request('/api/activities?view=unknown')).status, 400);
+  const member = await harness.signupVerified();
+  const memberCounts = await harness.request(`/api/activities/counts?companyId=${company.id}`, { cookie: member.cookie });
+  assert.equal(memberCounts.status, 200);
+  assert.equal(memberCounts.headers.get('cache-control'), 'no-store');
+  assert.equal((await memberCounts.json()).all, 35);
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(client.activities.counts(context, { signal: controller.signal }));
+  await assert.rejects(client.activities.list(context, { signal: controller.signal }));
 });

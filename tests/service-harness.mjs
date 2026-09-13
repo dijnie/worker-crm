@@ -27,6 +27,7 @@ export async function createHarness(context) {
           export * from './services/company.service.ts';
           export * from './services/contact.service.ts';
           export * from './services/deal.service.ts';
+          export * from './services/deal-contact.service.ts';
           export * from './services/activity.service.ts';
           export * from './services/activity-stamp.service.ts';
           export * from './services/field.service.ts';

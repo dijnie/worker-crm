@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import type { DirtyEditor } from "../record-sheet/inline-field";
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,12 +49,14 @@ export function RecordForm({
   onCreated,
   onCancel,
   onPendingChange,
+  onDirtyChange,
 }: {
   entity: RecordEntity;
   defaults?: RecordDraft;
   onCreated: (record: { id: string }) => void;
   onCancel: () => void;
   onPendingChange?: (pending: boolean) => void;
+  onDirtyChange?: (state: DirtyEditor | null) => void;
 }) {
   const { api, account, invalidate, generation, store } = useAppData();
   const prefix = useId();
@@ -61,6 +64,9 @@ export function RecordForm({
     ...(entity === "deal" ? { currency: "USD", ownerId: account.id } : {}),
     ...defaults,
   }));
+  const initialDraft = useRef(draft);
+  const formRef = useRef<HTMLFormElement>(null);
+  const saveFlight = useRef<Promise<boolean> | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [pending, setPending] = useState(false);
   const submitting = useRef(false);
@@ -88,9 +94,15 @@ export function RecordForm({
         : DEAL_FIELDS;
   const change = (key: string, value: string) =>
     setDraft((current) => ({ ...current, [key]: value }));
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (submitting.current) return;
+  function submit(event: FormEvent) { event.preventDefault(); void save(); }
+  function save(): Promise<boolean> {
+    if (saveFlight.current) return saveFlight.current;
+    if (!formRef.current?.reportValidity()) return Promise.resolve(false);
+    saveFlight.current = performSave().finally(() => { saveFlight.current = null; });
+    return saveFlight.current;
+  }
+  async function performSave(): Promise<boolean> {
+    if (submitting.current) return false;
     submitting.current = true;
     setPending(true);
     onPendingChange?.(true);
@@ -105,7 +117,9 @@ export function RecordForm({
       if (mounted.current && store.isCurrent(generation)) {
         invalidate(RECORD_INVALIDATIONS);
         onCreated(result);
+        return true;
       }
+      return false;
     } catch (error) {
       if (mounted.current && store.isCurrent(generation))
         setError(
@@ -113,6 +127,7 @@ export function RecordForm({
             ? error
             : new Error("Could not create the record."),
         );
+      return false;
     } finally {
       submitting.current = false;
       if (mounted.current && store.isCurrent(generation)) {
@@ -121,8 +136,14 @@ export function RecordForm({
       }
     }
   }
+  const latestSave = useRef(save); latestSave.current = save;
+  const dirty = JSON.stringify(draft) !== JSON.stringify(initialDraft.current) || pending;
+  useEffect(() => {
+    onDirtyChange?.(dirty ? { dirty: true, pending, save: () => latestSave.current(), discard: () => { setDraft(initialDraft.current); setError(null); } } : null);
+    return () => onDirtyChange?.(null);
+  }, [dirty, pending, onDirtyChange]);
   return (
-    <form onSubmit={submit} className="space-y-5">
+    <form ref={formRef} onSubmit={submit} className="space-y-5">
       <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">
         {fields.map((key) => {
           if (

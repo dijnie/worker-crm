@@ -68,6 +68,9 @@ test("record grammar rejects malformed kinds, IDs and excessive depth with recov
     "record=company:",
     "record=company:%20",
     "record=other:a",
+    "record=company:%",
+    "record=company:%E0%A4",
+    "record=company:%ZZ",
     `record=company:${"x".repeat(201)}`,
     Array.from({ length: 11 }, (_, i) => `record=company:${i}`).join("&"),
   ])
@@ -166,4 +169,22 @@ test("table codecs validate entity facets and omit browser record stack from API
     "q",
     "sort",
   ]);
+});
+
+test("mounted host can defer an opener before the URL or stack changes", () => {
+  let action;
+  globalThis.window = {
+    dispatchEvent(event) {
+      assert.equal(event.type, navigation.RECORD_OPEN_EVENT);
+      assert.equal(event.cancelable, true);
+      action = event.detail;
+      event.preventDefault();
+      return false;
+    },
+    get location() { throw new Error("Navigation must wait for the draft decision"); },
+  };
+  try {
+    navigation.openRecord({ kind: "company", id: "deferred" });
+    assert.equal(typeof action, "function");
+  } finally { delete globalThis.window; }
 });

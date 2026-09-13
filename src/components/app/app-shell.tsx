@@ -4,6 +4,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { AppDataProvider } from "@/components/app/app-data-provider";
+import { RecordSheetHost } from "@/components/app/record-sheet/record-sheet-host";
 import { AppHeader } from "@/components/app/app-header";
 import { AppSidebar } from "@/components/app/app-sidebar";
 import type { AccountIdentity } from "@/lib/auth/request-context";
@@ -52,6 +53,6 @@ export function AppShell({ children, account }: { children: ReactNode; account: 
           </main>
         </div>
       </div>
-    </Dialog.Root></AppDataProvider>
+    </Dialog.Root><RecordSheetHost /></AppDataProvider>
   );
 }
