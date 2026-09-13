@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import Filter from "@carbon/icons-react/es/Filter";
 import ChevronDown from "@carbon/icons-react/es/ChevronDown";
 import { ToolbarMenu } from "./toolbar-menu";
+import type { FieldDefinition } from "@/lib/field-form-values";
+import { fieldFacetDefinitions } from "../fields/field-facets";
 export const facetLabels: Record<string, string> = {
   owner: "Owner",
   industry: "Industry",
@@ -31,11 +33,13 @@ function Facet({
   facet,
   query,
   onChange,
+  label = facetLabels[facet] ?? facet,
 }: {
   entity: RecordEntity;
   facet: string;
   query: RecordListQuery;
   onChange: (values: string[]) => void;
+  label?: string;
 }) {
   const { api } = useAppData();
   const [search, setSearch] = useState("");
@@ -71,7 +75,7 @@ function Facet({
   return (
     <details className="group/facet border-b last:border-b-0">
       <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
-        {facetLabels[facet]}
+        {label}
         {selected.length ? ` (${selected.length})` : ""}
         <ChevronDown
           aria-hidden="true"
@@ -80,7 +84,7 @@ function Facet({
       </summary>
       <div className="space-y-3 pb-3">
         <Input
-          aria-label={`Search ${facetLabels[facet]} filters`}
+          aria-label={`Search ${label} filters`}
           placeholder="Search options…"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
@@ -171,10 +175,12 @@ export function FacetFilters({
   entity,
   query,
   onChange,
+  fieldDefinitions = [],
 }: {
   entity: RecordEntity;
   query: RecordListQuery;
   onChange: (filters: Record<string, string[]>) => void;
+  fieldDefinitions?: readonly FieldDefinition[];
 }) {
   return (
     <ToolbarMenu
@@ -189,11 +195,12 @@ export function FacetFilters({
         Filter by record properties
       </p>
       <div>
-        {RECORD_FACETS[entity].map((facet) => (
+        {[...RECORD_FACETS[entity].map(facet => ({ key: facet, label: facetLabels[facet] })), ...fieldFacetDefinitions(fieldDefinitions).map(field => ({ key: `field:${field.key}`, label: field.label }))].map(({ key: facet, label }) => (
           <Facet
             key={facet}
             entity={entity}
             facet={facet}
+            label={label}
             query={query}
             onChange={(values) => {
               const next = { ...query.filters };

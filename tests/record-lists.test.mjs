@@ -90,7 +90,7 @@ test('record list query matrix uses real D1 filtering, sorting, facets and page 
     assert.equal((await company.list({ sort: 'deals', dir: 'desc' })).items[0].id, 'a');
   });
   await t.test('strict query bounds and unsupported extensions reject', async () => {
-    for (const query of [{ sort: 'name; DROP TABLE companies' }, { filters: JSON.parse('{"__proto__":["x"]}') }, { filters: { madeUp: ['x'] } }, { filters: { 'field:x': ['y'] } }, { includeFields: true }, { filters: 'bad' }, { filters: { industry: Array(51).fill('x') } }, { filters: { industry: [''] } }, { stage: 'CLOSED_WON' }, { currency: 'USD' }, { includeSummary: 'true' }, { limit: 101 }, { unexpected: true }]) await assert.rejects(company.list(query));
+    for (const query of [{ sort: 'name; DROP TABLE companies' }, { filters: JSON.parse('{"__proto__":["x"]}') }, { filters: { madeUp: ['x'] } }, { filters: { 'field:x': ['y'] } }, { filters: 'bad' }, { filters: { industry: Array(51).fill('x') } }, { filters: { industry: [''] } }, { stage: 'CLOSED_WON' }, { currency: 'USD' }, { includeSummary: 'true' }, { limit: 101 }, { unexpected: true }]) await assert.rejects(company.list(query));
     for (const query of [{ filters: { stage: ['unknown'] } }, { filters: { currency: ['usd'] } }, { filters: { status: ['lost'] } }, { currency: 'US' }]) await assert.rejects(deal.list(query));
     await assert.rejects(company.facets({ facetLimit: 101 }));
     await assert.rejects(company.facets({ facet: 'title' }));
@@ -140,7 +140,7 @@ test('HTTP list/facet contracts work for ordinary members and reject malformed q
     assert.equal((await request(`/api/${resource}/facets`)).status, 200);
     assert.equal((await h.request(`/api/${resource}/facets`)).status, 401);
   }
-  for (const query of ['filters={', 'filters=[]', 'filters=null', 'filters=%22text%22', 'filters={}&filters={}', 'includeSummary=1', 'includeFields=true', 'sort=unsupported', 'filters=%7B%22unknown%22%3A%5B%22x%22%5D%7D', 'filters=%7B%22field%3Ax%22%3A%5B%22x%22%5D%7D']) {
+  for (const query of ['filters={', 'filters=[]', 'filters=null', 'filters=%22text%22', 'filters={}&filters={}', 'includeSummary=1', 'sort=unsupported', 'filters=%7B%22unknown%22%3A%5B%22x%22%5D%7D', 'filters=%7B%22field%3Ax%22%3A%5B%22x%22%5D%7D']) {
     assert.equal((await request(`/api/companies?${query}`)).status, 400, query);
   }
   assert.equal((await request('/api/companies/facets?facetPage=1&facetPage=2')).status, 400);

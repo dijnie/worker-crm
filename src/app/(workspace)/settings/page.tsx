@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FieldDefinitionList } from "@/components/app/fields/field-definition-list";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ export default async function SettingsPage() {
             <Button asChild variant="outline" className="min-h-11"><Link href="/settings/members">Manage members</Link></Button>
           </div> : <p className="text-sm text-muted-foreground">Workspace owners manage member access. Open Account to view your role or sign out.</p>}
         </section>
+        <FieldDefinitionList />
       </div>
     </div>
   );

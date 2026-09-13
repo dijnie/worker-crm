@@ -52,3 +52,19 @@ test('activity invalidation rejects a delayed pre-mutation timeline even after t
  store.invalidate(['activity-create']);await store.load('activities',key,async()=>({items:['new'],total:1}));
  old.resolve({items:[],total:0});await request;assert.deepEqual(store.state(key).data,{items:['new'],total:1});
 });
+test('custom field mutations invalidate definitions, option/value queries, record projections and saved-view validation',async()=>{
+ const store=new AppDataStore();
+ const resources=['fields','fields:values','fields/options','companies','contacts','deals','company','contact','deal','facets','saved-views'];
+ for(const resource of resources) await store.load(resource,store.key(resource,{}),async()=>[resource]);
+ store.invalidate(['fields']);
+ for(const resource of resources) assert.equal(store.state(store.key(resource,{})),undefined,resource);
+});
+test('membership changes discard cached USER facets and their in-flight pre-revocation labels',async()=>{
+ const store=new AppDataStore(),old=deferred(),key=store.key('facets',{entity:'company',facet:'field:reviewer'});
+ const request=store.load('facets',key,()=>old.promise);await Promise.resolve();
+ store.invalidate(['members','assignees','identity']);
+ await store.load('facets',key,async()=>[{value:'former',label:'Unavailable / former (former)'}]);
+ old.resolve([{value:'former',label:'Active person'}]);await request;
+ assert.deepEqual(store.state(key).data,[{value:'former',label:'Unavailable / former (former)'}]);
+ store.invalidate(['members']);assert.equal(store.state(key),undefined);
+});

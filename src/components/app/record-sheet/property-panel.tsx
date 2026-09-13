@@ -1,5 +1,6 @@
 "use client";
 import type { ReactNode } from "react";
+import { CustomFieldsPanel } from "../fields/custom-fields-panel";
 import { useAppData } from "../app-data-provider";
 import { RECORD_INVALIDATIONS, type RecordEntity } from "../records/form-values";
 import { InlineField, type DirtyChange } from "./inline-field";
@@ -38,6 +39,7 @@ export function PropertyPanel({ entity, record, onDirtyChange, relationLabels = 
           return typeof result === "string" ? field === "expectedCloseDate" ? result.slice(0, 10) : result : "";
         }} />;
     })}
+    <CustomFieldsPanel record={{ kind: entity, id: record.id }} onDirtyChange={onDirtyChange} />
     {renderCustomFields?.({ record: { kind: entity, id: record.id }, onDirtyChange })}
     <details className="mt-5"><summary className="cursor-pointer text-sm font-medium">System information</summary><dl className="mt-3 space-y-3">
       {["id", "createdAt", "updatedAt", "lastActivityAt", "archivedAt", ...metadata[entity]].map(key => {

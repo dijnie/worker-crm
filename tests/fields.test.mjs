@@ -180,3 +180,83 @@ test('concurrent select conversion leaves no option side effects when a stored v
     else { assert.equal(value.text, 'text value'); assert.deepEqual(updated.options, []); }
   }
 });
+
+test('editor type precondition rejects old drafts before parsing or clearing and preserves legacy writes', async () => {
+  const field = await definition('TEXT');
+  await fields.updateDefinition(field.id, { type: 'NUMBER' });
+  await rejected(fields.upsertValue(field.id, 'COMPANY', company.id, 'old text draft', 'TEXT'), 409);
+  await rejected(fields.upsertValue(field.id, 'COMPANY', company.id, '12.34', 'TEXT'), 409);
+  await rejected(fields.upsertValue(field.id, 'COMPANY', company.id, null, 'TEXT'), 409);
+  assert.deepEqual(await h.db.select().from(h.schema.fieldValues), []);
+  await rejected(fields.upsertValue(field.id, 'COMPANY', company.id, 'old text draft'), 400);
+  await rejected(fields.upsertValue(field.id, 'COMPANY', company.id, '12.34', 'INVALID'), 400);
+  await fields.upsertValue(field.id, 'COMPANY', company.id, '12.34');
+  await rejected(fields.upsertValue(field.id, 'COMPANY', company.id, null, 'TEXT'), 409);
+  assert.equal((await fields.getValues('COMPANY', company.id))[0].value, '12.34');
+  await fields.upsertValue(field.id, 'COMPANY', company.id, null, 'NUMBER');
+  assert.deepEqual(await h.db.select().from(h.schema.fieldValues), []);
+});
+
+test('all ten editor types round-trip on each entity using the opening type', async () => {
+  const [contact] = await h.db.insert(h.schema.contacts).values({ firstName: 'Field target' }).returning();
+  const [deal] = await h.db.insert(h.schema.deals).values({ name: 'Field target', companyId: company.id, ownerId: 'external-owner' }).returning();
+  for (const [entity, target] of [['COMPANY', company], ['CONTACT', contact], ['DEAL', deal]]) {
+    for (const [type, input, expected] of [
+      ['TEXT', '  văn bản  ', 'văn bản'], ['LONG_TEXT', 'First\nTiếng Việt', 'First\nTiếng Việt'],
+      ['NUMBER', '-99999999999999999999.0000000001', '-99999999999999999999.0000000001'],
+      ['DATE', '2026-02-28', '2026-02-28T00:00:00.000Z'], ['CHECKBOX', false, false],
+      ['URL', 'https://example.test/path', 'https://example.test/path'], ['EMAIL', 'field@example.test', 'field@example.test'],
+      ['PHONE', '  +0012345  ', '+0012345'], ['USER', 'former-external-user', 'former-external-user'], ['SELECT', null, null],
+    ]) {
+      const field = await fields.createDefinition({ entity, type, label: type, required: true,
+        ...(type === 'SELECT' ? { options: [{ label: 'Choice' }] } : {}) });
+      const value = type === 'SELECT' ? field.options[0].id : input;
+      await fields.upsertValue(field.id, entity, target.id, value, type);
+      assert.equal((await fields.getValues(entity, target.id)).find(row => row.id === field.id).value, type === 'SELECT' ? value : expected);
+      await rejected(fields.upsertValue(field.id, entity, target.id, null, type), 400);
+      await fields.updateDefinition(field.id, { required: false });
+      await fields.upsertValue(field.id, entity, target.id, null, type);
+    }
+  }
+});
+
+test('concurrent editor saves and conversions reject stale types with conflict only', async () => {
+  for (let index = 0; index < 12; index++) {
+    const field = await definition('TEXT', { label: `Editor conversion ${index}` });
+    const outcomes = await Promise.allSettled([
+      fields.updateDefinition(field.id, { type: 'NUMBER' }),
+      fields.upsertValue(field.id, 'COMPANY', company.id, 'old text draft', 'TEXT'),
+    ]);
+    assert.ok(outcomes.some(result => result.status === 'fulfilled'));
+    for (const result of outcomes) if (result.status === 'rejected') assert.equal(result.reason.status, 409);
+    const updated = await fields.getDefinition(field.id);
+    const rows = await h.db.select().from(h.schema.fieldValues).where(h.eq(h.schema.fieldValues.fieldId, field.id));
+    if (updated.type === 'NUMBER') assert.deepEqual(rows, []);
+    else assert.equal(rows[0].text, 'old text draft');
+  }
+});
+
+test('the guarded write rejects type conversion after the definition read for both save and clear', async () => {
+  for (const input of ['old draft', null]) {
+    const field = await definition('TEXT', { label: input === null ? 'Clear race' : 'Save race' });
+    const read = Promise.withResolvers();
+    const resume = Promise.withResolvers();
+    // Pause after a real D1 definition read to force the stale-write window.
+    class PausedFieldService extends h.FieldService {
+      async getDefinition(id) {
+        const result = await super.getDefinition(id);
+        read.resolve();
+        await resume.promise;
+        return result;
+      }
+    }
+    const pending = new PausedFieldService(h.db).upsertValue(field.id, 'COMPANY', company.id, input, 'TEXT');
+    await read.promise;
+    try {
+      await fields.updateDefinition(field.id, { type: 'NUMBER' });
+      await fields.upsertValue(field.id, 'COMPANY', company.id, '42.00', 'NUMBER');
+    } finally { resume.resolve(); }
+    await rejected(pending, 409);
+    assert.equal((await fields.getValues('COMPANY', company.id)).find(row => row.id === field.id).value, '42.00');
+  }
+});

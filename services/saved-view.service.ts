@@ -1,3 +1,4 @@
+import { validateCustomFieldFilters } from "./field-list-query";
 import { and, eq, or, sql } from "drizzle-orm";
 import { z } from "zod/v3";
 import type { Database } from "@/lib/db";
@@ -21,10 +22,11 @@ export type SavedViewFilters = z.input<typeof savedViewFiltersInput>;
 export type CreateSavedViewInput = z.input<typeof createSavedViewInput>;
 export type UpdateSavedViewInput = z.input<typeof updateSavedViewInput>;
 export type SavedView = Omit<typeof savedViews.$inferSelect, "filters"> & { filters: SavedViewFilters; mine: boolean };
-function validateFilters(entity: typeof FIELD_ENTITIES[number], filters: SavedViewFilters) {
-  recordListInput(entity.toLowerCase() as "company" | "contact" | "deal").parse({
+async function validateFilters(db: Database, entity: typeof FIELD_ENTITIES[number], filters: SavedViewFilters) {
+  const query = recordListInput(entity.toLowerCase() as "company" | "contact" | "deal").parse({
     search: filters.q, sort: filters.sort, dir: filters.dir, archived: filters.archived, filters: filters.filters,
   });
+  await validateCustomFieldFilters(db, entity.toLowerCase() as "company" | "contact" | "deal", query.filters);
   return filters;
 }
 export class SavedViewService {
@@ -38,7 +40,7 @@ export class SavedViewService {
   }
   async create(actorId: string, input: unknown): Promise<SavedView> {
     const data = createSavedViewInput.parse(input);
-    validateFilters(data.entity, data.filters);
+    await validateFilters(this.db, data.entity, data.filters);
     try {
       const [row] = await this.db.insert(savedViews).values({ ...data, ownerId: identifier.parse(actorId) }).returning();
       return { ...row, filters: row.filters as SavedViewFilters, mine: true };
@@ -49,7 +51,7 @@ export class SavedViewService {
     const where = and(eq(savedViews.id, identifier.parse(id)), eq(savedViews.ownerId, identifier.parse(actorId)));
     const [existing] = await this.db.select().from(savedViews).where(where);
     requireRecord(existing, "Saved view");
-    if (data.filters) validateFilters(existing.entity, data.filters);
+    if (data.filters) await validateFilters(this.db, existing.entity, data.filters);
     try {
       const [row] = await this.db.update(savedViews).set({ ...data, updatedAt: new Date().toISOString() }).where(where).returning();
       requireRecord(row, "Saved view");

@@ -5,6 +5,7 @@ import { companies, contacts, deals, fieldDefinitions, fieldOptions, fieldValues
 import { FIELD_ENTITIES, FIELD_TYPES, type FieldEntity, type FieldType } from "@/lib/db/schema/constants";
 import { ServiceError, requireRecord, translateDatabaseError } from "@/lib/utils/service-error";
 import { dateTime, decimalString, identifier, requiredText } from "@/lib/utils/validation";
+import { reorderFieldsInput } from "@/lib/server/field-api-inputs";
 
 const position = z.number().int().min(0).max(2147483646);
 const optionInput = z.object({ label: requiredText, position: position.optional() }).strict();
@@ -63,6 +64,32 @@ export class FieldService {
     const definition = requireRecord(record, "Field");
     const options = definition.type === "SELECT" ? await this.optionsFor(id, false) : [];
     return { ...definition, options };
+  }
+
+  async reorder(input: unknown) {
+    const { entity, ids } = parse(reorderFieldsInput, input);
+    if (new Set(ids).size !== ids.length) throw new ServiceError(400, "A field may appear only once");
+    // JSON keeps even large permutations below D1's bound-parameter limit.
+    const encodedIds = JSON.stringify(ids);
+    const requested = await this.db.select({ entity: fieldDefinitions.entity }).from(fieldDefinitions)
+      .where(sql`${fieldDefinitions.id} in (select value from json_each(${encodedIds}))`);
+    if (requested.some(field => field.entity !== entity)) throw new ServiceError(400, "A field does not belong to this entity");
+    const active = and(eq(fieldDefinitions.entity, entity), isNull(fieldDefinitions.archivedAt));
+    // Membership is checked again inside the atomic write. Neither create nor
+    // archive can interleave between this guard and position assignment.
+    const completeSet = sql`(select count(*) from field_definitions where entity = ${entity} and archived_at is null) = ${ids.length}
+      and not exists (select 1 from json_each(${encodedIds}) requested
+        where not exists (select 1 from field_definitions where id = requested.value and entity = ${entity} and archived_at is null))`;
+    const [updated, counts] = await this.db.batch([
+      this.db.update(fieldDefinitions).set({
+        position: sql`(select cast(key as integer) from json_each(${encodedIds}) where value = ${fieldDefinitions.id})`,
+        updatedAt: new Date().toISOString(),
+      }).where(and(active, completeSet)).returning({ id: fieldDefinitions.id }),
+      this.db.select({ count: sql<number>`count(*)` }).from(fieldDefinitions).where(active),
+    ]);
+    // The count read shares the transaction, including the empty permutation.
+    if (updated.length !== ids.length || counts[0].count !== ids.length) throw new ServiceError(409, "Active fields changed; reload before reordering");
+    return this.listDefinitions(entity);
   }
 
   async createDefinition(input: unknown) {
@@ -198,12 +225,14 @@ export class FieldService {
     });
   }
 
-  async upsertValue(fieldId: string, entityType: FieldEntity, entityId: string, input: unknown) {
+  async upsertValue(fieldId: string, entityType: FieldEntity, entityId: string, input: unknown, expectedType?: FieldType) {
+    expectedType = parse(z.enum(FIELD_TYPES).optional(), expectedType);
     const definition = await this.getDefinition(fieldId);
+    if (expectedType !== undefined && definition.type !== expectedType) throw new ServiceError(409, "Field type changed; reload the field before saving");
     const target = await this.target(entityType, entityId);
     if (definition.archivedAt || definition.entity !== target.entity) throw new ServiceError(400, "The active field must match the target entity");
     const value = this.parseValue(definition, input);
-    const definitionGuard = sql`exists (select 1 from field_definitions where id = ${definition.id} and entity = ${target.entity} and type = ${definition.type} and archived_at is null ${value === null ? sql`and required = 0` : sql``})`;
+    const definitionGuard = sql`exists (select 1 from field_definitions where id = ${definition.id} and entity = ${target.entity} and type = ${definition.type} ${expectedType === undefined ? sql`` : sql`and type = ${expectedType}`} and archived_at is null ${value === null ? sql`and required = 0` : sql``})`;
     if (value === null) {
       const [, valid] = await this.db.batch([this.db.delete(fieldValues).where(and(eq(fieldValues.fieldId, definition.id), eq(target.column, target.id), definitionGuard)), this.db.select({ id: fieldDefinitions.id }).from(fieldDefinitions).where(and(eq(fieldDefinitions.id, definition.id), definitionGuard))]);
       if (!valid.length) throw new ServiceError(409, "Field changed while clearing the value");

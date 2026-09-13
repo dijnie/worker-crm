@@ -75,7 +75,7 @@ const error = { ...objectOf({ message: { type: "string" }, code: { type: "string
 const ownerSummary = objectOf({ id: { type: "string" }, name: { type: "string" }, image: { type: "string", nullable: true } });
 const companySummary = objectOf({ id: { type: "string" }, name: { type: "string" }, archivedAt: { type: "string", nullable: true } });
 function listRow(base: OpenAPIV3.SchemaObject, withCompany = false, counts = false): OpenAPIV3.SchemaObject {
-  return { ...extend(base, { owner: { ...ownerSummary, nullable: true }, ...(withCompany ? { company: { ...companySummary, nullable: true } } : {}),
+  return { ...extend(base, { fields: { type: "object", additionalProperties: resolvedValue, description: "Present only with includeFields=true. Active showOnTable definition keys map to typed values; absent values are null." }, owner: { ...ownerSummary, nullable: true }, ...(withCompany ? { company: { ...companySummary, nullable: true } } : {}),
     ...(counts ? { contactCount: { type: "integer", minimum: 0 }, openDealCount: { type: "integer", minimum: 0 } } as const : {}) }), required: base.required };
 }
 const savedView = extend(tableSchema(savedViews), { mine: { type: "boolean" }, filters: { type: "object", description: "Source-compatible saved query configuration. Unsupported legacy field references remain readable for deliberate repair." } });

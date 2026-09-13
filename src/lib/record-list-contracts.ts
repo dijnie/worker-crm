@@ -23,6 +23,11 @@ export interface RecordFacets {
 }
 export interface OwnerSummary { id: string; name: string; image: string | null }
 export interface CompanySummary { id: string; name: string; archivedAt: string | null }
+export type RecordFieldValue = string | boolean | null;
+export interface RecordFields { fields?: Record<string, RecordFieldValue> }
+export function isCustomFieldFacet(key: string): boolean {
+  return /^field:[a-z][a-z0-9_]{0,199}$/.test(key);
+}
 export interface RecordSummary {
   owner?: OwnerSummary | null;
   company?: CompanySummary | null;
@@ -32,8 +37,8 @@ export interface RecordSummary {
 
 export function recordFiltersInput(entity: RecordEntity) {
   const facetKey = z.string().superRefine((key, context) => {
-    if (!(RECORD_FACETS[entity] as readonly string[]).includes(key)) {
-      context.addIssue({ code: "custom", message: key.startsWith("field:") ? "Custom field facets are unsupported" : "Unsupported facet" });
+    if (!(RECORD_FACETS[entity] as readonly string[]).includes(key) && !isCustomFieldFacet(key)) {
+      context.addIssue({ code: "custom", message: "Unsupported facet" });
     }
   });
   return z.record(facetKey, z.array(z.string().trim().min(1).max(1000)).max(50)).superRefine((filters, context) => {
@@ -41,7 +46,7 @@ export function recordFiltersInput(entity: RecordEntity) {
     for (const [key, values] of Object.entries(filters)) {
       const choices: readonly string[] | undefined = key === "stage" ? DEAL_STAGES : key === "status" ? ["all", "open", "closed"] : key === "closing" ? CLOSING_WINDOWS : key === "activity" ? ["7", "30", "90"] : key === "enrichment" ? ENRICHMENT_STATUSES : key === "source" ? RECORD_SOURCES : undefined;
       values.forEach((value, index) => {
-        if ((choices && !choices.includes(value)) || (key === "currency" && !/^[A-Z]{3}$/.test(value)) || (["owner", "company"].includes(key) && value.length > 200)) {
+        if ((choices && !choices.includes(value)) || (key === "currency" && !/^[A-Z]{3}$/.test(value)) || ((["owner", "company"].includes(key) || isCustomFieldFacet(key)) && value.length > 200)) {
           context.addIssue({ code: "custom", path: [key, index], message: "Unsupported facet value" });
         }
       });
@@ -55,7 +60,7 @@ export function recordListInput(entity: RecordEntity) {
     dir: z.enum(["asc", "desc"]).default("desc"),
     filters: recordFiltersInput(entity).default({}),
     includeSummary: z.boolean().default(false),
-    includeFields: z.boolean().refine(value => !value, "Custom field projections are unsupported").default(false),
+    includeFields: z.boolean().default(false),
     companyId: entity === "company" ? z.never().optional() : identifier.optional(),
     stage: entity === "deal" ? z.enum(DEAL_STAGES).optional() : z.never().optional(),
     currency: entity === "deal" ? currencyCode.optional() : z.never().optional(),
@@ -63,7 +68,7 @@ export function recordListInput(entity: RecordEntity) {
 }
 export function recordFacetInput(entity: RecordEntity) {
   return recordListInput(entity).extend({
-    facet: z.string().refine(value => (RECORD_FACETS[entity] as readonly string[]).includes(value), "Unsupported facet").optional(),
+    facet: z.string().refine(value => (RECORD_FACETS[entity] as readonly string[]).includes(value) || isCustomFieldFacet(value), "Unsupported facet").optional(),
     facetSearch: z.string().trim().max(1000).optional(),
     facetPage: z.number().int().min(1).max(1000000).default(1),
     facetLimit: z.number().int().min(1).max(100).default(50),

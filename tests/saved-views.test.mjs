@@ -50,3 +50,35 @@ test('saved-view writes reject prototype-named unknown facets without silently d
   const response = await call(owner, '/api/saved-views', 'POST', { entity: 'COMPANY', name: 'Unknown facet', filters });
   assert.equal(response.status, 400);
 });
+
+test('custom saved views retain stable keys and retired options, while stale views remain readable for repair', async () => {
+  const definitionResponse = await call(member, '/api/fields', 'POST', { entity: 'COMPANY', key: 'saved_segment', label: 'Segment', type: 'SELECT', showOnFilter: true, showOnTable: true, options: [{ label: 'Priority' }, { label: 'Other' }] });
+  assert.equal(definitionResponse.status, 201);
+  const definition = await definitionResponse.json();
+  const option = definition.options[0];
+  const filters = { filters: { 'field:saved_segment': [option.id] } };
+  const created = await call(member, '/api/saved-views', 'POST', { entity: 'COMPANY', name: 'Custom segment', shared: true, filters });
+  assert.equal(created.status, 201);
+  const view = await created.json();
+  assert.equal((await call(owner, `/api/saved-views/${view.id}`, 'PATCH', { name: 'Not mine' })).status, 404);
+  assert.equal((await call(member, `/api/fields/${definition.id}`, 'PATCH', { label: 'Renamed segment' })).status, 200);
+  assert.equal((await call(member, `/api/fields/${definition.id}/options/${option.id}`, 'PATCH', { archived: true })).status, 200);
+  assert.equal((await call(member, `/api/saved-views/${view.id}`, 'PATCH', { filters })).status, 200);
+  const personal = await call(owner, '/api/saved-views', 'POST', { entity: 'COMPANY', name: 'Personal custom segment', filters });
+  assert.equal(personal.status, 201);
+  const personalView = await personal.json();
+  assert.equal((await (await call(member, '/api/saved-views?entity=COMPANY')).json()).some(item => item.id === personalView.id), false);
+  for (const body of [
+    { entity: 'CONTACT', name: 'Wrong entity', filters },
+    { entity: 'COMPANY', name: 'Wrong option', filters: { filters: { 'field:saved_segment': ['foreign-option'] } } },
+  ]) assert.equal((await call(member, '/api/saved-views', 'POST', body)).status, 400);
+  assert.equal((await call(member, `/api/fields/${definition.id}`, 'DELETE')).status, 200);
+  const retained = (await (await call(owner, '/api/saved-views?entity=COMPANY')).json()).find(item => item.id === view.id);
+  assert.deepEqual(retained.filters, filters);
+  assert.equal((await call(member, `/api/saved-views/${view.id}`, 'PATCH', { name: 'Repair later' })).status, 200);
+  assert.equal((await call(member, `/api/saved-views/${view.id}`, 'PATCH', { filters })).status, 400);
+  assert.equal((await call(member, `/api/companies?filters=${encodeURIComponent(JSON.stringify(filters.filters))}`)).status, 400);
+  assert.equal((await call(member, `/api/saved-views/${view.id}`, 'PATCH', { filters: { filters: {} } })).status, 200);
+  assert.equal((await call(member, `/api/fields/${definition.id}/restore`, 'POST')).status, 200);
+  assert.equal((await call(member, `/api/saved-views/${view.id}`, 'PATCH', { filters })).status, 200);
+});

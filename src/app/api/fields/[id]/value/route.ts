@@ -4,7 +4,7 @@ import { fieldValueInput } from "@/lib/server/field-api-inputs";
 
 export function PUT(request: Request, context: RouteContext) {
   return withApi(request, async ({ db }) => {
-    const { entity, entityId, value } = fieldValueInput.parse(await readJson(request));
-    return Response.json(await new FieldService(db).upsertValue((await context.params).id, entity, entityId, value));
+    const { entity, entityId, value, expectedType } = fieldValueInput.parse(await readJson(request));
+    return Response.json(await new FieldService(db).upsertValue((await context.params).id, entity, entityId, value, expectedType));
   });
 }

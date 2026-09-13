@@ -12,7 +12,7 @@ import { createActivityApiInput } from "@/lib/server/activity-api-inputs";
 import { stageApiInput } from "@/lib/server/deal-api-inputs";
 import { memberListInput, memberMutationInput } from "@services/member.service";
 import { statsInput } from "@services/stats.service";
-import { fieldListInput, optionListInput, fieldValuesInput, fieldValueInput } from "@/lib/server/field-api-inputs";
+import { fieldListInput, optionListInput, fieldValuesInput, fieldValueInput, reorderFieldsInput } from "@/lib/server/field-api-inputs";
 import { identifier, listInput } from "@/lib/utils/validation";
 import { annotateProperty, inputSchema } from "./schema-helpers";
 
@@ -52,6 +52,7 @@ export const requestSchemas = {
   CreateOption: inputSchema(createOptionInput),
   UpdateOption: inputSchema(updateOptionInput),
   SetFieldValue: inputSchema(fieldValueInput),
+  ReorderFields: inputSchema(reorderFieldsInput),
 } satisfies Record<string, OpenAPIV3.SchemaObject>;
 
 const textNormalization = "Text is trimmed. Blank optional text becomes null; omit a property to preserve it in a partial update. Unknown and protected properties are rejected.";
@@ -124,11 +125,13 @@ for (const [entity, name] of [["company", "Company"], ["contact", "Contact"], ["
   for (const suffix of ["Query", "FacetQuery"] as const) {
     const schema = requestSchemas[`${name}${suffix}`];
     annotateProperty(schema, "sort", { enum: [...RECORD_SORTS[entity]], description: "Server sort before pagination; stable ID tie-breaker. Amount groups by currency then exact cents; nulls last." });
-    annotateProperty(schema, "filters", { description: `One JSON object of string-array facets: ${RECORD_FACETS[entity].join(", ")}. Up to 50 selected values per facet and 32768 characters. OR within facets, AND between facets. Custom field keys are unsupported.` });
-    annotateProperty(schema, "includeFields", { enum: [false], description: "Reserved: true returns an unsupported request error until custom projections are implemented." });
+    annotateProperty(schema, "filters", { description: `One JSON object of string-array facets: ${RECORD_FACETS[entity].join(", ")}, plus field:<key> for active SELECT/USER definitions with showOnFilter. Up to 50 selected values per facet and 32768 characters. OR within facets, AND between facets. Retired or unsupported definitions require explicit filter repair; selected retired option and historical user IDs remain filterable.` });
+    annotateProperty(schema, "includeFields", { description: "Opt in to a page-batched fields map keyed by immutable definition key for active showOnTable fields. Values retain exact decimal strings, booleans and null. Default responses omit fields." });
     annotateProperty(schema, "includeSummary", { description: "Opt in to page-batched safe owner/company labels and company contact/open-deal counts." });
   }
 }
+requestSchemas.ReorderFields.description = "IDs must be an exact deduplicated permutation of the entity's active definitions. Positions update atomically. Duplicate/foreign IDs return 400; stale/incomplete membership returns 409 without position changes. Archived definitions retain stored positions.";
+annotateProperty(requestSchemas.SetFieldValue, "expectedType", { description: "Optional editor-time type precondition. A mismatch returns 409 without writing or reinterpreting the draft. Omit for the legacy write behavior." });
 requestSchemas.CreateSavedView.description = "Only entity/name/shared/filters are accepted. Owner is the signed-in account. filters stores q/sort/dir/archived/filters, validated against its entity; no page, selection, identity or record stack. Duplicate name per entity and owner returns 409.";
 requestSchemas.UpdateSavedView.description = "Only creator may change name/shared/filters. Foreign or absent views return 404, including for workspace owners.";
 

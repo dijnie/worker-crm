@@ -1,7 +1,8 @@
+import { customFieldFacet, customFieldPredicate, projectRecordFields, validateCustomFieldFilters } from "./field-list-query";
 import { and, count, eq, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { Database } from "@/lib/db";
 import { companies, contacts, deals, user, type CompanySelect, type ContactSelect, type DealSelect } from "@/lib/db/schema";
-import { CLOSED_STAGES, CLOSING_WINDOWS, RECORD_FACETS, recordFacetInput, recordListInput, type FacetOption, type ParsedRecordListQuery, type RecordEntity, type RecordFacets, type RecordSummary } from "@/lib/record-list-contracts";
+import { CLOSED_STAGES, CLOSING_WINDOWS, RECORD_FACETS, recordFacetInput, recordListInput, type FacetOption, type ParsedRecordListQuery, type RecordEntity, type RecordFacets, type RecordSummary, type RecordFields, isCustomFieldFacet } from "@/lib/record-list-contracts";
 import { escapeLike, type Page } from "@/lib/utils/validation";
 
 const tables = { company: companies, contact: contacts, deal: deals };
@@ -73,7 +74,8 @@ export function recordListWhere(entity: RecordEntity, query: ParsedRecordListQue
     query.companyId && entity !== "company" ? eq(tables[entity].companyId, query.companyId) : undefined,
     query.stage ? eq(deals.stage, query.stage) : undefined,
     query.currency ? eq(deals.currency, query.currency) : undefined,
-    ...Object.entries(query.filters).filter(([key]) => key !== omitFacet).map(([key, values]) => facetPredicate(entity, key, values, now)),
+    customFieldPredicate(entity, query.filters, omitFacet),
+    ...Object.entries(query.filters).filter(([key]) => key !== omitFacet && !isCustomFieldFacet(key)).map(([key, values]) => facetPredicate(entity, key, values, now)),
   )!;
 }
 function ordering(entity: RecordEntity, query: ParsedRecordListQuery): SQL[] {
@@ -100,15 +102,16 @@ function ordering(entity: RecordEntity, query: ParsedRecordListQuery): SQL[] {
   return [sql`${value} IS NULL ASC`, text ? sql`${value} COLLATE NOCASE ${direction}` : sql`${value} ${direction}`, sql`${table.id} ${direction}`];
 }
 
-export async function listRecords<E extends RecordEntity>(db: Database, entity: E, input: unknown = {}): Promise<Page<Rows[E] & RecordSummary>> {
+export async function listRecords<E extends RecordEntity>(db: Database, entity: E, input: unknown = {}): Promise<Page<Rows[E] & RecordSummary & RecordFields>> {
   const query = recordListInput(entity).parse(input);
+  await validateCustomFieldFilters(db, entity, query.filters);
   const table = tables[entity];
   const where = recordListWhere(entity, query, new Date());
   const [items, totals] = await db.batch([
     db.select().from(table).where(where).orderBy(...ordering(entity, query)).limit(query.limit).offset((query.page - 1) * query.limit),
     db.select({ total: count() }).from(table).where(where),
   ]);
-  const rows = items as unknown as (Rows[E] & RecordSummary)[];
+  let rows = items as unknown as (Rows[E] & RecordSummary & RecordFields)[];
   if (query.includeSummary && rows.length) {
     const ownerIds = [...new Set(rows.flatMap(row => row.ownerId ? [row.ownerId] : []))];
     const companyIds = entity === "company" ? [] : [...new Set((rows as (ContactSelect | DealSelect)[]).flatMap(row => row.companyId ? [row.companyId] : []))];
@@ -131,14 +134,16 @@ export async function listRecords<E extends RecordEntity>(db: Database, entity: 
       }
     }
   }
+  if (query.includeFields) rows = await projectRecordFields(db, entity, rows);
   return { items: rows, total: totals[0].total, page: query.page, limit: query.limit };
 }
 
 export async function recordFacets(db: Database, entity: RecordEntity, input: unknown = {}): Promise<RecordFacets> {
   const query = recordFacetInput(entity).parse(input);
+  const definitions = await validateCustomFieldFilters(db, entity, query.filters, query.facet, !query.facet);
   const now = new Date();
   const result: RecordFacets = { facetCounts: {}, facetPages: {} };
-  const keys = query.facet ? [query.facet] : RECORD_FACETS[entity];
+  const keys = query.facet ? [query.facet] : [...RECORD_FACETS[entity], ...definitions.map(field => `field:${field.key}`)];
   await Promise.all(keys.map(async facet => {
     const where = recordListWhere(entity, query, now, facet);
     const selected = [...new Set(query.filters[facet] ?? [])];
@@ -146,7 +151,13 @@ export async function recordFacets(db: Database, entity: RecordEntity, input: un
     let options: FacetOption[];
     let total: number;
     const page = query.facet ? query.facetPage : 1;
-    if (fixedValues) {
+    if (isCustomFieldFacet(facet)) {
+      const definition = definitions.find(field => `field:${field.key}` === facet)!;
+      const custom = await customFieldFacet(db, entity, definition, where, selected, query.facetSearch, page, query.facetLimit);
+      result.facetCounts[facet] = custom.options;
+      result.facetPages[facet] = custom.pagination;
+      return;
+    } else if (fixedValues) {
       const all = await Promise.all(fixedValues.map(async value => {
         const [row] = await db.select({ count: count() }).from(tables[entity]).where(and(where, facetPredicate(entity, facet, [value], now)));
         return { value, label: value, count: row.count };

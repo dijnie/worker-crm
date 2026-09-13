@@ -99,6 +99,21 @@ test('request schemas describe required fields, protected properties and exact f
   assert.equal(schemaValidator(document, requestSchema('/api/fields/{id}/value', 'put'))({ entity: 'COMPANY', entityId: 'company' }), false);
   assert.equal(schemaValidator(document, requestSchema('/api/fields/{id}/value', 'put'))({ entity: 'COMPANY', entityId: 'company', value: 12.5 }), false);
 });
+test('custom field ordering, projections and editor-time type preconditions are documented additively', () => {
+  assert.ok(document.paths['/api/fields/reorder'].post);
+  const reorder = schemaValidator(document, requestSchema('/api/fields/reorder', 'post'));
+  assert.equal(reorder({ entity: 'COMPANY', ids: ['a', 'b'] }), true);
+  assert.equal(reorder({ entity: 'COMPANY', ids: ['a'], actorId: 'forged' }), false);
+  const value = schemaValidator(document, requestSchema('/api/fields/{id}/value', 'put'));
+  assert.equal(value({ entity: 'CONTACT', entityId: 'contact', value: false, expectedType: 'CHECKBOX' }), true);
+  assert.equal(value({ entity: 'CONTACT', entityId: 'contact', value: null }), true);
+  assert.equal(value({ entity: 'CONTACT', entityId: 'contact', value: 'draft', expectedType: 'OTHER' }), false);
+  for (const entity of ['Company','Contact','Deal']) {
+    assert.equal(schemaValidator(document, document.components.schemas[`${entity}Query`])({ includeFields: true }), true);
+    assert.ok(document.components.schemas[`${entity}ListRow`].properties.fields);
+    assert.equal(document.components.schemas[`${entity}ListRow`].required.includes('fields'), false);
+  }
+});
 
 test('request examples satisfy their documented schemas and destructive activity deletion has no response body', () => {
   let exampleCount = 0;

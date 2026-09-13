@@ -42,6 +42,9 @@ export class AppDataStore {
   resume() { this.blocked = false; this.emit(); }
   invalidate(resources: readonly string[]) {
     const affected = new Set(resources);
+    if (resources.some(resource => resource === "fields" || resource.startsWith("fields:") || resource.startsWith("fields/"))) {
+      ["fields", "companies", "contacts", "deals", "company", "contact", "deal", "facets", "saved-views", "relations", "details"].forEach(resource => affected.add(resource));
+    }
     if (resources.some(resource => resource === "activity-create" || resource === "activity-delete")) {
       ["companies", "contacts", "deals", "company", "contact", "deal", "activities", "stats", "relations", "details", "facets", "recent", "recent-feed", "tasks"].forEach(resource => affected.add(resource));
     }
@@ -53,7 +56,7 @@ export class AppDataStore {
       ["companies", "contacts", "deals", "company", "contact", "deal", "activities", "stats", "relations", "details", "facets", "recent", "recent-feed"].forEach(resource => affected.add(resource));
     }
     if (resources.some(resource => /member|assignee|identity/.test(resource))) {
-      ["members", "assignees", "identity", "companies", "contacts", "deals"].forEach(resource => affected.add(resource));
+      ["members", "assignees", "identity", "companies", "contacts", "deals", "facets"].forEach(resource => affected.add(resource));
     }
     for (const [key, entry] of this.entries) if ([...affected].some(resource => entry.resource === resource || entry.resource.startsWith(`${resource}:`) || entry.resource.startsWith(`${resource}/`))) {
       entry.controller?.abort(); this.entries.delete(key);

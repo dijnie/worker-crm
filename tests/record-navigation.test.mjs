@@ -157,11 +157,14 @@ test("table codecs validate entity facets and omit browser record stack from API
   for (const value of [
     "filters=broken",
     "sort=amount",
-    "filters=%7B%22field%3Ax%22%3A%5B%22v%22%5D%7D",
+    "filters=%7B%22field%3A%22%3A%5B%22v%22%5D%7D",
     "page=1&page=2",
     "archived=maybe",
   ])
     assert.throws(() => query.parseTableQuery("company", value));
+  const custom = query.parseTableQuery("company", "filters=%7B%22field%3Ax%22%3A%5B%22v%22%5D%7D");
+  assert.deepEqual(query.tableQueryToApi(custom).filters, { "field:x": ["v"] });
+  assert.deepEqual(query.savedConfiguration(custom).filters, { "field:x": ["v"] });
   assert.deepEqual(Object.keys(query.savedConfiguration(state)).sort(), [
     "archived",
     "dir",

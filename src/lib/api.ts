@@ -1,7 +1,7 @@
 export type { ActivityView, ActivityCounts, ActivityCountsInput, ActivityListInput } from "@services/activity.service";
 import type { DealContactService, AttachDealContactInput, UpdateDealContactRoleInput } from "@services/deal-contact.service";
 import type { z } from "zod/v3";
-import type { FieldEntity } from "./db/schema/constants";
+import type { FieldEntity, FieldType } from "./db/schema/constants";
 import type { CompanyService, CreateCompanyInput, UpdateCompanyInput } from "@services/company.service";
 import type { ContactService, CreateContactInput, UpdateContactInput } from "@services/contact.service";
 import type { DealService, CreateDealInput, UpdateDealInput, DealListInput } from "@services/deal.service";
@@ -14,7 +14,7 @@ import type { MemberListInput, MemberMutationInput, MemberRecord } from "@servic
 import type { Page } from "./utils/validation";
 
 export type { RecordListQuery } from "./record-list-contracts";
-import type { RecordListQuery, RecordFacetQuery, RecordFacets, RecordSummary } from "./record-list-contracts";
+import type { RecordListQuery, RecordFacetQuery, RecordFacets, RecordSummary, RecordFields, RecordFieldValue } from "./record-list-contracts";
 import type { Assignee, AssigneeListInput } from "@services/assignee.service";
 import type { SavedView, CreateSavedViewInput, UpdateSavedViewInput } from "@services/saved-view.service";
 export interface ApiRequestOptions { signal?: AbortSignal }
@@ -81,8 +81,11 @@ export function createApiClient(options: { baseUrl?: string; headers?: HeadersIn
 
   function records<Row, Detail, Create, Update, Query extends object>(resource: string) {
     const path = `/api/${resource}`;
+    function recordList(query: Query & { includeFields: true }, transport?: ApiRequestOptions): Promise<Page<Row & RecordSummary & { fields: Record<string, RecordFieldValue> }>>;
+    function recordList(query?: Query, transport?: ApiRequestOptions): Promise<Page<Row & RecordSummary & RecordFields>>;
+    function recordList(query?: Query, transport?: ApiRequestOptions) { return list<Row & RecordSummary & RecordFields>(path, query, transport); }
     return {
-      list: (query?: Query, transport?: ApiRequestOptions) => list<Row & RecordSummary>(path, query, transport),
+      list: recordList,
       facets: (query?: RecordFacetQuery, transport?: ApiRequestOptions) => json<RecordFacets>(`${path}/facets`, "GET", undefined, query, transport),
       get: (id: string, transport?: ApiRequestOptions) => json<Detail>(`${path}/${pathId(id)}`, "GET", undefined, undefined, transport),
       create: (body: Create) => json<Row>(path, "POST", body),
@@ -111,17 +114,18 @@ export function createApiClient(options: { baseUrl?: string; headers?: HeadersIn
       delete: async (id: string) => { await request(`/api/activities/${pathId(id)}`, "DELETE"); },
     },
     fields: {
-      list: (entity: FieldEntity, includeArchived = false) => json<Result<FieldService["listDefinitions"]>>("/api/fields", "GET", undefined, { entity, includeArchived }),
-      get: (id: string) => json<Result<FieldService["getDefinition"]>>(`/api/fields/${pathId(id)}`),
+      list: (entity: FieldEntity, includeArchived = false, transport?: ApiRequestOptions) => json<Result<FieldService["listDefinitions"]>>("/api/fields", "GET", undefined, { entity, includeArchived }, transport),
+      get: (id: string, transport?: ApiRequestOptions) => json<Result<FieldService["getDefinition"]>>(`/api/fields/${pathId(id)}`, "GET", undefined, undefined, transport),
+      reorder: (body: { entity: FieldEntity; ids: string[] }) => json<Result<FieldService["listDefinitions"]>>("/api/fields/reorder", "POST", body),
       create: (body: z.input<typeof createFieldInput>) => json<Result<FieldService["createDefinition"]>>("/api/fields", "POST", body),
       update: (id: string, body: z.input<typeof updateFieldInput>) => json<Result<FieldService["updateDefinition"]>>(`/api/fields/${pathId(id)}`, "PATCH", body),
       archive: (id: string) => json<Result<FieldService["archiveDefinition"]>>(`/api/fields/${pathId(id)}`, "DELETE"),
       restore: (id: string) => json<Result<FieldService["restoreDefinition"]>>(`/api/fields/${pathId(id)}/restore`, "POST"),
-      options: (id: string, includeArchived = false) => json<Result<FieldService["listOptions"]>>(`/api/fields/${pathId(id)}/options`, "GET", undefined, { includeArchived }),
+      options: (id: string, includeArchived = false, transport?: ApiRequestOptions) => json<Result<FieldService["listOptions"]>>(`/api/fields/${pathId(id)}/options`, "GET", undefined, { includeArchived }, transport),
       createOption: (id: string, body: z.input<typeof createOptionInput>) => json<Result<FieldService["createOption"]>>(`/api/fields/${pathId(id)}/options`, "POST", body),
       updateOption: (id: string, optionId: string, body: z.input<typeof updateOptionInput>) => json<Result<FieldService["updateOption"]>>(`/api/fields/${pathId(id)}/options/${pathId(optionId)}`, "PATCH", body),
-      values: (entity: FieldEntity, entityId: string) => json<Result<FieldService["getValues"]>>("/api/fields/values", "GET", undefined, { entity, entityId }),
-      setValue: (id: string, entity: FieldEntity, entityId: string, value: unknown) => json<Result<FieldService["upsertValue"]>>(`/api/fields/${pathId(id)}/value`, "PUT", { entity, entityId, value }),
+      values: (entity: FieldEntity, entityId: string, transport?: ApiRequestOptions) => json<Result<FieldService["getValues"]>>("/api/fields/values", "GET", undefined, { entity, entityId }, transport),
+      setValue: (id: string, entity: FieldEntity, entityId: string, value: unknown, expectedType?: FieldType) => json<Result<FieldService["upsertValue"]>>(`/api/fields/${pathId(id)}/value`, "PUT", { entity, entityId, value, ...(expectedType ? { expectedType } : {}) }),
     },
     assignees: { list: (query?: AssigneeListInput, transport?: ApiRequestOptions) => list<Assignee>("/api/assignees", query, transport) },
     savedViews: {

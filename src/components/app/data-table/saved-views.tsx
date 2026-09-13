@@ -4,7 +4,6 @@ import { ToolbarMenu } from "./toolbar-menu";
 import { useEffect, useRef, useState } from "react";
 import {
   recordListInput,
-  RECORD_FACETS,
   type RecordEntity,
 } from "@/lib/record-list-contracts";
 import type { FieldEntity } from "@/lib/db/schema/constants";
@@ -12,6 +11,8 @@ import { useAppData, useAppQuery } from "../app-data-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { selectClass } from "../records/record-picker";
+import type { FieldDefinition } from "@/lib/field-form-values";
+import { supportedFieldFilter } from "../fields/field-facets";
 import {
   DEFAULT_TABLE_QUERY,
   savedConfiguration,
@@ -22,11 +23,15 @@ export function SavedViews({
   query,
   apply,
   clear,
+  fieldDefinitions = [],
+  definitionsReady = true,
 }: {
   entity: RecordEntity;
   query: TableQuery;
   apply: (query: TableQuery) => void;
   clear: () => void;
+  fieldDefinitions?: readonly FieldDefinition[];
+  definitionsReady?: boolean;
 }) {
   const { api, invalidate, generation, store } = useAppData();
   const fieldEntity = entity.toUpperCase() as FieldEntity;
@@ -67,18 +72,31 @@ export function SavedViews({
   useEffect(() => {
     if (current) setShared(current.shared);
   }, [current?.id, current?.shared]);
+  useEffect(() => {
+    if (!current || !definitionsReady) return;
+    const repairMessage = "This view references a retired or unsupported field. Repair its filters before applying it.";
+    if (Object.keys(query.filters).some(key => !supportedFieldFilter(entity, key, fieldDefinitions))) {
+      setUnsupported(current.id);
+      setError(repairMessage);
+    } else {
+      setUnsupported(id => id === current.id ? null : id);
+      setError(message => message === repairMessage ? "" : message);
+    }
+  }, [current, definitionsReady, entity, fieldDefinitions, query.filters]);
   function select(id: string, repair = false) {
     const view = result.data?.find((item) => item.id === id);
     if (!view) return;
+    if (!definitionsReady) { setError("Wait for field definitions to load before applying this view."); return; }
     try {
       const config = view.filters as ReturnType<typeof savedConfiguration>;
       const filters = repair
         ? Object.fromEntries(
             Object.entries(config.filters ?? {}).filter(([key]) =>
-              (RECORD_FACETS[entity] as readonly string[]).includes(key),
+              supportedFieldFilter(entity, key, fieldDefinitions),
             ),
           )
         : config.filters;
+      if (Object.keys(filters ?? {}).some(key => !supportedFieldFilter(entity, key, fieldDefinitions))) throw new Error("Unsupported field filter");
       const parsed = recordListInput(entity).parse({
         search: config.q,
         sort: config.sort,
@@ -138,7 +156,7 @@ export function SavedViews({
             aria-label="Apply saved view"
             className={`${selectClass} mt-2`}
             value={query.view ?? ""}
-            disabled={pending || result.loading || result.refreshing}
+            disabled={pending || result.loading || result.refreshing || !definitionsReady}
             onChange={(event) =>
               event.target.value ? select(event.target.value) : clear()
             }

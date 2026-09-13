@@ -65,6 +65,39 @@ test('empty database returns an array, pagination headers and zero statistics', 
   assert.equal((await lowercaseStats.json()).currency, 'USD');
 });
 
+test('field ordering, editor preconditions and opt-in custom projections agree with protected HTTP and OpenAPI', async () => {
+  const company = await client.companies.create({ name: 'Custom placement' });
+  const select = await client.fields.create({ entity: 'COMPANY', key: 'tier', label: 'Tier', type: 'SELECT', showOnTable: true, showOnFilter: true, options: [{ label: 'High' }, { label: 'Low' }] });
+  const number = await client.fields.create({ entity: 'COMPANY', label: 'Exact score', type: 'NUMBER', showOnTable: true });
+  const checkbox = await client.fields.create({ entity: 'COMPANY', label: 'Reviewed', type: 'CHECKBOX', required: true, showOnTable: true });
+  await client.fields.setValue(select.id, 'COMPANY', company.id, select.options[0].id, 'SELECT');
+  await client.fields.setValue(number.id, 'COMPANY', company.id, '-900719925474099312345.00123', 'NUMBER');
+  await client.fields.setValue(checkbox.id, 'COMPANY', company.id, false, 'CHECKBOX');
+  assert.equal(Object.hasOwn((await client.companies.list()).items[0], 'fields'), false);
+  const projected = await client.companies.list({ includeFields: true, filters: { 'field:tier': [select.options[0].id] } });
+  assert.equal(projected.total, 1);
+  assert.deepEqual(projected.items[0].fields, { tier: select.options[0].id, exact_score: '-900719925474099312345.00123', reviewed: false });
+  const facets = await client.companies.facets({ facet: 'field:tier', filters: { 'field:tier': [select.options[0].id] } });
+  assert.equal(facets.facetCounts['field:tier'].find(option => option.value === select.options[0].id).count, 1);
+  const ids = [checkbox.id, number.id, select.id];
+  assert.deepEqual((await client.fields.reorder({ entity: 'COMPANY', ids })).map(field => field.id), ids);
+  await assert.rejects(client.fields.reorder({ entity: 'COMPANY', ids: [select.id, select.id] }), error => error.status === 400);
+  await assert.rejects(client.fields.reorder({ entity: 'COMPANY', ids: [select.id] }), error => error.status === 409);
+  assert.deepEqual((await client.fields.list('COMPANY')).map(field => field.id), ids);
+  const stale = await client.fields.create({ entity: 'COMPANY', label: 'Changing', type: 'TEXT' });
+  await client.fields.update(stale.id, { type: 'NUMBER' });
+  await assert.rejects(client.fields.setValue(stale.id, 'COMPANY', company.id, '12', 'TEXT'), error => error.status === 409);
+  assert.equal((await client.fields.values('COMPANY', company.id)).find(field => field.id === stale.id).value, null);
+  await client.fields.setValue(stale.id, 'COMPANY', company.id, '12');
+  assert.equal((await client.fields.values('COMPANY', company.id)).find(field => field.id === stale.id).value, '12');
+  assert.equal((await request(`/api/fields/${stale.id}/value`, { method: 'PUT', body: { entity: 'COMPANY', entityId: company.id, value: '13', expectedType: 'UNKNOWN' } })).status, 400);
+  const view = await client.savedViews.create({ entity: 'COMPANY', name: 'High tier', filters: { filters: { 'field:tier': [select.options[0].id] } } });
+  await client.fields.archive(select.id);
+  assert.equal((await client.savedViews.list('COMPANY')).find(item => item.id === view.id).filters.filters['field:tier'][0], select.options[0].id);
+  await assert.rejects(client.companies.list({ filters: { 'field:tier': [select.options[0].id] } }), error => error.status === 400);
+  assert.equal((await request('/api/companies?includeFields=maybe')).status, 400);
+});
+
 test('client performs record CRUD, pagination, archive/restore and exact money round trips', async () => {
   const create = await request('/api/companies', { method: 'POST', body: { name: 'Test' } });
   assert.equal(create.status, 201);

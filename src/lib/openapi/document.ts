@@ -48,6 +48,7 @@ register("DELETE", "/api/activities/:id", { operationId: "deleteActivity", tag: 
 register("POST", "/api/activities/:id/complete", { operationId: "completeTask", tag: "Activities", body: "CompleteTask", response: "Activity" });
 register("GET", "/api/fields", { operationId: "listFields", tag: "Fields", query: "FieldQuery", response: "FieldDefinitionWithOptions", array: true });
 register("POST", "/api/fields", { operationId: "createField", tag: "Fields", body: "CreateField", response: "FieldDefinitionWithOptions", status: 201 });
+register("POST", "/api/fields/reorder", { operationId: "reorderFields", tag: "Fields", body: "ReorderFields", response: "FieldDefinitionWithOptions", array: true });
 register("GET", "/api/fields/:id", { operationId: "getField", tag: "Fields", response: "FieldDefinitionWithOptions" });
 register("PATCH", "/api/fields/:id", { operationId: "updateField", tag: "Fields", body: "UpdateField", response: "FieldDefinitionWithOptions" });
 register("DELETE", "/api/fields/:id", { operationId: "archiveField", tag: "Fields", response: "FieldDefinitionWithOptions" });

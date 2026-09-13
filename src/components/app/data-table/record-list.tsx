@@ -8,7 +8,7 @@ import {
   type RowSelectionState,
   type VisibilityState,
 } from "@tanstack/react-table";
-import type { RecordEntity, RecordSummary } from "@/lib/record-list-contracts";
+import type { RecordEntity, RecordSummary, RecordFields } from "@/lib/record-list-contracts";
 import type { Page } from "@/lib/utils/validation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,7 +41,11 @@ import { FacetFilters, facetLabels } from "./facet-filters";
 import { SavedViews } from "./saved-views";
 import { useTableQuery } from "./use-table-query";
 import { tableQueryToApi } from "./table-query";
-export interface RecordListRow extends RecordSummary {
+import { useFieldDefinitions } from "../fields/use-field-definitions";
+import { fieldColumns } from "../fields/field-columns";
+import { fieldFilterLabel, fieldFilterValues, supportedFieldFilter } from "../fields/field-facets";
+import { useAssigneeDirectory } from "../records/use-assignee-directory";
+export interface RecordListRow extends RecordSummary, RecordFields {
   id: string;
   name?: string;
   firstName?: string;
@@ -61,7 +65,7 @@ export interface RecordListRow extends RecordSummary {
   archivedAt?: string | null;
   enrichmentStatus?: string | null;
 }
-/** Future field projections supply typed, display-only columns through this boundary. */
+/** Field projections supply typed, display-only columns through this boundary. */
 export interface RecordColumnExtension {
   id: `field:${string}`;
   label: string;
@@ -128,13 +132,19 @@ function ListContent({
 }) {
   const { api, account, generation } = useAppData();
   const { query, update, clear, write } = state;
+  const fieldQuery = useFieldDefinitions(entity);
+  const directory = useAssigneeDirectory();
+  const directoryStatus = directory.error ? "User directory unavailable" : directory.loading ? "Loading user…" : undefined;
+  const customColumns = useMemo(() => fieldColumns(fieldQuery.data ?? [], directory.data ?? [], directoryStatus), [fieldQuery.data, directory.data, directoryStatus]);
+  const displayColumns = useMemo(() => [...customColumns, ...extraColumns.filter(column => !customColumns.some(field => field.id === column.id))], [customColumns, extraColumns]);
+  const unavailableFilters = fieldQuery.data ? Object.keys(query.filters).filter(key => !supportedFieldFilter(entity, key, fieldQuery.data!)) : [];
   const resource =
     entity === "company"
       ? "companies"
       : entity === "contact"
         ? "contacts"
         : "deals";
-  const apiQuery = tableQueryToApi(query);
+  const apiQuery = { ...tableQueryToApi(query), includeFields: customColumns.length > 0 };
   const result = useAppQuery<Page<RecordListRow>>(
     resource,
     apiQuery,
@@ -299,12 +309,12 @@ function ListContent({
         column("archivedAt", "Archived", (row) => date(row.archivedAt)),
       );
     base.push(
-      ...extraColumns.map((extension) =>
+      ...displayColumns.map((extension) =>
         column(extension.id, extension.label, extension.render, false),
       ),
     );
     return base;
-  }, [entity, query.archived, extraColumns]);
+  }, [entity, query.archived, displayColumns]);
   const table = useReactTable({
     data: rows,
     columns,
@@ -396,6 +406,9 @@ function ListContent({
           </Button>
         </div>
       )}
+      {fieldQuery.error ? <p role="alert" className="text-sm text-destructive">Custom field definitions could not load. {fieldQuery.error instanceof Error ? fieldQuery.error.message : "Request failed."} <button type="button" className="underline" onClick={fieldQuery.refresh}>Retry custom fields</button></p> : fieldQuery.loading && <p role="status" className="text-sm text-muted-foreground">Loading custom fields…</p>}
+      {!!directory.error && fieldQuery.data?.some(field => field.type === "USER" && (field.showOnTable || field.showOnFilter) && !field.archivedAt) && <p role="alert" className="text-sm text-destructive">User directory unavailable. <button type="button" className="underline" onClick={directory.refresh}>Retry user directory</button></p>}
+      {unavailableFilters.length > 0 && <div role="alert" className="space-y-2 rounded border border-destructive/30 p-3 text-sm"><p>A selected custom field is retired or no longer supports filtering. Repair the filters to continue.</p><Button variant="outline" onClick={() => update({ filters: Object.fromEntries(Object.entries(query.filters).filter(([key]) => !unavailableFilters.includes(key))) })}>Remove unavailable field filters</Button></div>}
       <section
         aria-label={`${labels[entity]} records`}
         className="rounded-lg border bg-card"
@@ -417,6 +430,7 @@ function ListContent({
           <FacetFilters
             entity={entity}
             query={apiQuery}
+            fieldDefinitions={fieldQuery.data}
             onChange={(filters) => update({ filters })}
           />
           <SavedViews
@@ -424,6 +438,8 @@ function ListContent({
             query={query}
             apply={(next) => write(next)}
             clear={clear}
+            fieldDefinitions={fieldQuery.data}
+        definitionsReady={!fieldQuery.loading && !fieldQuery.refreshing && !fieldQuery.error}
           />
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <label className="flex min-h-11 cursor-pointer items-center gap-2 px-2 text-sm text-muted-foreground md:min-h-9">
@@ -495,7 +511,7 @@ function ListContent({
               <button
                 key={facet}
                 type="button"
-                aria-label={`Remove ${facetLabels[facet] ?? facet} filter`}
+                aria-label={`Remove ${facetLabels[facet] ?? fieldFilterLabel(facet, fieldQuery.data ?? [])} filter`}
                 className="inline-flex max-w-full items-center gap-2 rounded border border-primary/20 bg-primary/5 px-2 py-1 text-xs text-link hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   const filters = { ...query.filters };
@@ -504,10 +520,10 @@ function ListContent({
                 }}
               >
                 <span className="truncate">
-                  {facetLabels[facet] ?? facet}:{" "}
+                  {facetLabels[facet] ?? fieldFilterLabel(facet, fieldQuery.data ?? [])}:{" "}
                   {facet === "owner" || facet === "company"
                     ? `${values.length} selected`
-                    : values.join(", ")}
+                    : facet.startsWith("field:") ? fieldFilterValues(facet, values, fieldQuery.data ?? [], directory.data ?? [], directoryStatus) : values.join(", ")}
                 </span>
                 <Close aria-hidden="true" className="size-3 shrink-0" />
               </button>
