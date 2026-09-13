@@ -1,11 +1,13 @@
-import { and, count, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { listRecords, recordFacets } from "./record-list-query";
+import { recordListInput } from "@/lib/record-list-contracts";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod/v3";
 import type { Database } from "@/lib/db";
 import { activities, companies, deals, DEAL_STAGES } from "@/lib/db/schema";
 import { ActivityStampService } from "./activity-stamp.service";
 import { decimalToCents, serializeDeal } from "@/lib/utils/money";
 import { requireRecord, ServiceError } from "@/lib/utils/service-error";
-import { currencyCode, dateTime, decimalString, escapeLike, identifier, listInput, optionalText, requiredText } from "@/lib/utils/validation";
+import { currencyCode, dateTime, decimalString, identifier, optionalText, requiredText } from "@/lib/utils/validation";
 
 const amountInput = decimalString.refine(value => /^\d+(?:\.\d{1,2})?$/.test(value),
   "Amount must be nonnegative with at most two fractional digits").nullable().optional();
@@ -19,10 +21,7 @@ export const createDealInput = z.object({
   expectedCloseDate: dateTime.nullable().optional(),
 }).strict();
 export const updateDealInput = createDealInput.partial().strict();
-export const dealListInput = listInput.extend({
-  companyId: identifier.optional(),
-  stage: z.enum(DEAL_STAGES).optional(),
-}).strict();
+export const dealListInput = recordListInput("deal");
 export const stageShape = {
   stage: z.enum(DEAL_STAGES),
   reason: optionalText,
@@ -43,23 +42,12 @@ export class DealService {
   }
 
   async list(input: unknown = {}) {
-    const options = dealListInput.parse(input);
-    const term = options.search ? `%${escapeLike(options.search)}%` : null;
-    const where = and(
-      options.archived ? isNotNull(deals.archivedAt) : isNull(deals.archivedAt),
-      options.companyId ? eq(deals.companyId, options.companyId) : undefined,
-      options.stage ? eq(deals.stage, options.stage) : undefined,
-      term ? sql`(${deals.name} LIKE ${term} ESCAPE '\\' OR EXISTS (
-        SELECT 1 FROM ${companies} WHERE ${companies.id} = ${deals.companyId}
-        AND ${companies.name} LIKE ${term} ESCAPE '\\'))` : undefined,
-    );
-    const [items, totals] = await this.db.batch([
-      this.db.select().from(deals).where(where)
-        .orderBy(sql`julianday(${deals.createdAt}) DESC`, desc(deals.id))
-        .limit(options.limit).offset((options.page - 1) * options.limit),
-      this.db.select({ total: count() }).from(deals).where(where),
-    ]);
-    return { items: items.map(serializeDeal), total: totals[0].total, page: options.page, limit: options.limit };
+    const result = await listRecords(this.db, "deal", input);
+    return { ...result, items: result.items.map(serializeDeal) };
+  }
+
+  async facets(input: unknown = {}) {
+    return recordFacets(this.db, "deal", input);
   }
 
   async getById(id: string) {

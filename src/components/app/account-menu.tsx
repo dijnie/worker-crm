@@ -1,5 +1,6 @@
 "use client";
 
+import { useAppData } from "./app-data-provider";
 import UserAvatar from "@carbon/icons-react/es/UserAvatar";
 import Link from "next/link";
 import { useState } from "react";
@@ -9,20 +10,21 @@ import { authClient } from "@/lib/auth/auth-client";
 import type { AccountIdentity } from "@/lib/auth/request-context";
 
 export function AccountMenu({ account }: { account: AccountIdentity }) {
+  const { clear, resume } = useAppData();
   const [open, setOpen] = useState(false);
-  // The browser endpoint can renew both the session and its HttpOnly cookie.
-  authClient.useSession();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
   async function signOut() {
+    clear();
     setPending(true);
     setError("");
     try {
       const result = await authClient.signOut();
-      if (result.error) setError("Sign out failed. Please try again.");
+      if (result.error) { resume(); setError("Sign out failed. Please try again."); }
       else window.location.assign("/sign-in");
     } catch {
+      resume();
       setError("Sign out failed. Check your connection and try again.");
     } finally {
       setPending(false);

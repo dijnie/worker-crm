@@ -1,3 +1,6 @@
+import { recordListInput, recordFacetInput, RECORD_SORTS, RECORD_FACETS } from "@/lib/record-list-contracts";
+import { assigneeListInput } from "@services/assignee.service";
+import { createSavedViewInput, updateSavedViewInput, savedViewListInput } from "@services/saved-view.service";
 import type { OpenAPIV3 } from "openapi-types";
 import { createCompanyInput, updateCompanyInput } from "@services/company.service";
 import { contactListInput, createContactInput, updateContactInput } from "@services/contact.service";
@@ -14,7 +17,14 @@ import { annotateProperty, inputSchema } from "./schema-helpers";
 
 export const requestSchemas = {
   Identifier: inputSchema(identifier),
-  CompanyQuery: inputSchema(listInput),
+  CompanyQuery: inputSchema(recordListInput("company")),
+  CompanyFacetQuery: inputSchema(recordFacetInput("company")),
+  ContactFacetQuery: inputSchema(recordFacetInput("contact")),
+  DealFacetQuery: inputSchema(recordFacetInput("deal")),
+  AssigneeQuery: inputSchema(assigneeListInput),
+  SavedViewQuery: inputSchema(savedViewListInput),
+  CreateSavedView: inputSchema(createSavedViewInput),
+  UpdateSavedView: inputSchema(updateSavedViewInput),
   ContactQuery: inputSchema(contactListInput),
   DealQuery: inputSchema(dealListInput),
   ActivityQuery: inputSchema(activityListInput),
@@ -105,3 +115,15 @@ requestSchemas.SetFieldValue.description = "value must be present, including whe
 export type RequestSchemaName = keyof typeof requestSchemas;
 
 requestSchemas.MutateMember.description = "Owner-only action with a nonnegative integer expectedRevision matching the current member. Successful changes increment revision. Restore always grants member and requires a fresh sign-in. Revocation and restoration invalidate sessions. Self-demotion and self-revocation require another active owner. Unknown IDs return 404; stale revisions, invalid transitions and last-owner conflicts return 409.";
+
+for (const [entity, name] of [["company", "Company"], ["contact", "Contact"], ["deal", "Deal"]] as const) {
+  for (const suffix of ["Query", "FacetQuery"] as const) {
+    const schema = requestSchemas[`${name}${suffix}`];
+    annotateProperty(schema, "sort", { enum: [...RECORD_SORTS[entity]], description: "Server sort before pagination; stable ID tie-breaker. Amount groups by currency then exact cents; nulls last." });
+    annotateProperty(schema, "filters", { description: `One JSON object of string-array facets: ${RECORD_FACETS[entity].join(", ")}. Up to 50 selected values per facet and 32768 characters. OR within facets, AND between facets. Custom field keys are unsupported.` });
+    annotateProperty(schema, "includeFields", { enum: [false], description: "Reserved: true returns an unsupported request error until custom projections are implemented." });
+    annotateProperty(schema, "includeSummary", { description: "Opt in to page-batched safe owner/company labels and company contact/open-deal counts." });
+  }
+}
+requestSchemas.CreateSavedView.description = "Only entity/name/shared/filters are accepted. Owner is the signed-in account. filters stores q/sort/dir/archived/filters, validated against its entity; no page, selection, identity or record stack. Duplicate name per entity and owner returns 409.";
+requestSchemas.UpdateSavedView.description = "Only creator may change name/shared/filters. Foreign or absent views return 404, including for workspace owners.";

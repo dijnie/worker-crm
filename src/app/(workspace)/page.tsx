@@ -4,7 +4,7 @@ export default function OverviewPage() {
   return (
     <AppEmptyState
       title="Overview"
-      description="Your overview is not available yet. Company, contact, and deal management is still being built."
+      description="Your overview is not available yet. Manage your companies, contacts, and deals from the sidebar."
     />
   );
 }

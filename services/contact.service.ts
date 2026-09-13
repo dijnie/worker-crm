@@ -1,10 +1,12 @@
-import { and, count, desc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { listRecords, recordFacets } from "./record-list-query";
+import { recordListInput } from "@/lib/record-list-contracts";
+import { eq } from "drizzle-orm";
 import { z } from "zod/v3";
 import type { Database } from "@/lib/db";
 import { companies, contacts, type ContactSelect } from "@/lib/db/schema";
 import { serializeDeal } from "@/lib/utils/money";
 import { requireRecord, ServiceError, translateDatabaseError } from "@/lib/utils/service-error";
-import { escapeLike, identifier, listInput, nullableId, optionalText, requiredText, type Page } from "@/lib/utils/validation";
+import { identifier, nullableId, optionalText, requiredText } from "@/lib/utils/validation";
 
 const emailInput = optionalText
   .pipe(z.string().email().nullable().optional())
@@ -27,29 +29,17 @@ export const updateContactInput = createContactInput.partial().strict();
 export type CreateContactInput = z.input<typeof createContactInput>;
 export type UpdateContactInput = z.input<typeof updateContactInput>;
 
-export const contactListInput = listInput.extend({ companyId: identifier.optional() });
+export const contactListInput = recordListInput("contact");
 
 export class ContactService {
   constructor(private readonly db: Database) {}
 
-  async list(input: unknown = {}): Promise<Page<ContactSelect>> {
-    const { page, limit, search, archived, companyId } = contactListInput.parse(input);
-    const pattern = search ? `%${escapeLike(search)}%` : undefined;
-    const where = and(
-      archived ? isNotNull(contacts.archivedAt) : isNull(contacts.archivedAt),
-      companyId === undefined ? undefined : eq(contacts.companyId, companyId),
-      pattern === undefined ? undefined : or(
-        sql`${contacts.firstName} LIKE ${pattern} ESCAPE '\\'`,
-        sql`${contacts.lastName} LIKE ${pattern} ESCAPE '\\'`,
-        sql`${contacts.email} LIKE ${pattern} ESCAPE '\\'`,
-      ),
-    );
-    const [items, [total]] = await Promise.all([
-      this.db.select().from(contacts).where(where)
-        .orderBy(desc(contacts.createdAt), desc(contacts.id)).limit(limit).offset((page - 1) * limit),
-      this.db.select({ value: count() }).from(contacts).where(where),
-    ]);
-    return { items, total: total.value, page, limit };
+  async list(input: unknown = {}) {
+    return listRecords(this.db, "contact", input);
+  }
+
+  async facets(input: unknown = {}) {
+    return recordFacets(this.db, "contact", input);
   }
 
   async getById(input: unknown) {

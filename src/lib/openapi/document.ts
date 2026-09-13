@@ -4,7 +4,7 @@ import { requestSchemas, type RequestSchemaName } from "./requests";
 import { responseSchemas, type ResponseSchemaName } from "./responses";
 import { arrayOf, reference } from "./schema-helpers";
 
-type Tag = "Companies" | "Contacts" | "Deals" | "Activities" | "Fields" | "Stats" | "Members";
+type Tag = "Companies" | "Contacts" | "Deals" | "Activities" | "Fields" | "Stats" | "Members" | "Saved views" | "Assignees";
 interface Contract {
   operationId: string;
   tag: Tag;
@@ -28,7 +28,8 @@ for (const [resource, singular, tag] of [
   ["deals", "Deal", "Deals"],
 ] as const) {
   const path = `/api/${resource}`;
-  register("GET", path, { operationId: `list${tag}`, tag, query: `${singular}Query`, response: singular, array: true, paginated: true });
+  register("GET", path, { operationId: `list${tag}`, tag, query: `${singular}Query`, response: `${singular}ListRow`, array: true, paginated: true });
+  register("GET", `${path}/facets`, { operationId: `facet${tag}`, tag, query: `${singular}FacetQuery`, response: "RecordFacets" });
   register("POST", path, { operationId: `create${singular}`, tag, body: `Create${singular}`, response: singular, status: 201 });
   register("GET", `${path}/:id`, { operationId: `get${singular}`, tag, response: `${singular}Detail` });
   register("PATCH", `${path}/:id`, { operationId: `update${singular}`, tag, body: `Update${singular}`, response: singular === "Deal" ? "DealUpdateResult" : singular });
@@ -57,6 +58,12 @@ register("GET", "/api/stats", { operationId: "getStats", tag: "Stats", query: "S
 register("GET", "/api/members", { operationId: "listMembers", tag: "Members", query: "MemberQuery", response: "Member", array: true, paginated: true });
 register("PATCH", "/api/members/:id", { operationId: "mutateMember", tag: "Members", body: "MutateMember", response: "Member" });
 
+register("GET", "/api/assignees", { operationId: "listAssignees", tag: "Assignees", query: "AssigneeQuery", response: "Assignee", array: true, paginated: true });
+register("GET", "/api/saved-views", { operationId: "listSavedViews", tag: "Saved views", query: "SavedViewQuery", response: "SavedView", array: true });
+register("POST", "/api/saved-views", { operationId: "createSavedView", tag: "Saved views", body: "CreateSavedView", response: "SavedView", status: 201 });
+register("PATCH", "/api/saved-views/:id", { operationId: "updateSavedView", tag: "Saved views", body: "UpdateSavedView", response: "SavedView" });
+register("DELETE", "/api/saved-views/:id", { operationId: "deleteSavedView", tag: "Saved views", status: 204 });
+
 const noStore: OpenAPIV3.HeaderObject = { description: "Responses are not cached.", schema: { type: "string", enum: ["no-store"] } };
 const paginationHeaders: Record<string, OpenAPIV3.HeaderObject> = {
   "X-Total-Count": { description: "Total matching records before pagination.", schema: { type: "integer", minimum: 0 } },
@@ -84,6 +91,10 @@ function parameters(path: string, query?: RequestSchemaName): OpenAPIV3.Paramete
   if (query) {
     const schema = requestSchemas[query];
     for (const [name, property] of Object.entries(schema.properties ?? {})) {
+      if (name === "filters") {
+        result.push({ name, in: "query", required: false, content: { "application/json": { schema: property } }, description: "One JSON-encoded object, not repeated parameters. Up to 32768 characters." });
+        continue;
+      }
       result.push({
         name, in: "query", required: schema.required?.includes(name) ?? false,
         schema: property,
@@ -135,7 +146,7 @@ export const openApiDocument: OpenAPIV3.Document = {
     description: "Shared-workspace APIs protected by verified sessions and active membership. Sign in at /sign-in, then return here to Try it out; the browser sends same-origin HttpOnly cookies automatically. Anonymous requests return 401. Member administration requires an active owner. Mutations require the configured same Origin and JSON content type for JSON bodies. Client actor fields are rejected; attribution comes from the signed-in account. Better Auth delegates authentication operations under /api/auth/*; these dynamic routes are separate from this business API catalog. This public document contains no application records, environment values or credentials.",
   },
   servers: [{ url: "/", description: "Same-origin application server" }],
-  tags: ["Companies", "Contacts", "Deals", "Activities", "Fields", "Stats", "Members"].map(name => ({ name })),
+  tags: ["Companies", "Contacts", "Deals", "Activities", "Fields", "Stats", "Members", "Saved views", "Assignees"].map(name => ({ name })),
   security: [{ sessionCookie: [] }, { secureSessionCookie: [] }],
   paths,
   components: {

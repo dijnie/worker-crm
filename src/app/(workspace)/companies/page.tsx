@@ -1,10 +1,5 @@
-import { AppEmptyState } from "@/components/app/app-empty-state";
+import { RecordList } from "@/components/app/data-table/record-list";
 
 export default function CompaniesPage() {
-  return (
-    <AppEmptyState
-      title="Companies"
-      description="Company management is not available yet."
-    />
-  );
+  return <RecordList entity="company" />;
 }

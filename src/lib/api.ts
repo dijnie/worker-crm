@@ -11,15 +11,14 @@ import type { StageApiInput } from "./server/deal-api-inputs";
 import type { MemberListInput, MemberMutationInput, MemberRecord } from "@services/member.service";
 import type { Page } from "./utils/validation";
 
-export interface RecordListQuery {
-  page?: number;
-  limit?: number;
-  search?: string;
-  archived?: boolean;
-}
-
+export type { RecordListQuery } from "./record-list-contracts";
+import type { RecordListQuery, RecordFacetQuery, RecordFacets, RecordSummary } from "./record-list-contracts";
+import type { Assignee, AssigneeListInput } from "@services/assignee.service";
+import type { SavedView, CreateSavedViewInput, UpdateSavedViewInput } from "@services/saved-view.service";
+export interface ApiRequestOptions { signal?: AbortSignal }
+export interface ApiIssue { path: (string | number)[]; message: string }
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string) {
+  constructor(public readonly status: number, message: string, public readonly issues?: ApiIssue[], public readonly code?: string) {
     super(message);
     this.name = "ApiError";
   }
@@ -27,39 +26,49 @@ export class ApiError extends Error {
 
 type Result<T extends (...args: never[]) => unknown> = Awaited<ReturnType<T>>;
 
-export function createApiClient(options: { baseUrl?: string; headers?: HeadersInit; fetch?: typeof fetch } = {}) {
+export function createApiClient(options: { baseUrl?: string; headers?: HeadersInit; fetch?: typeof fetch; onError?: (error: ApiError, path: string) => void | Promise<void> } = {}) {
   const baseUrl = (options.baseUrl ?? "").replace(/\/$/, "");
   const fetchRequest = options.fetch ?? globalThis.fetch.bind(globalThis);
   const pathId = (id: string) => encodeURIComponent(id);
 
-  async function request(path: string, method = "GET", body?: unknown, query?: object) {
+  async function request(path: string, method = "GET", body?: unknown, query?: object, transport?: ApiRequestOptions) {
     const search = new URLSearchParams();
     for (const [key, value] of Object.entries(query ?? {})) {
-      if (value !== undefined) search.set(key, String(value));
+      if (value !== undefined) search.set(key, key === "filters" ? JSON.stringify(value) : String(value));
     }
     const headers = new Headers(options.headers);
     if (body !== undefined) headers.set("Content-Type", "application/json");
     const response = await fetchRequest(`${baseUrl}${path}${search.size ? `?${search}` : ""}`, {
-      method, headers, credentials: "same-origin", cache: "no-store",
+      method, headers, credentials: "same-origin", cache: "no-store", signal: transport?.signal,
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (!response.ok) {
       let message = `Request failed (${response.status})`;
+      let issues: ApiIssue[] | undefined;
+      let code: string | undefined;
       try {
         const error: unknown = await response.json();
-        if (error && typeof error === "object" && "message" in error && typeof error.message === "string") message = error.message;
+        if (error && typeof error === "object") {
+          if ("message" in error && typeof error.message === "string") message = error.message;
+          if ("code" in error && typeof error.code === "string" && /^[A-Z_]{1,80}$/.test(error.code)) code = error.code;
+          if ("issues" in error && Array.isArray(error.issues)) issues = error.issues.filter((issue): issue is ApiIssue =>
+            !!issue && typeof issue === "object" && typeof issue.message === "string" && Array.isArray(issue.path) &&
+            issue.path.every((part: unknown) => typeof part === "string" || (typeof part === "number" && Number.isInteger(part))));
+        }
       } catch { /* Non-JSON failures still retain their HTTP status. */ }
-      throw new ApiError(response.status, message);
+      const error = new ApiError(response.status, message, issues, code);
+      await options.onError?.(error, path);
+      throw error;
     }
     return response;
   }
 
-  async function json<T>(path: string, method = "GET", body?: unknown, query?: object): Promise<T> {
-    return (await request(path, method, body, query)).json() as Promise<T>;
+  async function json<T>(path: string, method = "GET", body?: unknown, query?: object, transport?: ApiRequestOptions): Promise<T> {
+    return (await request(path, method, body, query, transport)).json() as Promise<T>;
   }
 
-  async function list<T>(path: string, query?: object): Promise<Page<T>> {
-    const response = await request(path, "GET", undefined, query);
+  async function list<T>(path: string, query?: object, transport?: ApiRequestOptions): Promise<Page<T>> {
+    const response = await request(path, "GET", undefined, query, transport);
     return {
       items: await response.json() as T[],
       total: Number(response.headers.get("X-Total-Count")),
@@ -71,8 +80,9 @@ export function createApiClient(options: { baseUrl?: string; headers?: HeadersIn
   function records<Row, Detail, Create, Update, Query extends object>(resource: string) {
     const path = `/api/${resource}`;
     return {
-      list: (query?: Query) => list<Row>(path, query),
-      get: (id: string) => json<Detail>(`${path}/${pathId(id)}`),
+      list: (query?: Query, transport?: ApiRequestOptions) => list<Row & RecordSummary>(path, query, transport),
+      facets: (query?: RecordFacetQuery, transport?: ApiRequestOptions) => json<RecordFacets>(`${path}/facets`, "GET", undefined, query, transport),
+      get: (id: string, transport?: ApiRequestOptions) => json<Detail>(`${path}/${pathId(id)}`, "GET", undefined, undefined, transport),
       create: (body: Create) => json<Row>(path, "POST", body),
       update: (id: string, body: Update) => json<Row>(`${path}/${pathId(id)}`, "PATCH", body),
       archive: (id: string) => json<Row>(`${path}/${pathId(id)}`, "DELETE"),
@@ -107,8 +117,15 @@ export function createApiClient(options: { baseUrl?: string; headers?: HeadersIn
       values: (entity: FieldEntity, entityId: string) => json<Result<FieldService["getValues"]>>("/api/fields/values", "GET", undefined, { entity, entityId }),
       setValue: (id: string, entity: FieldEntity, entityId: string, value: unknown) => json<Result<FieldService["upsertValue"]>>(`/api/fields/${pathId(id)}/value`, "PUT", { entity, entityId, value }),
     },
+    assignees: { list: (query?: AssigneeListInput, transport?: ApiRequestOptions) => list<Assignee>("/api/assignees", query, transport) },
+    savedViews: {
+      list: (entity: FieldEntity, transport?: ApiRequestOptions) => json<SavedView[]>("/api/saved-views", "GET", undefined, { entity }, transport),
+      create: (body: CreateSavedViewInput) => json<SavedView>("/api/saved-views", "POST", body),
+      update: (id: string, body: UpdateSavedViewInput) => json<SavedView>(`/api/saved-views/${pathId(id)}`, "PATCH", body),
+      delete: async (id: string) => { await request(`/api/saved-views/${pathId(id)}`, "DELETE"); },
+    },
     members: {
-      list: (query?: MemberListInput) => list<MemberRecord>("/api/members", query),
+      list: (query?: MemberListInput, transport?: ApiRequestOptions) => list<MemberRecord>("/api/members", query, transport),
       update: (id: string, body: MemberMutationInput) => json<MemberRecord>(`/api/members/${pathId(id)}`, "PATCH", body),
     },
     stats: (currency = "USD") => json<Result<StatsService["getStats"]>>("/api/stats", "GET", undefined, { currency }),

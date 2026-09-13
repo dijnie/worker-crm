@@ -1,10 +1,5 @@
-import { AppEmptyState } from "@/components/app/app-empty-state";
+import { RecordList } from "@/components/app/data-table/record-list";
 
 export default function ContactsPage() {
-  return (
-    <AppEmptyState
-      title="Contacts"
-      description="Contact management is not available yet."
-    />
-  );
+  return <RecordList entity="contact" />;
 }

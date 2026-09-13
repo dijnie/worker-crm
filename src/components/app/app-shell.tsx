@@ -3,6 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
+import { AppDataProvider } from "@/components/app/app-data-provider";
 import { AppHeader } from "@/components/app/app-header";
 import { AppSidebar } from "@/components/app/app-sidebar";
 import type { AccountIdentity } from "@/lib/auth/request-context";
@@ -31,7 +32,7 @@ export function AppShell({ children, account }: { children: ReactNode; account: 
   }, []);
 
   return (
-    <Dialog.Root open={navigationOpen} onOpenChange={setNavigationOpen}>
+    <AppDataProvider account={account}><Dialog.Root open={navigationOpen} onOpenChange={setNavigationOpen}>
       <div className="isolate flex h-svh flex-col">
         <a
           href="#main-content"
@@ -51,6 +52,6 @@ export function AppShell({ children, account }: { children: ReactNode; account: 
           </main>
         </div>
       </div>
-    </Dialog.Root>
+    </Dialog.Root></AppDataProvider>
   );
 }

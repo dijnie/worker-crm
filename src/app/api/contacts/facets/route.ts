@@ -1,0 +1,6 @@
+import { ContactService } from "@services/contact.service";
+import { readQuery, withApi } from "@/lib/server/api-handler";
+
+export function GET(request: Request) {
+  return withApi(request, async ({ db }) => Response.json(await new ContactService(db).facets(readQuery(request))));
+}

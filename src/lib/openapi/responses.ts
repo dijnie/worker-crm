@@ -1,6 +1,6 @@
 import { getTableColumns, type Table } from "drizzle-orm";
 import type { OpenAPIV3 } from "openapi-types";
-import { companies, contacts, deals, activities, fieldDefinitions, fieldOptions, fieldValues, FIELD_ENTITIES, DEAL_STAGES } from "@/lib/db/schema";
+import { savedViews, companies, contacts, deals, activities, fieldDefinitions, fieldOptions, fieldValues, FIELD_ENTITIES, DEAL_STAGES } from "@/lib/db/schema";
 import { arrayOf, objectOf, reference, type Schema } from "./schema-helpers";
 
 function tableSchema(table: Table): OpenAPIV3.SchemaObject {
@@ -71,9 +71,25 @@ const dealDetail = extend(deal, {
   activities: { ...arrayOf(reference("Activity")), maxItems: 30 },
   fieldValues: arrayOf(reference("JoinedFieldValue")),
 });
-const error = objectOf({ message: { type: "string" } });
+const error = { ...objectOf({ message: { type: "string" }, code: { type: "string", description: "Optional stable code: UNAUTHENTICATED, INACTIVE_MEMBERSHIP, FORBIDDEN_ACTION." } }), required: ["message"] };
+const ownerSummary = objectOf({ id: { type: "string" }, name: { type: "string" }, image: { type: "string", nullable: true } });
+const companySummary = objectOf({ id: { type: "string" }, name: { type: "string" }, archivedAt: { type: "string", nullable: true } });
+function listRow(base: OpenAPIV3.SchemaObject, withCompany = false, counts = false): OpenAPIV3.SchemaObject {
+  return { ...extend(base, { owner: { ...ownerSummary, nullable: true }, ...(withCompany ? { company: { ...companySummary, nullable: true } } : {}),
+    ...(counts ? { contactCount: { type: "integer", minimum: 0 }, openDealCount: { type: "integer", minimum: 0 } } as const : {}) }), required: base.required };
+}
+const savedView = extend(tableSchema(savedViews), { mine: { type: "boolean" }, filters: { type: "object", description: "Source-compatible saved query configuration. Unsupported legacy field references remain readable for deliberate repair." } });
 
 export const responseSchemas = {
+  Assignee: ownerSummary,
+  SavedView: savedView,
+  CompanyListRow: listRow(company, false, true),
+  ContactListRow: listRow(contact, true),
+  DealListRow: listRow(deal, true),
+  RecordFacets: objectOf({
+    facetCounts: { type: "object", additionalProperties: arrayOf(objectOf({ value: { type: "string" }, label: { type: "string" }, count: { type: "integer", minimum: 0 } })) },
+    facetPages: { type: "object", additionalProperties: objectOf({ total: { type: "integer", minimum: 0 }, page: { type: "integer", minimum: 1 }, limit: { type: "integer", minimum: 1, maximum: 100 } }) },
+  }),
   Member: objectOf({
     id: { type: "string" },
     name: { type: "string" },

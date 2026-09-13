@@ -102,6 +102,7 @@ test('API validates JSON, queries, protected writes, missing references and conf
     ['/api/companies?page=1&page=2', 'GET', undefined, 400],
     ['/api/companies?limit=101', 'GET', undefined, 400],
     ['/api/companies?lifecycleStage=lead', 'GET', undefined, 400],
+    ['/api/companies?__proto__=ignored', 'GET', undefined, 400],
     ['/api/companies/missing', 'GET', undefined, 404],
     ['/api/companies', 'POST', { name: 'Duplicate', domain: 'EXAMPLE.COM' }, 409],
     ['/api/contacts', 'POST', { firstName: 'Contact', companyId: 'missing' }, 400],

@@ -6,15 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
-import { ApiError, createApiClient } from "@/lib/api";
+import { useAppData, useAppQuery } from "@/components/app/app-data-provider";
+import { ApiError } from "@/lib/api";
 import { authClient } from "@/lib/auth/auth-client";
 import type { MemberMutationInput, MemberRecord } from "@services/member.service";
 import type { Page } from "@/lib/utils/validation";
 
-const api = createApiClient();
 const pageSize = 20;
 
 export function MemberManagement({ currentUserId }: { currentUserId: string }) {
+  const { api, store, generation, invalidate, clear } = useAppData();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<"all" | "active" | "revoked">("all");
   const [data, setData] = useState<Page<MemberRecord> | null>(null);
@@ -27,69 +28,51 @@ export function MemberManagement({ currentUserId }: { currentUserId: string }) {
   const [revokeTarget, setRevokeTarget] = useState<MemberRecord | null>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
 
+  const members = useAppQuery("members", { page, status, revision }, (signal) => api.members.list({ page, limit: pageSize, ...(status === "all" ? {} : { status }) }, { signal }));
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setLoadError("");
-    api.members.list({ page, limit: pageSize, ...(status === "all" ? {} : { status }) })
-      .then((result) => {
-        if (cancelled) return;
-        if (!result.items.length && page > 1) {
-          setPage(page - 1);
-          return;
-        }
-        setData(result);
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        if (error instanceof ApiError && error.status === 401) {
-          window.location.assign("/sign-in?returnTo=%2Fsettings%2Fmembers");
-          return;
-        }
-        if (error instanceof ApiError && error.status === 403) {
-          // Re-run the server guard so changed roles or revoked access replace the owner UI.
-          window.location.reload();
-          return;
-        }
-        setData(null);
-        setLoadError("Members could not be loaded. Check your connection and try again.");
-      })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [page, status, revision]);
+    setData(null); setRevokeTarget(null); setPendingId(null); setNotice(""); setActionError("");
+  }, [generation]);
+  useEffect(() => {
+    setLoading(members.isLoading || members.isRefreshing);
+    setData(members.data ?? null);
+    setLoadError(members.error instanceof Error ? members.error.message : members.error ? "Members could not be loaded. Try again." : "");
+    if (members.data && !members.data.items.length && page > 1) setPage(Math.max(1, Math.ceil(members.data.total / pageSize)));
+  }, [members.data, members.error, members.isLoading, members.isRefreshing, page]);
 
   async function mutate(member: MemberRecord, action: MemberMutationInput) {
     if (pendingId) return;
+    const epoch = store.generation;
     setPendingId(member.id);
     setActionError("");
     setNotice("");
     try {
       const updated = await api.members.update(member.id, action);
+      if (!store.isCurrent(epoch)) return;
+      invalidate(["members", "assignees", "identity"]);
       setRevokeTarget(null);
       if (updated.id === currentUserId && updated.status === "revoked") {
+        clear();
         try { await authClient.signOut(); } catch { /* Revocation already invalidated this account's sessions. */ }
         window.location.assign("/access-revoked");
         return;
       }
       if (updated.id === currentUserId && updated.role !== "owner") {
+        clear();
         window.location.assign("/settings");
         return;
       }
       setNotice(action.action === "revoke" ? "Access revoked. This account has been signed out." : action.action === "restore" ? "Access restored as a member. This account must sign in again." : "Member role updated.");
       setRevision((value) => value + 1);
     } catch (error) {
-      if (error instanceof ApiError && [401, 403].includes(error.status)) {
-        window.location.reload();
-        return;
-      }
-      setActionError(error instanceof ApiError && [404, 409].includes(error.status) ? error.message : "The change could not be saved. Check your connection and try again.");
+      if (!store.isCurrent(epoch)) return;
+      setActionError(error instanceof ApiError ? error.message : "The change could not be saved. Check your connection and try again.");
       if (error instanceof ApiError && [404, 409].includes(error.status)) {
         setRevokeTarget(null);
         setRevision((value) => value + 1);
       }
       requestAnimationFrame(() => errorRef.current?.focus());
     } finally {
-      setPendingId(null);
+      if (store.isCurrent(epoch)) setPendingId(null);
     }
   }
 
@@ -115,13 +98,13 @@ export function MemberManagement({ currentUserId }: { currentUserId: string }) {
               <option value="all">All members</option><option value="active">Active</option><option value="revoked">Revoked</option>
             </select>
           </div>
-          <Button variant="outline" className="min-h-11" disabled={disabled} onClick={() => setRevision((value) => value + 1)}>Refresh members</Button>
+          <Button variant="outline" className="min-h-11" disabled={disabled} onClick={() => { invalidate(["members"]); setRevision((value) => value + 1); }}>Refresh members</Button>
         </div>
         {notice && <p role="status" className="rounded-md border bg-muted p-3 text-sm">{notice}</p>}
         {actionError && !revokeTarget && <p ref={errorRef} role="alert" tabIndex={-1} className="rounded-sm text-sm text-destructive focus:outline-none focus:ring-2 focus:ring-ring">{actionError}</p>}
         <section aria-label="Workspace members" aria-busy={loading} className="rounded-lg border bg-card text-card-foreground">
           {loading && <p role="status" className="p-6 text-sm text-muted-foreground">Loading members…</p>}
-          {loadError && <div className="space-y-3 p-6"><p role="alert" className="text-sm text-destructive">{loadError}</p><Button variant="outline" className="min-h-11" onClick={() => setRevision((value) => value + 1)}>Try again</Button></div>}
+          {loadError && <div className="space-y-3 p-6"><p role="alert" className="text-sm text-destructive">{loadError}</p><Button variant="outline" className="min-h-11" onClick={() => { invalidate(["members"]); setRevision((value) => value + 1); }}>Try again</Button></div>}
           {!loading && data && data.items.length === 0 && <p className="p-6 text-sm text-muted-foreground">No members match this access status.</p>}
           {!loading && data && data.items.length > 0 && <ul className="divide-y">
             {data.items.map((member) => <li key={member.id} className="flex min-w-0 flex-col gap-4 p-4 lg:flex-row lg:items-center lg:p-6">

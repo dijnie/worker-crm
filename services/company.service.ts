@@ -1,10 +1,12 @@
-import { and, count, desc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { listRecords, recordFacets } from "./record-list-query";
+import { recordListInput } from "@/lib/record-list-contracts";
+import { eq } from "drizzle-orm";
 import { z } from "zod/v3";
 import type { Database } from "@/lib/db";
 import { companies, contacts, type CompanySelect } from "@/lib/db/schema";
 import { serializeDeal } from "@/lib/utils/money";
 import { requireRecord, ServiceError, translateDatabaseError } from "@/lib/utils/service-error";
-import { escapeLike, identifier, listInput, nullableId, optionalText, requiredText, type Page } from "@/lib/utils/validation";
+import { identifier, nullableId, optionalText, requiredText } from "@/lib/utils/validation";
 
 const domainInput = z.string().trim().max(2048).transform((value, context) => {
   if (!value) return null;
@@ -44,25 +46,17 @@ export const updateCompanyInput = createCompanyInput.partial().strict();
 export type CreateCompanyInput = z.input<typeof createCompanyInput>;
 export type UpdateCompanyInput = z.input<typeof updateCompanyInput>;
 
+export const companyListInput = recordListInput("company");
+
 export class CompanyService {
   constructor(private readonly db: Database) {}
 
-  async list(input: unknown = {}): Promise<Page<CompanySelect>> {
-    const { page, limit, search, archived } = listInput.parse(input);
-    const pattern = search ? `%${escapeLike(search)}%` : undefined;
-    const where = and(
-      archived ? isNotNull(companies.archivedAt) : isNull(companies.archivedAt),
-      pattern === undefined ? undefined : or(
-        sql`${companies.name} LIKE ${pattern} ESCAPE '\\'`,
-        sql`${companies.domain} LIKE ${pattern} ESCAPE '\\'`,
-      ),
-    );
-    const [items, [total]] = await Promise.all([
-      this.db.select().from(companies).where(where)
-        .orderBy(desc(companies.createdAt), desc(companies.id)).limit(limit).offset((page - 1) * limit),
-      this.db.select({ value: count() }).from(companies).where(where),
-    ]);
-    return { items, total: total.value, page, limit };
+  async list(input: unknown = {}) {
+    return listRecords(this.db, "company", input);
+  }
+
+  async facets(input: unknown = {}) {
+    return recordFacets(this.db, "company", input);
   }
 
   async getById(input: unknown) {
