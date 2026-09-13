@@ -7,6 +7,7 @@ import {
 } from "@/lib/activity-presentation";
 import { openRecord, type RecordRef } from "../record-sheet/record-navigation";
 import { stageLabel } from "../records/stage-change";
+import { ActivityActions } from "./activity-actions";
 
 const icons = { note: FileText, phone: Phone, mail: Mail, calendar: Calendar, task: CheckSquare, stage: GitBranch, enrichment: Sparkles };
 export interface TimelineEntryProps {
@@ -15,13 +16,14 @@ export interface TimelineEntryProps {
   directory: readonly { id: string; name: string }[];
   labels?: Record<string, string>;
   record: RecordRef;
+  onResult: (message: string, error?: boolean) => void;
 }
 
 function Timestamp({ date }: { date: Date | null }) {
   return date ? <time dateTime={date.toISOString()} title={date.toLocaleString()}>{date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time> : <span>Time unavailable</span>;
 }
 
-export function TimelineEntry({ activity, now, directory, labels, record }: TimelineEntryProps) {
+export function TimelineEntry({ activity, now, directory, labels, record, onResult }: TimelineEntryProps) {
   const presentation = ACTIVITY_PRESENTATION[activity.type] ?? { label: "Activity", icon: "note" as const };
   const Icon = icons[presentation.icon];
   const occurred = activityOccurredAt(activity);
@@ -42,6 +44,7 @@ export function TimelineEntry({ activity, now, directory, labels, record }: Time
         {activity.body && <p className="whitespace-pre-wrap break-words text-sm">{activity.body}</p>}
         <p className="flex flex-wrap gap-x-2 text-xs text-muted-foreground"><span>{activityActorLabel(activity.createdById, directory)}</span><span>·</span><Timestamp date={occurred} /></p>
         {links.length > 0 && <nav aria-label="Activity related records" className="flex flex-wrap gap-2">{links.map(link => <button key={`${link.kind}:${link.id}`} type="button" className="max-w-full break-all rounded border px-2 py-1 text-xs underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => openRecord(link)}>{labels?.[`${link.kind}:${link.id}`] || `${link.kind[0].toUpperCase()}${link.kind.slice(1)} · ${link.id}`}</button>)}</nav>}
+        <ActivityActions activity={activity} onResult={onResult} />
         {(metadata !== null || activity.emailThreadId || activity.calendarEventId) && <details className="text-xs text-muted-foreground">
           <summary className="cursor-pointer">Stored activity details</summary>
           {activity.emailThreadId && <p className="mt-2 break-all">Email thread reference: {activity.emailThreadId}</p>}

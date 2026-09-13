@@ -42,6 +42,12 @@ export class AppDataStore {
   resume() { this.blocked = false; this.emit(); }
   invalidate(resources: readonly string[]) {
     const affected = new Set(resources);
+    if (resources.some(resource => resource === "activity-create" || resource === "activity-delete")) {
+      ["companies", "contacts", "deals", "company", "contact", "deal", "activities", "stats", "relations", "details", "facets", "recent", "recent-feed", "tasks"].forEach(resource => affected.add(resource));
+    }
+    if (resources.includes("task-complete")) {
+      ["activities", "recent", "recent-feed", "tasks"].forEach(resource => affected.add(resource));
+    }
     resources.forEach(resource => this.denied.delete(resource));
     if (resources.some(resource => /compan|contact|deal|record|stage/.test(resource))) {
       ["companies", "contacts", "deals", "company", "contact", "deal", "activities", "stats", "relations", "details", "facets", "recent", "recent-feed"].forEach(resource => affected.add(resource));

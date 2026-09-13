@@ -34,3 +34,21 @@ test('query cancellation reaches the typed transport and waits for the last matc
  const request=store.load('companies',key,signal=>client.companies.list({}, {signal}));await Promise.resolve();
  releaseFirst();assert.equal(signal.aborted,false);releaseSecond();assert.equal(signal.aborted,true);await request;assert.equal(store.state(key),undefined);
 });
+test('activity writes refresh linked projections while task toggles leave stamps and aggregate counts alone', async () => {
+ const resources = ['company','contact','deal','companies','contacts','deals','activities','activities:counts','activities/tasks','stats','recent-feed','tasks','facets'];
+ for (const mutation of ['activity-create','activity-delete','task-complete']) {
+  const store = new AppDataStore();
+  for (const resource of resources) await store.load(resource,store.key(resource,{}),async()=>[resource]);
+  store.invalidate([mutation]);
+  for (const resource of resources) {
+   const affected = mutation !== 'task-complete' || /^(activities|recent-feed|tasks)/.test(resource);
+   assert.equal(store.state(store.key(resource,{})) === undefined, affected, `${mutation}: ${resource}`);
+  }
+ }
+});
+test('activity invalidation rejects a delayed pre-mutation timeline even after the latest page is read',async()=>{
+ const store=new AppDataStore(),old=deferred(),key=store.key('activities',{companyId:'a',view:'all',page:1});
+ const request=store.load('activities',key,()=>old.promise);await Promise.resolve();
+ store.invalidate(['activity-create']);await store.load('activities',key,async()=>({items:['new'],total:1}));
+ old.resolve({items:[],total:0});await request;assert.deepEqual(store.state(key).data,{items:['new'],total:1});
+});

@@ -10,6 +10,7 @@ import { ContactSheet } from "./contact-sheet";
 import { DealSheet } from "./deal-sheet";
 import type { RecordRef } from "./record-navigation";
 import { useRecordStack } from "./use-record-stack";
+import type { DirtyChange } from "./inline-field";
 
 export function RecordSheetHost() {
   const { generation, store } = useAppData();
@@ -72,7 +73,7 @@ export function RecordSheetHost() {
             {["properties", "timeline"].map(value => <button key={value} type="button" role="tab" id={`record-tab-${value}`} aria-controls={`record-panel-${value}`} aria-selected={tab === value} tabIndex={tab === value ? 0 : -1} onClick={() => setTab(value)} onKeyDown={event => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); const next = event.key === "Home" ? "properties" : event.key === "End" ? "timeline" : tab === "properties" ? "timeline" : "properties"; setTab(next); document.getElementById(`record-tab-${next}`)?.focus(); } }} className={`min-h-11 border-b-2 px-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab === value ? "border-primary font-medium" : "border-transparent text-muted-foreground"}`}>{value === "properties" ? "Properties & relations" : "Timeline"}</button>)}
           </div>
           <div key={key} className="grid min-h-0 flex-1 md:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)]">
-            <section id="record-panel-timeline" aria-label="Record timeline" className={`${tab === "timeline" ? "block" : "hidden"} min-h-0 min-w-0 overflow-y-auto p-4 md:block md:p-6`}><RecordTimeline record={record} /></section>
+            <section id="record-panel-timeline" aria-label="Record timeline" className={`${tab === "timeline" ? "block" : "hidden"} min-h-0 min-w-0 overflow-y-auto p-4 md:block md:p-6`}><RecordTimeline record={record} onDirtyChange={navigation.onDirtyChange} /></section>
             <section id="record-panel-properties" aria-label="Record properties and relationships" className={`${tab === "properties" ? "block" : "hidden"} min-h-0 min-w-0 overflow-y-auto p-4 md:block md:border-l md:p-6`}>
               {record.kind === "company" ? <CompanySheet {...props} /> : record.kind === "contact" ? <ContactSheet {...props} /> : <DealSheet {...props} />}
             </section>
@@ -94,7 +95,7 @@ export function RecordSheetHost() {
   </Dialog.Root>;
 }
 
-function RecordTimeline({ record }: { record: RecordRef }) {
+function RecordTimeline({ record, onDirtyChange }: { record: RecordRef; onDirtyChange: DirtyChange }) {
   const { api } = useAppData();
   const detail = useAppQuery<Record<string, unknown>>(record.kind, { id: record.id }, signal =>
     record.kind === "company" ? api.companies.get(record.id, { signal }) : record.kind === "contact" ? api.contacts.get(record.id, { signal }) : api.deals.get(record.id, { signal }));
@@ -115,5 +116,5 @@ function RecordTimeline({ record }: { record: RecordRef }) {
     }
   }
   if (detail.error) return <p className="text-sm text-muted-foreground">Load the record to view its timeline.</p>;
-  return <TimelinePanel record={record} labels={labels} />;
+  return <TimelinePanel record={record} labels={labels} onDirtyChange={onDirtyChange} />;
 }

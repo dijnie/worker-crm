@@ -8,6 +8,8 @@ import { useAppData, useAppQuery } from "../app-data-provider";
 import type { RecordRef } from "../record-sheet/record-navigation";
 import { useAssigneeDirectory } from "../records/use-assignee-directory";
 import { TimelineEntry } from "./timeline-entry";
+import { ActivityComposer } from "./activity-composer";
+import type { DirtyChange } from "../record-sheet/inline-field";
 
 const VIEWS = [
   ["all", "All"], ["history", "History"], ["notes", "Notes"],
@@ -55,21 +57,35 @@ function useTimelinePages(record: RecordRef, view: ActivityView | null) {
   };
 }
 
-export interface TimelinePanelProps { record: RecordRef; labels?: Record<string, string> }
+export interface TimelinePanelProps { record: RecordRef; labels?: Record<string, string>; onDirtyChange?: DirtyChange }
 export function TimelinePanel(props: TimelinePanelProps) {
   const { generation } = useAppData();
   return <TimelineSession key={`${generation}:${props.record.kind}:${props.record.id}`} {...props} />;
 }
 
-function TimelineSession({ record, labels }: TimelinePanelProps) {
+function TimelineSession({ record, labels, onDirtyChange }: TimelinePanelProps) {
   const { api } = useAppData();
   const [view, setView] = useState<ActivityView>("all");
-  const [now] = useState(() => new Date());
+  const [revision, setRevision] = useState(0);
+  const [result, setResult] = useState<{ message: string; error?: boolean } | null>(null);
   const id = useId();
+  const onResult = (message: string, error?: boolean) => setResult({ message, error });
+  useEffect(() => {
+    if (!result) return;
+    const frame = requestAnimationFrame(() => {
+      if (document.activeElement === document.body) document.getElementById(`${id}-${view}`)?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [result, view, id]);
   const directory = useAssigneeDirectory();
   const counts = useAppQuery("activities", { counts: true, ...activityAnchor(record) }, signal => api.activities.counts(activityAnchor(record), { signal }));
   return <section aria-label="Activity timeline" className="space-y-4">
+    <ActivityComposer record={record} onDirtyChange={onDirtyChange} onCreated={() => {
+      setRevision(value => value + 1);
+      onResult("Activity saved. The current view has been refreshed; use All to see every activity type.");
+    }} />
     <div className="flex items-center justify-between gap-3"><h2 className="text-base font-semibold">Timeline</h2><Button type="button" size="sm" variant="ghost" onClick={counts.refresh}>Refresh timeline</Button></div>
+    {result && <p role={result.error ? "alert" : "status"} className={`text-sm ${result.error ? "text-destructive" : "text-muted-foreground"}`}>{result.message}</p>}
     <div role="tablist" aria-label="Activity views" className="flex gap-1 overflow-x-auto border-b pb-2" onKeyDown={event => {
       const index = VIEWS.findIndex(([value]) => value === view);
       let next: number;
@@ -87,7 +103,7 @@ function TimelineSession({ record, labels }: TimelinePanelProps) {
     {counts.error ? <RequestError error={counts.error} label="Activity counts could not load." retry={counts.refresh} /> : counts.refreshing && <p role="status" className="text-xs text-muted-foreground">Refreshing activity counts…</p>}
     {!!directory.error && <RequestError error={directory.error} label="Actor directory could not load. Historical IDs remain visible." retry={directory.refresh} />}
     <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${view}`} tabIndex={0} className="outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <TimelineView key={view} record={record} labels={labels} view={view} now={now} directory={directory.data ?? []} />
+      <TimelineView key={`${view}:${revision}`} record={record} labels={labels} view={view} onResult={onResult} directory={directory.data ?? []} />
     </div>
   </section>;
 }
@@ -96,14 +112,15 @@ function RequestError({ error, label, retry }: { error: unknown; label: string; 
   return <p role="alert" className="text-sm text-destructive">{label} {error instanceof Error ? error.message : "Request failed."} <button type="button" className="underline" onClick={retry}>Retry</button></p>;
 }
 
-function TimelineView({ record, labels, view, now, directory }: TimelinePanelProps & { view: ActivityView; now: Date; directory: readonly { id: string; name: string }[] }) {
+function TimelineView({ record, labels, view, directory, onResult }: TimelinePanelProps & { view: ActivityView; directory: readonly { id: string; name: string }[]; onResult: (message: string, error?: boolean) => void }) {
+  const now = new Date();
   const main = useTimelinePages(record, view);
   const pinned = useTimelinePages(record, view === "all" ? "upcoming" : null);
   const pinnedIds = new Set(pinned.items.map(item => item.id));
   const history = view === "all" ? uniqueVisibleActivities(main.items, pinnedIds) : main.items;
   const renderRows = (rows: TimelineActivity[]) => groupActivityDays(rows).map(group => <div key={group.key} className="space-y-3">
     <h3 className="text-xs font-medium text-muted-foreground">{group.date ? group.date.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : "Date unavailable"}</h3>
-    {group.items.map(activity => <TimelineEntry key={activity.id} activity={activity} record={record} labels={labels} now={now} directory={directory} />)}
+    {group.items.map(activity => <TimelineEntry key={activity.id} activity={activity} record={record} labels={labels} now={now} directory={directory} onResult={onResult} />)}
   </div>);
   return <div className="space-y-5">
     {view === "all" && <section aria-label="Pinned upcoming tasks" className="space-y-3 rounded-lg border bg-muted/20 p-3">

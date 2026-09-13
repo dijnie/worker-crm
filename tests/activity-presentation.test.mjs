@@ -69,11 +69,12 @@ test("actor attribution resolves stored IDs, never substitutes the viewer, and p
   assert.deepEqual(presentation.activityRecordLinks({ companyId: "a", contactId: "b", dealId: "c" }), [{ kind: "company", id: "a" }, { kind: "contact", id: "b" }, { kind: "deal", id: "c" }]);
 });
 
-test("timeline entry renders safe historical content and all seven types without mutation controls", async () => {
+test("timeline entry renders safe historical content with deletion for every type and completion only for tasks", async () => {
   const renderer = await bundled({ stdin: { contents: `import { createElement } from "react";
     import { renderToStaticMarkup } from "react-dom/server";
     import { TimelineEntry } from "./src/components/app/timeline/timeline-entry";
-    export function render(activity) { return renderToStaticMarkup(createElement(TimelineEntry, {activity, now:new Date("2026-09-13T12:00:00Z"), directory:[], record:{kind:"company",id:"company"}})); }`, resolveDir: process.cwd(), loader: "tsx" }, plugins: [{ name: "native-react-renderer", setup(build) { build.onResolve({ filter: /^react(?:\/.*)?$|^react-dom(?:\/.*)?$/ }, args => ({ path: import.meta.resolve(args.path), external: true })); } }] });
+    import { AppDataProvider } from "./src/components/app/app-data-provider";
+    export function render(activity) { return renderToStaticMarkup(createElement(AppDataProvider, {account:{id:"viewer",name:"Viewer",role:"member"}}, createElement(TimelineEntry, {activity, now:new Date("2026-09-13T12:00:00Z"), directory:[], record:{kind:"company",id:"company"}, onResult:()=>{}}))); }`, resolveDir: process.cwd(), loader: "tsx" }, plugins: [{ name: "native-react-renderer", setup(build) { build.onResolve({ filter: /^react(?:\/.*)?$|^react-dom(?:\/.*)?$/ }, args => ({ path: import.meta.resolve(args.path), external: true })); } }] });
   for (const [type, value] of Object.entries(presentation.ACTIVITY_PRESENTATION)) {
     const html = renderer.render(row(type, null, { type, body: "<img src=x onerror=alert(1)>", meta: { from: "DEMO_BOOKED", to: "CLOSED_WON" }, emailThreadId: "javascript:alert(1)", contactId: "external-contact" }));
     assert.ok(html.includes(value.label));
@@ -82,7 +83,7 @@ test("timeline entry renders safe historical content and all seven types without
     assert.ok(html.includes("Unavailable / historical actor (former-member)"));
     assert.ok(html.includes("external-contact"));
     assert.ok(!html.includes('href="javascript:'));
-    assert.ok(!html.includes("Delete activity"));
-    assert.ok(!html.includes("Mark complete"));
+    assert.ok(html.includes("Delete activity"));
+    assert.equal(html.includes("Complete task"), type === "TASK");
   }
 });

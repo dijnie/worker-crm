@@ -6,8 +6,8 @@ A shared-workspace CRM built with Vinext App Router, Drizzle ORM, and Cloudflare
 Workers/D1. Verified email/password sessions protect business APIs and the workspace.
 Companies, Contacts and Deals have interactive lists, creation forms and nested
 record sheets with property editing and activity history, alongside account and
-owner-only member administration. Manual activity controls, custom-field interfaces
-and the live overview remain under development. The former SaaS customer/subscription tools
+owner-only member administration. Record sheets support manual activities and task
+actions; custom-field interfaces and the live overview remain under development. The former SaaS customer/subscription tools
 and endpoints are retired. Interactive API documentation is public at `/docs`.
 
 <!-- dash-content-end -->
@@ -64,8 +64,11 @@ deal participation are independent business relationships; the
 [relation controls](src/components/app/record-sheet/related-records.tsx) preserve
 that distinction. [Record actions](src/components/app/record-sheet/record-actions.tsx)
 use archive/restore because historical records must remain viewable. The
-[timeline](src/components/app/timeline/timeline-panel.tsx) reads paginated activity
-history; logging activities and changing tasks are a later delivery.
+[timeline](src/components/app/timeline/timeline-panel.tsx) owns paginated history,
+the [activity composer](src/components/app/timeline/activity-composer.tsx) and
+[task and deletion actions](src/components/app/timeline/activity-actions.tsx).
+Email and meeting entries are manual CRM logs; they do not send mail or sync
+calendars. Deleting stage history does not reverse a deal's current stage.
 The overview retains the
 [availability state](src/components/app/app-empty-state.tsx), and custom-field
 settings are not yet available.
@@ -378,5 +381,6 @@ cannot establish that continuity. Keep port 3100 free for the isolated harness.
 Select `--suite=record-sheets` for the
 [sheet acceptance suite](tests/browser/record-sheets.test.mjs) and
 [relation scenarios](tests/browser/record-sheet-relations.test.mjs), or
-`--suite=lists` for [list acceptance](tests/browser/lists.test.mjs). The runner's
+`--suite=lists` for [list acceptance](tests/browser/lists.test.mjs).
+Select `--suite=activities` for [manual activity and task acceptance](tests/browser/activities.test.mjs). The runner's
 registry owns available suites; future workflow names are rejected until implemented.
