@@ -42,7 +42,7 @@ async function createFromForm(h, page, entity, fields, relations = {}) {
 
 export async function runSuite(h, { mode, owner }) {
   const prefix = `${mode} browser`;
-  const member = await h.signup(`${mode} Browser Member`);
+  const member = await h.signupAuthorized(`${mode} Browser Member`);
   const companies = [];
   for (let start = 0; start < 60; start += 4) {
     companies.push(...await Promise.all(Array.from({ length: Math.min(4, 60 - start) }, (_, offset) => {
@@ -438,7 +438,10 @@ export async function runSuite(h, { mode, owner }) {
         await ownerPage.getByRole('button', { name: 'Account', exact: true }).click();
         await ownerPage.getByRole('link', { name: 'Manage members', exact: true }).click();
         await ownerPage.getByRole('button', { name: `Restore access for ${member.user.name}`, exact: true }).click();
-        await ownerPage.getByText('Access restored as a member. This account must sign in again.', { exact: true }).waitFor();
+        await ownerPage.getByText('Access restored with no role. This account must sign in again and be assigned a role.', { exact: true }).waitFor();
+        const role = ownerPage.getByRole('combobox', { name: `Role for ${member.user.name}`, exact: true });
+        await role.selectOption(member.roleId);
+        await eventually(async () => (await role.inputValue()) === member.roleId, 'Restored account explicitly receives its custom role');
         form = await openPicker();
         assert.ok((await form.picker.locator('option').evaluateAll(options => options.map(option => option.value))).includes(member.user.id));
         await h.signIn(member.context, member.email);

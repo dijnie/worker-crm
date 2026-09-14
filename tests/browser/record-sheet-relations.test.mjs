@@ -16,7 +16,7 @@ async function show(page, kind, id) {
 }
 
 export async function runSuite(h, { mode }) {
-  const member = await h.signup(`${mode} Relation Member`);
+  const member = await h.signupAuthorized(`${mode} Relation Member`);
   const api = (path, options) => h.api(member.context, path, options);
   const company = await api('/api/companies', { method: 'POST', body: { name: `${mode} relation company`, ownerId: member.user.id } });
   const employer = await api('/api/companies', { method: 'POST', body: { name: `${mode} separate employer` } });

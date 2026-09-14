@@ -35,6 +35,8 @@ export async function createHarness(context) {
           export * from './src/lib/utils/money.ts';
           export * from './src/lib/utils/service-error.ts';
           export * from './services/member.service.ts';
+          export * from './src/lib/auth/authorized-db.ts';
+          export * from './src/lib/auth/permissions.ts';
         `,
         resolveDir: projectRoot,
         loader: 'ts',

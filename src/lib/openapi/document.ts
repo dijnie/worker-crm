@@ -4,7 +4,7 @@ import { requestSchemas, type RequestSchemaName } from "./requests";
 import { responseSchemas, type ResponseSchemaName } from "./responses";
 import { arrayOf, reference } from "./schema-helpers";
 
-type Tag = "Companies" | "Contacts" | "Deals" | "Activities" | "Fields" | "Stats" | "Members" | "Saved views" | "Assignees";
+type Tag = "Companies" | "Contacts" | "Deals" | "Activities" | "Fields" | "Stats" | "Members" | "Saved views" | "Assignees" | "Roles" | "Account";
 interface Contract {
   operationId: string;
   tag: Tag;
@@ -62,6 +62,12 @@ register("GET", "/api/stats", { operationId: "getStats", tag: "Stats", query: "S
 
 register("GET", "/api/members", { operationId: "listMembers", tag: "Members", query: "MemberQuery", response: "Member", array: true, paginated: true });
 register("PATCH", "/api/members/:id", { operationId: "mutateMember", tag: "Members", body: "MutateMember", response: "Member" });
+register("GET", "/api/account", { operationId: "getAccount", tag: "Account", response: "Account" });
+register("GET", "/api/roles", { operationId: "listRoles", tag: "Roles", response: "Role", array: true });
+register("POST", "/api/roles", { operationId: "createRole", tag: "Roles", body: "CreateRole", response: "Role", status: 201 });
+register("GET", "/api/roles/:id", { operationId: "getRole", tag: "Roles", response: "Role" });
+register("PATCH", "/api/roles/:id", { operationId: "updateRole", tag: "Roles", body: "UpdateRole", response: "Role" });
+register("DELETE", "/api/roles/:id", { operationId: "deleteRole", tag: "Roles", body: "DeleteRole", status: 204 });
 
 register("GET", "/api/assignees", { operationId: "listAssignees", tag: "Assignees", query: "AssigneeQuery", response: "Assignee", array: true, paginated: true });
 register("GET", "/api/saved-views", { operationId: "listSavedViews", tag: "Saved views", query: "SavedViewQuery", response: "SavedView", array: true });
@@ -82,7 +88,7 @@ const paginationHeaders: Record<string, OpenAPIV3.HeaderObject> = {
 const errors: OpenAPIV3.ResponsesObject = Object.fromEntries([
   [400, "Invalid input, malformed JSON, duplicate/unknown query parameters, or invalid references.", "ValidationError"],
   [401, "A valid session for a verified account is required.", "Error"],
-  [403, "Membership is inactive, owner authority is required, or the mutation Origin is missing or invalid.", "Error"],
+  [403, "Membership is inactive, role permissions are missing or changed, system authority is required, or the mutation Origin is invalid.", "Error"],
   [404, "The requested record, field, option, or target does not exist.", "Error"],
   [409, "Uniqueness conflict or concurrent changes prevent the operation.", "Error"],
   [415, "A nonempty mutation body requires Content-Type: application/json.", "Error"],
@@ -152,10 +158,10 @@ export const openApiDocument: OpenAPIV3.Document = {
   info: {
     title: "Vinext API",
     version: "1.0.0",
-    description: "Shared-workspace APIs protected by verified sessions and active membership. Sign in at /sign-in, then return here to Try it out; the browser sends same-origin HttpOnly cookies automatically. Anonymous requests return 401. Member administration requires an active owner. Mutations require the configured same Origin and JSON content type for JSON bodies. Client actor fields are rejected; attribution comes from the signed-in account. Better Auth delegates authentication operations under /api/auth/*; these dynamic routes are separate from this business API catalog. This public document contains no application records, environment values or credentials.",
+    description: "Shared-workspace APIs protected by verified sessions, active membership and dynamic entity/action role permissions. Sign in at /sign-in; the browser sends same-origin HttpOnly cookies. New accounts have no role and cannot access CRM data; GET /api/account remains available for identity. System manages roles, members and field definitions. Record values require entity update; deletion archives records, while activity deletion is permanent. Related data is scoped by read permissions, including search, facets, timeline and statistics. Mutations require the configured same Origin and JSON content type for JSON bodies. Client actor fields are rejected. Better Auth routes under /api/auth/* are separate. This public document contains no application records or credentials.",
   },
   servers: [{ url: "/", description: "Same-origin application server" }],
-  tags: ["Companies", "Contacts", "Deals", "Activities", "Fields", "Stats", "Members", "Saved views", "Assignees"].map(name => ({ name })),
+  tags: ["Companies", "Contacts", "Deals", "Activities", "Fields", "Stats", "Members", "Saved views", "Assignees", "Roles", "Account"].map(name => ({ name })),
   security: [{ sessionCookie: [] }, { secureSessionCookie: [] }],
   paths,
   components: {

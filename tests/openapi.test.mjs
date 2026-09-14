@@ -94,7 +94,7 @@ test('request schemas describe required fields, protected properties and exact f
     ['/api/deals/{id}', 'patch', { currency: ' uSd ' }],
     ['/api/activities', 'post', { type: 'NOTE', companyId: 'company' }],
     ['/api/deals/{id}/stage', 'post', { stage: 'CLOSED_WON' }],
-    ['/api/members/{id}', 'patch', { action: 'change-role', role: 'owner', expectedRevision: 0 }],
+    ['/api/members/{id}', 'patch', { action: 'change-role', roleId: 'system', expectedRevision: 0 }],
     ['/api/members/{id}', 'patch', { action: 'revoke', expectedRevision: 1 }],
     ['/api/members/{id}', 'patch', { action: 'restore', expectedRevision: 2 }],
     ['/api/fields', 'post', { entity: 'COMPANY', type: 'TEXT', label: 'Region' }],
@@ -213,7 +213,7 @@ test('member mutations require revisions and expose only safe member records', (
     { action: 'restore', role: 'owner', expectedRevision: 0 },
     { action: 'revoke', expectedRevision: 0, actorId: 'actor' },
   ]) assert.equal(validate(input), false, JSON.stringify(input));
-  const member = { id: 'member', name: 'Member', email: 'member@example.test', role: 'member', status: 'active', revision: 0, createdAt: '2026-09-13T00:00:00.000Z', updatedAt: '2026-09-13T00:00:00.000Z', revokedAt: null };
+  const member = { id: 'member', name: 'Member', email: 'member@example.test', roleId: null, role: null, status: 'active', revision: 0, createdAt: '2026-09-13T00:00:00.000Z', updatedAt: '2026-09-13T00:00:00.000Z', revokedAt: null };
   assertSchema(document, document.components.schemas.Member, member, 'safe member');
   assert.equal(schemaValidator(document, document.components.schemas.Member)({ ...member, accessVersion: 0 }), false);
   assert.ok(document.paths['/api/members'].get.responses['403']);

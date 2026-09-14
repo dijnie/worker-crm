@@ -1,4 +1,5 @@
 "use client";
+import { canPermission } from "@/lib/auth/permissions";
 import { useEffect, useState } from "react";
 import {
   RECORD_FACETS,
@@ -182,6 +183,8 @@ export function FacetFilters({
   onChange: (filters: Record<string, string[]>) => void;
   fieldDefinitions?: readonly FieldDefinition[];
 }) {
+  const { account } = useAppData();
+  const canActivitySummary = (["company", "contact", "deal", "activity"] as const).every(kind => canPermission(account, kind, "read"));
   return (
     <ToolbarMenu
       icon={<Filter aria-hidden="true" />}
@@ -195,7 +198,7 @@ export function FacetFilters({
         Filter by record properties
       </p>
       <div>
-        {[...RECORD_FACETS[entity].map(facet => ({ key: facet, label: facetLabels[facet] })), ...fieldFacetDefinitions(fieldDefinitions).map(field => ({ key: `field:${field.key}`, label: field.label }))].map(({ key: facet, label }) => (
+        {[...RECORD_FACETS[entity].filter(facet => (facet !== "company" || canPermission(account, "company", "read")) && (facet !== "activity" || canActivitySummary)).map(facet => ({ key: facet, label: facetLabels[facet] })), ...fieldFacetDefinitions(fieldDefinitions).map(field => ({ key: `field:${field.key}`, label: field.label }))].map(({ key: facet, label }) => (
           <Facet
             key={facet}
             entity={entity}

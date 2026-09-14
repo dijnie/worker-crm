@@ -78,7 +78,8 @@
     "db:migrate:built": "node scripts/d1-migrations.mjs --apply --built",
     "db:inspect": "node scripts/d1-migrations.mjs",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote --config wrangler.jsonc",
-    "test:auth": "node --test tests/auth.test.mjs tests/email.test.mjs tests/members.test.mjs"
+    "test:auth": "node --test tests/auth.test.mjs tests/email.test.mjs tests/members.test.mjs",
+    "db:bootstrap-system": "node scripts/bootstrap-system.mjs"
   },
   "overrides": {
     "js-yaml": "^4.3.2"

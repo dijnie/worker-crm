@@ -1,4 +1,5 @@
 "use client";
+import { canPermission } from "@/lib/auth/permissions";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import type { ActivityView } from "@/lib/api";
@@ -57,14 +58,15 @@ function useTimelinePages(record: RecordRef, view: ActivityView | null) {
   };
 }
 
-export interface TimelinePanelProps { record: RecordRef; labels?: Record<string, string>; onDirtyChange?: DirtyChange }
+export interface TimelinePanelProps { canCreateActivity?: boolean; record: RecordRef; labels?: Record<string, string>; onDirtyChange?: DirtyChange }
 export function TimelinePanel(props: TimelinePanelProps) {
-  const { generation } = useAppData();
+  const { generation, account } = useAppData();
+  if (!canPermission(account, "activity", "read")) return null;
   return <TimelineSession key={`${generation}:${props.record.kind}:${props.record.id}`} {...props} />;
 }
 
-function TimelineSession({ record, labels, onDirtyChange }: TimelinePanelProps) {
-  const { api } = useAppData();
+function TimelineSession({ record, labels, onDirtyChange, canCreateActivity = false }: TimelinePanelProps) {
+  const { api, account } = useAppData();
   const [view, setView] = useState<ActivityView>("all");
   const [revision, setRevision] = useState(0);
   const [result, setResult] = useState<{ message: string; error?: boolean } | null>(null);
@@ -80,10 +82,10 @@ function TimelineSession({ record, labels, onDirtyChange }: TimelinePanelProps) 
   const directory = useAssigneeDirectory();
   const counts = useAppQuery("activities", { counts: true, ...activityAnchor(record) }, signal => api.activities.counts(activityAnchor(record), { signal }));
   return <section aria-label="Activity timeline" className="space-y-4">
-    <ActivityComposer record={record} onDirtyChange={onDirtyChange} onCreated={() => {
+    {canCreateActivity && canPermission(account, "activity", "create") && <ActivityComposer record={record} onDirtyChange={onDirtyChange} onCreated={() => {
       setRevision(value => value + 1);
       onResult("Activity saved. The current view has been refreshed; use All to see every activity type.");
-    }} />
+    }} />}
     <div className="flex items-center justify-between gap-3"><h2 className="text-base font-semibold">Timeline</h2><Button type="button" size="sm" variant="ghost" onClick={counts.refresh}>Refresh timeline</Button></div>
     {result && <p role={result.error ? "alert" : "status"} className={`text-sm ${result.error ? "text-destructive" : "text-muted-foreground"}`}>{result.message}</p>}
     <div role="tablist" aria-label="Activity views" className="flex gap-1 overflow-x-auto border-b pb-2" onKeyDown={event => {

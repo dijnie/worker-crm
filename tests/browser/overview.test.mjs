@@ -41,7 +41,7 @@ export async function changeCurrency(page, currency) {
 }
 
 export async function runSuite(h, { mode, owner }) {
-  const member = await h.signup(`${mode} Overview Member`);
+  const member = await h.signupAuthorized(`${mode} Overview Member`);
   const api = (path, options) => h.api(member.context, path, options);
   let page = await member.context.newPage();
   const errors = [];

@@ -3,6 +3,9 @@ import { getAuthBaseUrl, requireRequestContext, type RequestContext } from "../a
 import { ServiceError, translateDatabaseError } from "../utils/service-error";
 import type { Page } from "../utils/validation";
 import { reportRequestFailure } from "./error-reporting";
+import { authorizeApiRequest } from "./api-permissions";
+import { accountIdentity } from "../auth/request-context";
+import { scopeRecord, setDatabaseAccess } from "./read-access";
 
 export type RouteContext<T extends Record<string, string> = { id: string }> = {
   params: Promise<T> | T;
@@ -20,7 +23,14 @@ export async function withApi(request: Request, handler: (context: RequestContex
         throw new ServiceError(415, "Expected application/json");
       }
     }
-    const response = await handler(context);
+    const authorized = await authorizeApiRequest(request, context);
+    setDatabaseAccess(authorized.db, accountIdentity(authorized));
+    let response = await handler(authorized);
+    const resource = new URL(request.url).pathname.split("/")[2];
+    const entity = ({ companies: "company", contacts: "contact", deals: "deal" } as const)[resource as "companies" | "contacts" | "deals"];
+    if (entity && response.status !== 204 && response.headers.get("content-type")?.includes("application/json")) {
+      response = Response.json(scopeRecord(authorized.db, entity, await response.json()), { status: response.status, headers: response.headers });
+    }
     response.headers.set("Cache-Control", "no-store");
     return response;
   } catch (error) {

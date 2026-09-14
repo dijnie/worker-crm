@@ -73,7 +73,7 @@ async function migrationNames(configPath, database) {
   return names;
 }
 
-async function runWrangler(args, operation) {
+export async function runWrangler(args, operation) {
   try {
     return await execute(process.execPath, [resolve(projectRoot, 'node_modules/wrangler/bin/wrangler.js'), ...args], {
       cwd: projectRoot,
@@ -86,12 +86,12 @@ async function runWrangler(args, operation) {
   }
 }
 
-async function backupDatabase() {
+export async function backupDatabase(prefix = 'before-migrations') {
   try {
     const backupRoot = resolve(homedir(), '.worker-crm/backups');
     await mkdir(backupRoot, { recursive: true, mode: 0o700 });
     await chmod(backupRoot, 0o700);
-    const directory = await mkdtemp(resolve(backupRoot, `before-migrations-${new Date().toISOString().replaceAll(':', '-')}-`));
+    const directory = await mkdtemp(resolve(backupRoot, `${prefix}-${new Date().toISOString().replaceAll(':', '-')}-`));
     await chmod(directory, 0o700);
     const output = resolve(directory, 'database.sql');
     await writeFile(output, '', { flag: 'wx', mode: 0o600 });

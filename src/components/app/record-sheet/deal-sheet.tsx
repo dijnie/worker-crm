@@ -1,4 +1,5 @@
 "use client";
+import { canPermission } from "@/lib/auth/permissions";
 import { useCallback, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,7 @@ import { RecordActions } from "./record-actions";
 import { RelatedRecords, DealContacts } from "./related-records";
 import type { DirtyEditor } from "./inline-field";
 export function DealSheet({ id, onOpen, onDirtyChange }: SheetProps) {
-  const { api, invalidate, store, generation } = useAppData();
+  const { api, invalidate, store, generation, account } = useAppData();
   const result = useAppQuery("deal", { id }, signal => api.deals.get(id, { signal }));
   const directory = useAssigneeDirectory();
   const [stageOpen, setStageOpen] = useState(false);
@@ -25,7 +26,7 @@ export function DealSheet({ id, onOpen, onDirtyChange }: SheetProps) {
     {deal && <>
       <div><h2 className="break-words text-xl font-semibold">{deal.name}</h2>{result.refreshing && <p role="status" className="text-xs text-muted-foreground">Refreshing deal…</p>}</div>
       <RecordActions entity="deal" id={id} archivedAt={deal.archivedAt} />
-      <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm">Stage: {stageLabel(deal.stage)}</span><Button size="sm" variant="outline" onClick={() => setStageOpen(true)}>Change stage</Button></div>
+      <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm">Stage: {stageLabel(deal.stage)}</span>{canPermission(account, "deal", "update") && <Button size="sm" variant="outline" onClick={() => setStageOpen(true)}>Change stage</Button>}</div>
       <StageChangeDialog open={stageOpen} onOpenChange={setStageOpen} count={1} pending={pending} initialStage={deal.stage} onDirtyChange={stageDirty} onSubmit={async (stage, reason) => {
         if (busy.current) return; busy.current = true; setPending(true);
         try { await api.deals.setStage(id, { stage, reason }); if (store.isCurrent(generation)) { invalidate(RECORD_INVALIDATIONS); setStageOpen(false); } }

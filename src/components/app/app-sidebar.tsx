@@ -1,5 +1,7 @@
 "use client";
 
+import { useAppData } from "./app-data-provider";
+import { visibleNavigationItems } from "./navigation-items";
 import Close from "@carbon/icons-react/es/Close";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Tooltip from "@radix-ui/react-tooltip";
@@ -9,7 +11,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DialogOverlay } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils/cn";
-import { navigationItems, matchesNavigationPath } from "@/components/app/navigation-items";
+import { matchesNavigationPath } from "@/components/app/navigation-items";
 
 interface AppSidebarProps {
   expanded: boolean;
@@ -18,6 +20,8 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ expanded, onToggle, onNavigate }: AppSidebarProps) {
+  const { account } = useAppData();
+  const items = visibleNavigationItems(account);
   const [hovered, setHovered] = useState(false);
   const visibleExpanded = expanded || hovered;
   const toggleLabel = expanded ? "Collapse sidebar" : hovered ? "Pin sidebar" : "Expand sidebar";
@@ -67,7 +71,7 @@ export function AppSidebar({ expanded, onToggle, onNavigate }: AppSidebarProps) 
                 visibleExpanded ? "items-stretch px-2" : "items-center",
               )}
             >
-              {navigationItems.map(({ label, href, icon: Icon }) => {
+              {items.map(({ label, href, icon: Icon }) => {
                 const link = (
                   <Button
                     key={href}
@@ -151,7 +155,7 @@ export function AppSidebar({ expanded, onToggle, onNavigate }: AppSidebarProps) 
             </Dialog.Close>
           </div>
           <nav aria-label="Primary" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2">
-            {navigationItems.map(({ label, href, icon: Icon }) => (
+            {items.map(({ label, href, icon: Icon }) => (
               <Button
                 key={href}
                 asChild

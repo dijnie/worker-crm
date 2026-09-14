@@ -3,13 +3,18 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { AppDataProvider } from "@/components/app/app-data-provider";
+import { AppDataProvider, useAppData } from "@/components/app/app-data-provider";
 import { RecordSheetHost } from "@/components/app/record-sheet/record-sheet-host";
 import { AppHeader } from "@/components/app/app-header";
 import { AppSidebar } from "@/components/app/app-sidebar";
+import { PendingAccess } from "./permission-gate";
 import type { AccountIdentity } from "@/lib/auth/request-context";
 
 export function AppShell({ children, account }: { children: ReactNode; account: AccountIdentity }) {
+  return <AppDataProvider account={account}><WorkspaceShell>{children}</WorkspaceShell></AppDataProvider>;
+}
+function WorkspaceShell({ children }: { children: ReactNode }) {
+  const { account, generation } = useAppData();
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [desktopNavigationExpanded, setDesktopNavigationExpanded] = useState(true);
   const pathname = usePathname();
@@ -32,8 +37,9 @@ export function AppShell({ children, account }: { children: ReactNode; account: 
     };
   }, []);
 
+  if (!account.role || (!account.role.isSystem && !account.permissions.some(permission => permission.action === "read"))) return <PendingAccess />;
   return (
-    <AppDataProvider account={account}><Dialog.Root open={navigationOpen} onOpenChange={setNavigationOpen}>
+    <Dialog.Root open={navigationOpen} onOpenChange={setNavigationOpen}>
       <div className="isolate flex h-svh flex-col">
         <a
           href="#main-content"
@@ -49,10 +55,10 @@ export function AppShell({ children, account }: { children: ReactNode; account: 
             onNavigate={() => setNavigationOpen(false)}
           />
           <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 overflow-auto">
-            {children}
+            <div key={generation}>{children}</div>
           </main>
         </div>
       </div>
-    </Dialog.Root><RecordSheetHost /></AppDataProvider>
+    <RecordSheetHost key={generation} /></Dialog.Root>
   );
 }

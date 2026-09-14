@@ -5,6 +5,8 @@ import { companies, contacts, deals, user, type CompanySelect, type ContactSelec
 import { CLOSED_STAGES, CLOSING_WINDOWS, RECORD_FACETS, recordFacetInput, recordListInput, type FacetOption, type ParsedRecordListQuery, type RecordEntity, type RecordFacets, type RecordSummary, type RecordFields, isCustomFieldFacet } from "@/lib/record-list-contracts";
 import type { Page } from "@/lib/utils/validation";
 import { literalContains } from "./sql-search";
+import { canRead, canReadActivitySummary, requireRead, requireQueryRead } from "@/lib/server/read-access";
+import { ServiceError } from "@/lib/utils/service-error";
 
 const tables = { company: companies, contact: contacts, deal: deals };
 type Rows = { company: CompanySelect; contact: ContactSelect; deal: DealSelect };
@@ -61,14 +63,15 @@ function facetPredicate(entity: RecordEntity, facet: string, values: string[], n
 }
 
 /** Lists and facets use identical predicates; only the enumerated facet is omitted. */
-export function recordListWhere(entity: RecordEntity, query: ParsedRecordListQuery, now: Date, omitFacet?: string) {
+export function recordListWhere(entity: RecordEntity, query: ParsedRecordListQuery, now: Date, omitFacet?: string, db?: Database) {
+  requireQueryRead(db, query);
   const table = tables[entity];
   let search: SQL | undefined;
   if (query.search) {
     if (entity === "company") search = or(literalContains(companies.name, query.search), literalContains(companies.domain, query.search));
     else if (entity === "contact") search = or(literalContains(contacts.firstName, query.search), literalContains(contacts.lastName, query.search),
       literalContains(sql`trim(${contacts.firstName} || ' ' || coalesce(${contacts.lastName}, ''))`, query.search), literalContains(contacts.email, query.search));
-    else search = or(literalContains(deals.name, query.search), literalContains(companyName("deal"), query.search));
+    else search = or(literalContains(deals.name, query.search), canRead(db, "company") ? literalContains(companyName("deal"), query.search) : undefined);
   }
   return and(
     query.archived ? isNotNull(table.archivedAt) : isNull(table.archivedAt), search,
@@ -107,7 +110,7 @@ export async function listRecords<E extends RecordEntity>(db: Database, entity: 
   const query = recordListInput(entity).parse(input);
   await validateCustomFieldFilters(db, entity, query.filters);
   const table = tables[entity];
-  const where = recordListWhere(entity, query, new Date());
+  const where = recordListWhere(entity, query, new Date(), undefined, db);
   const [items, totals] = await db.batch([
     db.select().from(table).where(where).orderBy(...ordering(entity, query)).limit(query.limit).offset((query.page - 1) * query.limit),
     db.select({ total: count() }).from(table).where(where),
@@ -141,12 +144,15 @@ export async function listRecords<E extends RecordEntity>(db: Database, entity: 
 
 export async function recordFacets(db: Database, entity: RecordEntity, input: unknown = {}): Promise<RecordFacets> {
   const query = recordFacetInput(entity).parse(input);
+  if (query.facet === "company") requireRead(db, "company");
+  if (query.facet === "activity" && !canReadActivitySummary(db)) throw new ServiceError(403, "Activity summary access is required", "PERMISSION_REQUIRED");
   const definitions = await validateCustomFieldFilters(db, entity, query.filters, query.facet, !query.facet);
   const now = new Date();
   const result: RecordFacets = { facetCounts: {}, facetPages: {} };
-  const keys = query.facet ? [query.facet] : [...RECORD_FACETS[entity], ...definitions.map(field => `field:${field.key}`)];
+  const keys = query.facet ? [query.facet] : [...RECORD_FACETS[entity], ...definitions.map(field => `field:${field.key}`)]
+    .filter(facet => (facet !== "company" || canRead(db, "company")) && (facet !== "activity" || canReadActivitySummary(db)));
   await Promise.all(keys.map(async facet => {
-    const where = recordListWhere(entity, query, now, facet);
+    const where = recordListWhere(entity, query, now, facet, db);
     const selected = [...new Set(query.filters[facet] ?? [])];
     const fixedValues = facet === "activity" ? ["7", "30", "90"] : facet === "status" ? ["all", "open", "closed"] : facet === "closing" ? [...CLOSING_WINDOWS] : undefined;
     let options: FacetOption[];

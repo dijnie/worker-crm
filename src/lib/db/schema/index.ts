@@ -10,4 +10,5 @@ export * from "./field-value.schema";
 export * from "./saved-view.schema";
 export * from "./auth.schema";
 export * from "./membership.schema";
+export * from "./role.schema";
 export * from "./relations";

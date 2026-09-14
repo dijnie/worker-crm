@@ -5,6 +5,7 @@ import { activities, ACTIVITY_TYPES, companies, contacts, deals, type ActivitySe
 import { ActivityStampService } from "./activity-stamp.service";
 import { requireRecord, ServiceError } from "@/lib/utils/service-error";
 import { dateTime, identifier, listInput, nullableId, optionalText, type Page } from "@/lib/utils/validation";
+import { activityReadPredicate, requireActivityLinks } from "@/lib/server/read-access";
 
 export const activityCreateShape = {
   type: z.enum(["NOTE", "CALL", "EMAIL", "MEETING", "TASK"]),
@@ -101,8 +102,10 @@ function viewPredicate(view: ActivityView = "all") {
   }
 }
 
-function activityPredicate(options: ActivityCountsInput, view?: ActivityView) {
+function activityPredicate(db: Database, options: ActivityCountsInput, view?: ActivityView) {
+  requireActivityLinks(db, options);
   return and(
+    activityReadPredicate(db),
     options.companyId ? eq(activities.companyId, options.companyId) : undefined,
     options.contactId ? eq(activities.contactId, options.contactId) : undefined,
     options.dealId ? eq(activities.dealId, options.dealId) : undefined,
@@ -133,7 +136,7 @@ export class ActivityService {
   async list(input: unknown): Promise<Page<ActivityListItem>>;
   async list(input: unknown = {}): Promise<Page<ActivityListItem>> {
     const options = activityListInput.parse(input);
-    const where = activityPredicate(options, options.view);
+    const where = activityPredicate(this.db, options, options.view);
     const [items, totals] = await this.db.batch([
       this.db.select().from(activities).where(where)
         .orderBy(...activityOrder(options.view))
@@ -150,17 +153,18 @@ export class ActivityService {
     const [result] = await this.db.select({
       all: count(), history: aggregate("history"), notes: aggregate("notes"),
       upcoming: aggregate("upcoming"), done: aggregate("done"), email: aggregate("email"), meetings: aggregate("meetings"),
-    }).from(activities).where(activityPredicate(options));
+    }).from(activities).where(activityPredicate(this.db, options));
     return result;
   }
 
   async getById(id: string) {
     id = identifier.parse(id);
-    return requireRecord(await this.db.query.activities.findFirst({ where: eq(activities.id, id) }), "Activity");
+    return requireRecord(await this.db.query.activities.findFirst({ where: and(eq(activities.id, id), activityReadPredicate(this.db)) }), "Activity");
   }
 
   async create(input: unknown) {
     const data = createActivityInput.parse(input);
+    requireActivityLinks(this.db, data);
     const company = data.companyId ? requireReference(await this.db.query.companies.findFirst({
       where: (table, { eq }) => eq(table.id, data.companyId!), columns: { id: true },
     }), "Company") : null;
@@ -171,6 +175,7 @@ export class ActivityService {
       where: (table, { eq }) => eq(table.id, data.dealId!), columns: { id: true, companyId: true },
     }), "Deal") : null;
     const companyId = company?.id ?? deal?.companyId ?? contact?.companyId ?? null;
+    requireActivityLinks(this.db, { ...data, companyId });
     const now = new Date().toISOString();
     const id = crypto.randomUUID();
     const target = { companyId, contactId: data.contactId, dealId: data.dealId };

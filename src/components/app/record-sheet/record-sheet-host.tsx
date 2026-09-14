@@ -1,4 +1,5 @@
 "use client";
+import { canPermission } from "@/lib/auth/permissions";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useRef, useState } from "react";
 import { ArrowLeft, X } from "lucide-react";
@@ -13,7 +14,7 @@ import { useRecordStack } from "./use-record-stack";
 import type { DirtyChange } from "./inline-field";
 
 export function RecordSheetHost() {
-  const { generation, store } = useAppData();
+  const { generation, store, account } = useAppData();
   const navigation = useRecordStack();
   const record = navigation.stack.at(-1);
   const open = !!(record || navigation.error) && store.isCurrent(generation);
@@ -21,6 +22,7 @@ export function RecordSheetHost() {
   const close = useRef<HTMLButtonElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState("properties");
+  const tabs = canPermission(account, "activity", "read") ? ["properties", "timeline"] : ["properties"];
   const title = record ? `${record.kind[0].toUpperCase()}${record.kind.slice(1)} record` : "Invalid record link";
   const key = record ? `${record.kind}:${record.id}:${generation}` : `invalid:${generation}`;
   const props = { id: record?.id ?? "", onOpen: navigation.open, onDirtyChange: navigation.onDirtyChange };
@@ -68,12 +70,12 @@ export function RecordSheetHost() {
           {navigation.stack.length > 1 && <Button variant="ghost" className="min-h-11" onClick={navigation.closeAll}>Close all</Button>}
           <Button ref={close} variant="ghost" className="min-h-11 min-w-11" aria-label="Close record sheet" onClick={navigation.back}><X className="h-4 w-4" aria-hidden="true" /></Button>
         </header>
-        {navigation.error ? <div role="alert" className="space-y-4 p-6"><p>{navigation.error.message}</p><Button onClick={navigation.closeAll}>Close invalid link</Button><Button variant="outline" onClick={() => window.location.reload()}>Retry</Button></div> : record && <>
+        {navigation.error ? <div role="alert" className="space-y-4 p-6"><p>{navigation.error.message}</p><Button onClick={navigation.closeAll}>Close invalid link</Button><Button variant="outline" onClick={() => window.location.reload()}>Retry</Button></div> : record && !canPermission(account, record.kind, "read") ? <p role="alert" className="p-6">Your role cannot read this record.</p> : record && <>
           <div role="tablist" aria-label="Record content" className="flex shrink-0 border-b px-4 md:hidden">
-            {["properties", "timeline"].map(value => <button key={value} type="button" role="tab" id={`record-tab-${value}`} aria-controls={`record-panel-${value}`} aria-selected={tab === value} tabIndex={tab === value ? 0 : -1} onClick={() => setTab(value)} onKeyDown={event => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); const next = event.key === "Home" ? "properties" : event.key === "End" ? "timeline" : tab === "properties" ? "timeline" : "properties"; setTab(next); document.getElementById(`record-tab-${next}`)?.focus(); } }} className={`min-h-11 border-b-2 px-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab === value ? "border-primary font-medium" : "border-transparent text-muted-foreground"}`}>{value === "properties" ? "Properties & relations" : "Timeline"}</button>)}
+            {tabs.map(value => <button key={value} type="button" role="tab" id={`record-tab-${value}`} aria-controls={`record-panel-${value}`} aria-selected={tab === value} tabIndex={tab === value ? 0 : -1} onClick={() => setTab(value)} onKeyDown={event => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); const index = tabs.indexOf(tab); const next = event.key === "Home" ? tabs[0] : event.key === "End" ? tabs[tabs.length - 1] : tabs[(index + 1) % tabs.length]; setTab(next); document.getElementById(`record-tab-${next}`)?.focus(); } }} className={`min-h-11 border-b-2 px-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab === value ? "border-primary font-medium" : "border-transparent text-muted-foreground"}`}>{value === "properties" ? "Properties & relations" : "Timeline"}</button>)}
           </div>
-          <div key={key} className="grid min-h-0 flex-1 md:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)]">
-            <section id="record-panel-timeline" aria-label="Record timeline" className={`${tab === "timeline" ? "block" : "hidden"} min-h-0 min-w-0 overflow-y-auto p-4 md:block md:p-6`}><RecordTimeline record={record} onDirtyChange={navigation.onDirtyChange} /></section>
+          <div key={key} className={`grid min-h-0 flex-1 ${canPermission(account, "activity", "read") ? "md:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)]" : ""}`}>
+            {canPermission(account, "activity", "read") && <section id="record-panel-timeline" aria-label="Record timeline" className={`${tab === "timeline" ? "block" : "hidden"} min-h-0 min-w-0 overflow-y-auto p-4 md:block md:p-6`}><RecordTimeline record={record} onDirtyChange={navigation.onDirtyChange} /></section>}
             <section id="record-panel-properties" aria-label="Record properties and relationships" className={`${tab === "properties" ? "block" : "hidden"} min-h-0 min-w-0 overflow-y-auto p-4 md:block md:border-l md:p-6`}>
               {record.kind === "company" ? <CompanySheet {...props} /> : record.kind === "contact" ? <ContactSheet {...props} /> : <DealSheet {...props} />}
             </section>
@@ -116,5 +118,5 @@ function RecordTimeline({ record, onDirtyChange }: { record: RecordRef; onDirtyC
     }
   }
   if (detail.error) return <p className="text-sm text-muted-foreground">Load the record to view its timeline.</p>;
-  return <TimelinePanel record={record} labels={labels} onDirtyChange={onDirtyChange} />;
+  return <TimelinePanel canCreateActivity={detail.data?.canCreateActivity === true} record={record} labels={labels} onDirtyChange={onDirtyChange} />;
 }

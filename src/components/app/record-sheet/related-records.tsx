@@ -1,4 +1,5 @@
 "use client";
+import { canPermission } from "@/lib/auth/permissions";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,8 @@ export function RelatedRecords({ title, kind, records, onOpen, children }: {
   title: string; kind: RecordEntity; records: { id: string; name: string; archivedAt?: string | null; role?: string | null }[];
   onOpen: (record: RecordRef) => void; children?: ReactNode;
 }) {
+  const { account } = useAppData();
+  if (!canPermission(account, kind, "read")) return null;
   return <section className="space-y-3" aria-label={title}><h3 className="text-sm font-semibold">{title} <span className="text-muted-foreground">({records.length})</span></h3>
     {records.length ? <ul className="divide-y rounded-md border">{records.map(record => <li key={record.id} className="p-3 text-sm">
       <RelatedLink record={{ kind, id: record.id }} onOpen={onOpen}>{record.name}</RelatedLink>
@@ -61,6 +64,8 @@ export function ContextualCreate({ entity, defaults, onDirtyChange, recordKey }:
   entity: RecordEntity; defaults: RecordDraft; onDirtyChange: DirtyChange; recordKey: string;
 }) {
   const [open, setOpen] = useState(false);
+  const { account } = useAppData();
+  if (!canPermission(account, entity, "create") || entity === "deal" && !canPermission(account, "company", "read")) return null;
   return <><Button size="sm" variant="outline" onClick={() => setOpen(true)}>Add {entity}</Button>
     <SheetFormDialog open={open} onOpenChange={setOpen} title={`New ${entity}`} description={`Add a ${entity} with this company's defaults.`} editorKey={`${recordKey}:create-${entity}`} onDirtyChange={onDirtyChange}>
       {(register, requestClose) => <RecordForm entity={entity} defaults={defaults} onDirtyChange={register} onCreated={() => setOpen(false)} onCancel={requestClose} />}
@@ -101,20 +106,22 @@ export function DealContacts({ dealId, contacts, onOpen, onDirtyChange }: {
   dealId: string; contacts: { id: string; firstName: string; lastName: string | null; role: string | null; archivedAt: string | null }[];
   onOpen: (record: RecordRef) => void; onDirtyChange: DirtyChange;
 }) {
-  const { api, invalidate, store, generation } = useAppData();
+  const { api, invalidate, store, generation, account } = useAppData();
   const [attach, setAttach] = useState(false); const [detach, setDetach] = useState<string | null>(null);
   const [pending, setPending] = useState(false); const [error, setError] = useState(""); const busy = useRef(false);
   const mounted = useRef(true); useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  if (!canPermission(account, "contact", "read")) return null;
+  const editable = canPermission(account, "deal", "update");
   return <section aria-label="Deal contacts" className="space-y-3"><h3 className="text-sm font-semibold">Contacts ({contacts.length})</h3>
     {contacts.length ? contacts.map(contact => <div key={contact.id} className="rounded border p-3">
       <RelatedLink record={{ kind: "contact", id: contact.id }} onOpen={onOpen}>{contactName(contact)}</RelatedLink>{contact.archivedAt && <span className="ml-2 text-xs">Archived</span>}
-      <InlineField fieldKey={`deal:${dealId}:role:${contact.id}`} label={`Role for ${contactName(contact)}`} value={contact.role ?? ""} onDirtyChange={onDirtyChange} onSave={async input => {
+      <InlineField readOnly={!editable} fieldKey={`deal:${dealId}:role:${contact.id}`} label={`Role for ${contactName(contact)}`} value={contact.role ?? ""} onDirtyChange={onDirtyChange} onSave={async input => {
         const role = input.trim(); if (role.length > 80) throw new Error("Role must be at most 80 characters.");
         const saved = await api.deals.updateContactRole(dealId, contact.id, { role: role || null }); invalidate(RECORD_INVALIDATIONS); return saved.role ?? "";
       }} />
-      <Button size="sm" variant="ghost" className="mt-2" onClick={() => { setError(""); setDetach(contact.id); }}>Detach {contactName(contact)}</Button>
+      {editable && <Button size="sm" variant="ghost" className="mt-2" onClick={() => { setError(""); setDetach(contact.id); }}>Detach {contactName(contact)}</Button>}
     </div>) : <p className="text-sm text-muted-foreground">No contacts attached.</p>}
-    <Button size="sm" variant="outline" onClick={() => setAttach(true)}>Attach existing contact</Button>
+    {editable && <Button size="sm" variant="outline" onClick={() => setAttach(true)}>Attach existing contact</Button>}
     <SheetFormDialog open={attach} onOpenChange={setAttach} title="Attach contact" description="Add a participant independently of their employer." editorKey={`deal:${dealId}:attach`} onDirtyChange={onDirtyChange}>
       {register => <AttachContactForm dealId={dealId} attachedIds={contacts.map(contact => contact.id)} onSaved={() => setAttach(false)} onDirtyChange={register} />}
     </SheetFormDialog>

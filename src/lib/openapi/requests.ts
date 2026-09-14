@@ -11,6 +11,7 @@ import { createFieldInput, updateFieldInput, createOptionInput, updateOptionInpu
 import { createActivityApiInput } from "@/lib/server/activity-api-inputs";
 import { stageApiInput } from "@/lib/server/deal-api-inputs";
 import { memberListInput, memberMutationInput } from "@services/member.service";
+import { roleCreateInput, roleUpdateInput, roleDeleteInput } from "@services/role.service";
 import { statsInput } from "@services/stats.service";
 import { fieldListInput, optionListInput, fieldValuesInput, fieldValueInput, reorderFieldsInput } from "@/lib/server/field-api-inputs";
 import { identifier, listInput } from "@/lib/utils/validation";
@@ -37,6 +38,9 @@ export const requestSchemas = {
   FieldValuesQuery: inputSchema(fieldValuesInput),
   MemberQuery: inputSchema(memberListInput),
   MutateMember: inputSchema(memberMutationInput),
+  CreateRole: inputSchema(roleCreateInput),
+  UpdateRole: inputSchema(roleUpdateInput),
+  DeleteRole: inputSchema(roleDeleteInput),
   StatsQuery: inputSchema(statsInput),
   CreateCompany: inputSchema(createCompanyInput),
   UpdateCompany: inputSchema(updateCompanyInput),
@@ -119,7 +123,10 @@ requestSchemas.SetFieldValue.description = "value must be present, including whe
 
 export type RequestSchemaName = keyof typeof requestSchemas;
 
-requestSchemas.MutateMember.description = "Owner-only action with a nonnegative integer expectedRevision matching the current member. Successful changes increment revision. Restore always grants member and requires a fresh sign-in. Revocation and restoration invalidate sessions. Self-demotion and self-revocation require another active owner. Unknown IDs return 404; stale revisions, invalid transitions and last-owner conflicts return 409.";
+requestSchemas.MutateMember.description = "System-only action with expectedRevision matching the current membership. change-role accepts roleId or null to remove CRM access. Restore leaves roleId null and requires a fresh sign-in. Revocation/restoration invalidate sessions. The last active system account is protected. Unknown IDs return 404; stale revisions and invalid transitions return 409.";
+requestSchemas.CreateRole.description = "System-only role creation. Permissions use actual entity/action pairs; every write grant requires read for that entity. Duplicate grants, unsupported actions and unknown fields are rejected. Omitted permissions create an empty role. No default role exists.";
+requestSchemas.UpdateRole.description = "System-only replacement of name, description and permissions using expectedRevision. Role IDs stay stable; stale updates and any attempt to edit the system role return 409.";
+requestSchemas.DeleteRole.description = "System-only deletion using expectedRevision. The protected system role and roles assigned to any account cannot be deleted.";
 
 for (const [entity, name] of [["company", "Company"], ["contact", "Contact"], ["deal", "Deal"]] as const) {
   for (const suffix of ["Query", "FacetQuery"] as const) {
@@ -133,7 +140,7 @@ for (const [entity, name] of [["company", "Company"], ["contact", "Contact"], ["
 requestSchemas.ReorderFields.description = "IDs must be an exact deduplicated permutation of the entity's active definitions. Positions update atomically. Duplicate/foreign IDs return 400; stale/incomplete membership returns 409 without position changes. Archived definitions retain stored positions.";
 annotateProperty(requestSchemas.SetFieldValue, "expectedType", { description: "Optional editor-time type precondition. A mismatch returns 409 without writing or reinterpreting the draft. Omit for the legacy write behavior." });
 requestSchemas.CreateSavedView.description = "Only entity/name/shared/filters are accepted. Owner is the signed-in account. filters stores q/sort/dir/archived/filters, validated against its entity; no page, selection, identity or record stack. Duplicate name per entity and owner returns 409.";
-requestSchemas.UpdateSavedView.description = "Only creator may change name/shared/filters. Foreign or absent views return 404, including for workspace owners.";
+requestSchemas.UpdateSavedView.description = "Only creator may change name/shared/filters, with entity and related-query read permissions. Foreign or absent views return 404, including for system accounts.";
 
 requestSchemas.AttachDealContact.description = "Requires an existing deal (404 if missing) and contact (400 if missing). Employer and primary-contact relationships are independent; archived records may participate. Duplicate links, including concurrent attempts, return 409. Unknown properties are rejected.";
 requestSchemas.UpdateDealContactRole.description = "role is required: trimmed text up to 80 characters, blank or null clears it. Missing parent deal or link returns 404. Unknown properties are rejected.";

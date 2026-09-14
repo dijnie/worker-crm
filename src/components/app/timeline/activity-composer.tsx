@@ -1,4 +1,5 @@
 "use client";
+import { canPermission } from "@/lib/auth/permissions";
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,8 @@ export interface ActivityComposerProps {
 }
 
 export function ActivityComposer(props: ActivityComposerProps) {
-  const { generation } = useAppData();
+  const { generation, account } = useAppData();
+  if (!canPermission(account, "activity", "create") || !canPermission(account, props.record.kind, "read") || props.record.kind === "deal" && !canPermission(account, "company", "read")) return null;
   return <ComposerSession key={`${generation}:${props.record.kind}:${props.record.id}`} {...props} />;
 }
 

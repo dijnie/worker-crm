@@ -1,4 +1,5 @@
 "use client";
+import { canPermission } from "@/lib/auth/permissions";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,7 +33,7 @@ export function BulkActions({
   retainFailures: (ids: string[]) => void;
   stageOnly?: boolean;
 }) {
-  const { api, generation, store, invalidate } = useAppData();
+  const { api, generation, store, invalidate, account } = useAppData();
   const [action, setAction] = useState<
     "owner" | "company" | "stage" | "archive" | "restore" | null
   >(null);
@@ -112,6 +113,9 @@ export function BulkActions({
     );
   const stage = (stage: DealStage, reason?: string) =>
     execute((id) => api.deals.setStage(id, { stage, reason }));
+  const canUpdate = canPermission(account, entity, "update");
+  const canArchive = canPermission(account, entity, archived ? "restore" : "archive");
+  if (stageOnly && !canUpdate || !canUpdate && !canArchive) return null;
   const blocked = disabled || pending || !targets.length;
   return (
     <div className="space-y-2">
@@ -130,7 +134,7 @@ export function BulkActions({
           <span className="text-sm text-muted-foreground">
             {targets.length} selected on this page
           </span>
-          <Button
+          {canUpdate && <Button
             type="button"
             size="sm"
             variant="outline"
@@ -141,8 +145,8 @@ export function BulkActions({
             }}
           >
             Assign owner
-          </Button>
-          {entity === "contact" && (
+          </Button>}
+          {canUpdate && canPermission(account, "company", "read") && entity === "contact" && (
             <Button
               type="button"
               size="sm"
@@ -156,7 +160,7 @@ export function BulkActions({
               Assign company
             </Button>
           )}
-          {entity === "deal" && (
+          {canUpdate && entity === "deal" && (
             <Button
               type="button"
               size="sm"
@@ -167,7 +171,7 @@ export function BulkActions({
               Change stage
             </Button>
           )}
-          <Button
+          {canArchive && <Button
             type="button"
             size="sm"
             variant="outline"
@@ -175,7 +179,7 @@ export function BulkActions({
             onClick={() => setAction(archived ? "restore" : "archive")}
           >
             {archived ? "Restore selected" : "Archive selected"}
-          </Button>
+          </Button>}
         </div>
       ) : null}
       {outcomes.length > 0 && (

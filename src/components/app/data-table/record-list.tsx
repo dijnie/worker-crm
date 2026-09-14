@@ -1,4 +1,5 @@
 "use client";
+import { canPermission } from "@/lib/auth/permissions";
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import {
   flexRender,
@@ -132,6 +133,10 @@ function ListContent({
 }) {
   const { api, account, generation } = useAppData();
   const { query, update, clear, write } = state;
+  const canCreate = canPermission(account, entity, "create") && (entity !== "deal" || canPermission(account, "company", "read"));
+  const canUpdate = canPermission(account, entity, "update");
+  const canSelect = canUpdate || canPermission(account, entity, query.archived ? "restore" : "archive");
+  const canActivitySummary = (["company", "contact", "deal", "activity"] as const).every(kind => canPermission(account, kind, "read"));
   const fieldQuery = useFieldDefinitions(entity);
   const directory = useAssigneeDirectory();
   const directoryStatus = directory.error ? "User directory unavailable" : directory.loading ? "Loading user…" : undefined;
@@ -313,8 +318,11 @@ function ListContent({
         column(extension.id, extension.label, extension.render, false),
       ),
     );
-    return base;
-  }, [entity, query.archived, displayColumns]);
+    return base.filter(column => column.id !== "company" || canPermission(account, "company", "read"))
+      .filter(column => column.id !== "contacts" || canPermission(account, "contact", "read"))
+      .filter(column => column.id !== "deals" || canPermission(account, "deal", "read"))
+      .filter(column => column.id !== "lastActivity" || canActivitySummary);
+  }, [entity, query.archived, displayColumns, account, canActivitySummary]);
   const table = useReactTable({
     data: rows,
     columns,
@@ -330,7 +338,7 @@ function ListContent({
       columnVisibility: { ...visibility, name: true },
       rowSelection: safeSelection,
     },
-    enableRowSelection: settled,
+    enableRowSelection: settled && canSelect,
     onRowSelectionChange: (change) => {
       if (settled) {
         setSelection(
@@ -389,7 +397,7 @@ function ListContent({
               : "Manage your workspace records"}
           </p>
         </div>
-        <Button onClick={() => setCreating(true)}>New {entity}</Button>
+        {canCreate && <Button onClick={() => setCreating(true)}>New {entity}</Button>}
       </header>
       {recordError && (
         <div
@@ -594,7 +602,7 @@ function ListContent({
                       <input
                         type="checkbox"
                         aria-label="Select page"
-                        disabled={!settled || !rows.length}
+                        disabled={!settled || !rows.length || !canSelect}
                         checked={
                           rows.length > 0 &&
                           rows.every((row) => safeSelection[row.id])
@@ -637,7 +645,7 @@ function ListContent({
                         )}
                       </TableHead>
                     ))}
-                    {entity === "deal" && <TableHead>Actions</TableHead>}
+                    {entity === "deal" && canUpdate && <TableHead>Actions</TableHead>}
                   </TableRow>
                 ))}
               </TableHeader>
@@ -681,7 +689,7 @@ function ListContent({
                         type="checkbox"
                         aria-label={`Select ${recordName(row.original)}`}
                         checked={row.getIsSelected()}
-                        disabled={!settled}
+                        disabled={!settled || !canSelect}
                         onChange={row.getToggleSelectedHandler()}
                       />
                     </TableCell>
@@ -697,7 +705,7 @@ function ListContent({
                         )}
                       </TableCell>
                     ))}
-                    {entity === "deal" && (
+                    {entity === "deal" && canUpdate && (
                       <TableCell>
                         <BulkActions
                           stageOnly

@@ -1,4 +1,5 @@
 "use client";
+import { canPermission } from "@/lib/auth/permissions";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -8,7 +9,7 @@ import { useAppData } from "../app-data-provider";
 import { propertyError } from "../record-sheet/property-values";
 
 export function ActivityActions({ activity, onResult }: { activity: TimelineActivity; onResult: (message: string, error?: boolean) => void }) {
-  const { api, store, generation, invalidate } = useAppData();
+  const { api, store, generation, invalidate, account } = useAppData();
   const [confirm, setConfirm] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -18,7 +19,7 @@ export function ActivityActions({ activity, onResult }: { activity: TimelineActi
   const actions = useRef<HTMLDivElement>(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   async function run(action: "complete" | "delete") {
-    if (busy.current || !store.isCurrent(generation)) return;
+    if (!canPermission(account, "activity", action) || busy.current || !store.isCurrent(generation)) return;
     busy.current = true; setPending(true); setError("");
     try {
       if (action === "delete") await api.activities.delete(activity.id);
@@ -46,8 +47,8 @@ export function ActivityActions({ activity, onResult }: { activity: TimelineActi
   }
   return <div ref={actions} className="space-y-2">
     <div className="flex flex-wrap gap-2" aria-busy={pending}>
-      {activity.type === "TASK" && <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => void run("complete")}>{activity.completedAt ? "Reopen task" : "Complete task"}</Button>}
-      <Button ref={opener} type="button" variant="ghost" size="sm" disabled={pending} onClick={() => { setError(""); setConfirm(true); }}>Delete activity</Button>
+      {activity.type === "TASK" && canPermission(account, "activity", "complete") && <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => void run("complete")}>{activity.completedAt ? "Reopen task" : "Complete task"}</Button>}
+      {canPermission(account, "activity", "delete") && <Button ref={opener} type="button" variant="ghost" size="sm" disabled={pending} onClick={() => { setError(""); setConfirm(true); }}>Delete activity</Button>}
     </div>
     {pending && <p role="status" className="text-xs text-muted-foreground">Updating activity…</p>}
     {error && !confirm && <p role="alert" className="text-xs text-destructive">{error}</p>}

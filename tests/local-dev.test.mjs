@@ -113,6 +113,7 @@ test('real runner exports and restores populated auth, rolls back failed migrati
   assert.deepEqual(await snapshot(h.binding, tables), after);
   assert.deepEqual(await readdir(project.backupRoot), backupsAfter);
   assert.equal((await h.request('/api/companies', { cookie: identities.owner.cookie })).status, 200);
-  assert.equal((await h.request('/api/companies', { cookie: identities.member.cookie })).status, 200);
+  assert.equal((await h.request('/api/companies', { cookie: identities.member.cookie })).status, 403);
+  assert.equal((await h.request('/api/account', { cookie: identities.member.cookie })).status, 200);
   assert.equal((await h.request('/api/companies', { cookie: identities.invalidCookie })).status, 401);
 });

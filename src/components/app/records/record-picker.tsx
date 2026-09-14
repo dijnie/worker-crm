@@ -1,4 +1,5 @@
 "use client";
+import { canPermission } from "@/lib/auth/permissions";
 import { useEffect, useId, useState } from "react";
 import { useAppData, useAppQuery } from "../app-data-provider";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,8 @@ export function RecordPicker({
   selectedLabel,
   excludeIds = [],
 }: PickerProps) {
-  const { api, generation } = useAppData();
+  const { api, generation, account } = useAppData();
+  const allowed = kind === "owner" || canPermission(account, kind, "read");
   const id = useId();
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -72,9 +74,11 @@ export function RecordPicker({
         })),
       };
     },
+    allowed,
   );
   const items = (result.data?.items ?? []).filter(item => !excludeIds.includes(item.id));
   const missingSelected = value && !items.some((item) => item.id === value);
+  if (!allowed) return <p className="text-xs text-muted-foreground">Your role cannot select this linked record.</p>;
   return (
     <div className="space-y-2">
       <label htmlFor={id} className="text-sm font-medium">

@@ -24,7 +24,7 @@ async function edit(page, label, value) {
 }
 
 export async function runSuite(h, { mode, owner }) {
-  const member = await h.signup(`${mode} Sheet Member`);
+  const member = await h.signupAuthorized(`${mode} Sheet Member`);
   const api = (path, options) => h.api(member.context, path, options);
   const company = await api('/api/companies', { method: 'POST', body: { name: `${mode} sheets company`, domain: `${mode}-sheets.example.test`, ownerId: member.user.id } });
   const employer = await api('/api/companies', { method: 'POST', body: { name: `${mode} sheets employer`, domain: `${mode}-employer.example.test` } });

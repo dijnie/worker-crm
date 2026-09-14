@@ -119,8 +119,8 @@ test('record list query matrix uses real D1 filtering, sorting, facets and page 
 test('HTTP list/facet contracts work for ordinary members and reject malformed query encodings', async t => {
   const { createAuthHarness } = await import('./auth-harness.mjs');
   const h = await createAuthHarness(t);
-  await h.signupVerified();
-  const member = await h.signupVerified();
+  await h.signupSystem();
+  const member = await h.signupAuthorized();
   const request = (path, options = {}) => h.request(path, { ...options, cookie: member.cookie });
   const created = await request('/api/companies', { method: 'POST', body: { name: 'HTTP company', industry: 'Research', ownerId: member.user.id } });
   assert.equal(created.status, 201);

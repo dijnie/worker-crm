@@ -1,3 +1,6 @@
+import type { AccountIdentity } from "./auth/request-context";
+import type { RoleRecord, RoleUpdateInput } from "@services/role.service";
+export type { RoleRecord } from "@services/role.service";
 export type { ActivityView, ActivityCounts, ActivityCountsInput, ActivityListInput, ActivityLink, ActivityWithLinks, ActivityListItem } from "@services/activity.service";
 import type { DealContactService, AttachDealContactInput, UpdateDealContactRoleInput } from "@services/deal-contact.service";
 import type { z } from "zod/v3";
@@ -17,6 +20,7 @@ export type { RecordListQuery } from "./record-list-contracts";
 import type { RecordListQuery, RecordFacetQuery, RecordFacets, RecordSummary, RecordFields, RecordFieldValue } from "./record-list-contracts";
 import type { Assignee, AssigneeListInput } from "@services/assignee.service";
 import type { SavedView, CreateSavedViewInput, UpdateSavedViewInput } from "@services/saved-view.service";
+export type RoleInput = Omit<RoleUpdateInput, "expectedRevision">;
 export interface ApiRequestOptions { signal?: AbortSignal }
 export interface ApiIssue { path: (string | number)[]; message: string }
 export class ApiError extends Error {
@@ -87,7 +91,7 @@ export function createApiClient(options: { baseUrl?: string; headers?: HeadersIn
     return {
       list: recordList,
       facets: (query?: RecordFacetQuery, transport?: ApiRequestOptions) => json<RecordFacets>(`${path}/facets`, "GET", undefined, query, transport),
-      get: (id: string, transport?: ApiRequestOptions) => json<Detail>(`${path}/${pathId(id)}`, "GET", undefined, undefined, transport),
+      get: (id: string, transport?: ApiRequestOptions) => json<Detail & { canCreateActivity: boolean }>(`${path}/${pathId(id)}`, "GET", undefined, undefined, transport),
       create: (body: Create) => json<Row>(path, "POST", body),
       update: (id: string, body: Update) => json<Row>(`${path}/${pathId(id)}`, "PATCH", body),
       archive: (id: string) => json<Row>(`${path}/${pathId(id)}`, "DELETE"),
@@ -101,6 +105,14 @@ export function createApiClient(options: { baseUrl?: string; headers?: HeadersIn
   function activityList(query?: ActivityListInput, transport?: ApiRequestOptions) { return list<ActivityListItem>("/api/activities", query, transport); }
 
   return {
+    account: (transport?: ApiRequestOptions) => json<AccountIdentity>("/api/account", "GET", undefined, undefined, transport),
+    roles: {
+      list: (transport?: ApiRequestOptions) => json<RoleRecord[]>("/api/roles", "GET", undefined, undefined, transport),
+      get: (id: string, transport?: ApiRequestOptions) => json<RoleRecord>(`/api/roles/${pathId(id)}`, "GET", undefined, undefined, transport),
+      create: (body: RoleInput) => json<RoleRecord>("/api/roles", "POST", body),
+      update: (id: string, body: RoleInput & { expectedRevision: number }) => json<RoleRecord>(`/api/roles/${pathId(id)}`, "PATCH", body),
+      delete: async (id: string, expectedRevision: number) => { await request(`/api/roles/${pathId(id)}`, "DELETE", { expectedRevision }); },
+    },
     companies: records<Result<CompanyService["create"]>, Result<CompanyService["getById"]>, CreateCompanyInput, UpdateCompanyInput, RecordListQuery>("companies"),
     contacts: records<Result<ContactService["create"]>, Result<ContactService["getById"]>, CreateContactInput, UpdateContactInput, RecordListQuery & { companyId?: string }>("contacts"),
     deals: {

@@ -19,8 +19,8 @@ export type SessionVersionIsRequiredNumber = Assert<
   (typeof schema.session)["$inferSelect"]["accessVersion"] extends number ? true : false
 >;
 
-export type MembershipRoleIsConstrained = Assert<
-  (typeof schema.singletonMembership)["$inferSelect"]["role"] extends "owner" | "member" ? true : false
+export type MembershipRoleIsNullable = Assert<
+  (typeof schema.singletonMembership)["$inferSelect"]["roleId"] extends string | null ? true : false
 >;
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends

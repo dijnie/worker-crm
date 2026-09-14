@@ -2,6 +2,7 @@ import { getTableColumns, type Table } from "drizzle-orm";
 import type { OpenAPIV3 } from "openapi-types";
 import { dealContacts, savedViews, companies, contacts, deals, activities, fieldDefinitions, fieldOptions, fieldValues, FIELD_ENTITIES, DEAL_STAGES } from "@/lib/db/schema";
 import { arrayOf, objectOf, reference, type Schema } from "./schema-helpers";
+import { permissionCatalog } from "@/lib/auth/permissions";
 
 function tableSchema(table: Table): OpenAPIV3.SchemaObject {
   const properties: Record<string, Schema> = {};
@@ -31,6 +32,7 @@ function extend(base: OpenAPIV3.SchemaObject, properties: Record<string, Schema>
 const company = tableSchema(companies);
 const contact = tableSchema(contacts);
 const deal = tableSchema(deals);
+deal.properties!.companyId = { ...deal.properties!.companyId, nullable: true, description: "Null when company read permission is unavailable." };
 deal.properties!.amount = {
   type: "string", nullable: true, pattern: "^-?\\d+\\.\\d{2}$",
   description: "Decimal amount serialized from stored integer cents, with exactly two fractional digits.", example: "1250.00",
@@ -52,6 +54,7 @@ const resolvedValue: OpenAPIV3.SchemaObject = {
 };
 const definitionWithOptions = extend(definition, { options: arrayOf(reference("FieldOption")) });
 const companyDetail = extend(company, {
+  canCreateActivity: { type: "boolean", description: "Whether the current role may create an activity with this record and its inferred links." },
   primaryContact: nullableContact,
   contacts: arrayOf(reference("Contact")),
   deals: arrayOf(reference("Deal")),
@@ -59,6 +62,7 @@ const companyDetail = extend(company, {
   fieldValues: arrayOf(reference("JoinedFieldValue")),
 });
 const contactDetail = extend(contact, {
+  canCreateActivity: { type: "boolean" },
   company: nullableCompany,
   primaryOf: nullableCompany,
   deals: arrayOf(reference("DealWithRole")),
@@ -66,12 +70,13 @@ const contactDetail = extend(contact, {
   fieldValues: arrayOf(reference("JoinedFieldValue")),
 });
 const dealDetail = extend(deal, {
-  company: reference("Company"),
+  canCreateActivity: { type: "boolean" },
+  company: nullableCompany,
   contacts: arrayOf(reference("ContactWithRole")),
   activities: { ...arrayOf(reference("Activity")), maxItems: 30 },
   fieldValues: arrayOf(reference("JoinedFieldValue")),
 });
-const error = { ...objectOf({ message: { type: "string" }, code: { type: "string", description: "Optional stable code: UNAUTHENTICATED, INACTIVE_MEMBERSHIP, FORBIDDEN_ACTION." } }), required: ["message"] };
+const error = { ...objectOf({ message: { type: "string" }, code: { type: "string", description: "Optional stable code: UNAUTHENTICATED, INACTIVE_MEMBERSHIP, FORBIDDEN_ACTION, PERMISSION_REQUIRED." } }), required: ["message"] };
 const ownerSummary = objectOf({ id: { type: "string" }, name: { type: "string" }, image: { type: "string", nullable: true } });
 const companySummary = objectOf({ id: { type: "string" }, name: { type: "string" }, archivedAt: { type: "string", nullable: true } });
 function listRow(base: OpenAPIV3.SchemaObject, withCompany = false, counts = false): OpenAPIV3.SchemaObject {
@@ -79,8 +84,16 @@ function listRow(base: OpenAPIV3.SchemaObject, withCompany = false, counts = fal
     ...(counts ? { contactCount: { type: "integer", minimum: 0 }, openDealCount: { type: "integer", minimum: 0 } } as const : {}) }), required: base.required };
 }
 const savedView = extend(tableSchema(savedViews), { mine: { type: "boolean" }, filters: { type: "object", description: "Source-compatible saved query configuration. Unsupported legacy field references remain readable for deliberate repair." } });
+const accountRole = objectOf({ id: { type: "string" }, name: { type: "string" }, isSystem: { type: "boolean" }, revision: { type: "integer", minimum: 0 } });
+const permission: OpenAPIV3.SchemaObject = { oneOf: Object.entries(permissionCatalog).map(([entity, actions]) =>
+  objectOf({ entity: { type: "string", enum: [entity] }, action: { type: "string", enum: [...actions] } })) };
 
 export const responseSchemas = {
+  Account: objectOf({ id: { type: "string" }, name: { type: "string" }, email: { type: "string", format: "email" },
+    role: { ...accountRole, nullable: true }, permissions: arrayOf(permission),
+    membershipRevision: { type: "integer", minimum: 0 }, accessVersion: { type: "integer", minimum: 0 } }),
+  Role: extend(accountRole, { description: { type: "string", nullable: true }, permissions: arrayOf(permission),
+    memberCount: { type: "integer", minimum: 0 }, createdAt: { type: "string", format: "date-time" }, updatedAt: { type: "string", format: "date-time" } }),
   Assignee: ownerSummary,
   SavedView: savedView,
   CompanyListRow: listRow(company, false, true),
@@ -94,7 +107,8 @@ export const responseSchemas = {
     id: { type: "string" },
     name: { type: "string" },
     email: { type: "string", format: "email" },
-    role: { type: "string", enum: ["owner", "member"] },
+    roleId: { type: "string", nullable: true },
+    role: { ...accountRole, nullable: true },
     status: { type: "string", enum: ["active", "revoked"] },
     revision: { type: "integer", minimum: 0 },
     createdAt: { type: "string", format: "date-time" },
@@ -138,15 +152,15 @@ export const responseSchemas = {
   FieldValueResult: objectOf({ fieldId: { type: "string" }, entityType: { type: "string", enum: [...FIELD_ENTITIES] }, entityId: { type: "string" }, value: resolvedValue }),
   StageResult: objectOf({ id: { type: "string" }, stage: { type: "string", enum: [...DEAL_STAGES] }, changed: { type: "boolean" } }),
   Stats: objectOf({
-    totalCompanies: { type: "integer", minimum: 0, description: "Active company count across the workspace." },
-    totalContacts: { type: "integer", minimum: 0, description: "Active contact count across the workspace." },
-    totalDeals: { type: "integer", minimum: 0, description: "Active deal count across all currencies and stages, including closed deals." },
-    openDeals: { type: "integer", minimum: 0, description: "Global active open-deal count across currencies, excluding closed won/lost and unqualified stages." },
-    openDealValue: { type: "string", pattern: "^-?\\d+\\.\\d{2}$", description: "Exact total for active open deals in the requested currency; closed won/lost and unqualified stages are excluded." },
+    totalCompanies: { type: "integer", nullable: true, minimum: 0, description: "Active company count, or null without company read permission." },
+    totalContacts: { type: "integer", nullable: true, minimum: 0, description: "Active contact count, or null without contact read permission." },
+    totalDeals: { type: "integer", nullable: true, minimum: 0, description: "Active deal count across currencies, or null without deal read permission." },
+    openDeals: { type: "integer", nullable: true, minimum: 0, description: "Active open-deal count across currencies, or null without deal read permission." },
+    openDealValue: { type: "string", nullable: true, pattern: "^-?\\d+\\.\\d{2}$", description: "Exact open deal value in the requested currency, or null without deal read permission." },
     currency: { type: "string", pattern: "^[A-Z]{3}$" },
-    pipeline: { ...arrayOf(objectOf({ stage: { type: "string", enum: [...DEAL_STAGES] }, count: { type: "integer", minimum: 0 }, value: { type: "string", pattern: "^-?\\d+\\.\\d{2}$" } })), minItems: DEAL_STAGES.length, maxItems: DEAL_STAGES.length,
+    pipeline: { ...arrayOf(objectOf({ stage: { type: "string", enum: [...DEAL_STAGES] }, count: { type: "integer", minimum: 0 }, value: { type: "string", pattern: "^-?\\d+\\.\\d{2}$" } })), nullable: true, minItems: DEAL_STAGES.length, maxItems: DEAL_STAGES.length,
       description: "All seven stages in canonical order, including zero buckets. Both count and exact value include only unarchived deals in the selected currency; null amounts contribute zero." },
-    activitiesThisWeek: { type: "integer", minimum: 0, description: "Activities created from Monday 00:00 UTC through the current time." },
+    activitiesThisWeek: { type: "integer", nullable: true, minimum: 0, description: "Visible activities created this UTC week; null without activity read permission. All linked entities must be readable." },
   }),
   Error: error,
   ValidationError: {

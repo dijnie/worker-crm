@@ -8,6 +8,7 @@ import { build } from 'esbuild';
 import { Miniflare } from 'miniflare';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+export const fullCrmPermissions = ['company', 'contact', 'deal'].flatMap(entity => ['read', 'create', 'update', 'archive', 'restore'].map(action => ({ entity, action }))).concat(['read', 'create', 'complete', 'delete'].map(action => ({ entity: 'activity', action })));
 export const password = 'A-real-local-test-password-42!';
 
 /** All state and recording controls exist only in this disposable workerd harness. */
@@ -120,6 +121,24 @@ export async function createAuthHarness(context, { baseUrl = 'https://crm.test',
       assert.ok([200,302].includes(verification.status), await verification.text());
       return { email: email.trim().toLowerCase(), ...(await signIn(email, { ip })) };
     };
+    // Explicit fixture preparation; genuine signupVerified never grants CRM access.
+    const bootstrapSystem = async account => {
+      const system = await binding.prepare('SELECT id FROM roles WHERE is_system = 1').first();
+      assert.ok(system, 'Migration must seed the protected system role');
+      await binding.prepare('UPDATE singleton_membership SET role_id = ? WHERE user_id = ? AND status = ?')
+        .bind(system.id, account.user.id, 'active').run();
+      return account;
+    };
+    const authorize = async (account, permissions = fullCrmPermissions) => {
+      const roleId = randomUUID();
+      await binding.prepare('INSERT INTO roles (id, name, is_system, revision, created_at, updated_at) VALUES (?, ?, 0, 0, ?, ?)')
+        .bind(roleId, `Fixture ${roleId}`, Date.now(), Date.now()).run();
+      if (permissions.length) await binding.batch(permissions.map(({ entity, action }) => binding.prepare('INSERT INTO role_permissions (role_id, entity, action) VALUES (?, ?, ?)').bind(roleId, entity, action)));
+      await binding.prepare('UPDATE singleton_membership SET role_id = ? WHERE user_id = ? AND status = ?').bind(roleId, account.user.id, 'active').run();
+      return { ...account, roleId };
+    };
+    const signupSystem = async (...args) => bootstrapSystem(await signupVerified(...args));
+    const signupAuthorized = async (...args) => authorize(await signupVerified(...args));
     const expireVerificationLink = (value) => {
       const url = new URL(value), parts = url.searchParams.get('token').split('.');
       const claims = JSON.parse(Buffer.from(parts[1], 'base64url'));
@@ -129,6 +148,6 @@ export async function createAuthHarness(context, { baseUrl = 'https://crm.test',
       return url.toString();
     };
     context?.after(dispose);
-    return { runtime, binding, request, outbox, errorEvents, signIn, signupVerified, expireVerificationLink, dispose, baseUrl, directory };
+    return { runtime, binding, request, outbox, errorEvents, signIn, signupVerified, signupSystem, signupAuthorized, bootstrapSystem, authorize, expireVerificationLink, dispose, baseUrl, directory };
   } catch (error) { await dispose(); throw error; }
 }

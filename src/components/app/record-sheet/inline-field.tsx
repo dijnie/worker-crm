@@ -8,9 +8,9 @@ import { RecordPicker } from "../records/record-picker";
 import { propertyError } from "./property-values";
 export type DirtyEditor = { dirty: boolean; pending?: boolean; save: () => Promise<boolean>; discard: () => void };
 export type DirtyChange = (key: string, state: DirtyEditor | null) => void;
-export function InlineField({ fieldKey, label, value, display, onSave, onDirtyChange, multiline, type = "text", picker, required, selectedLabel }: {
+export function InlineField({ fieldKey, label, value, display, onSave, onDirtyChange, multiline, type = "text", picker, required, selectedLabel, readOnly = false }: {
   fieldKey: string; label: string; value: string; display?: ReactNode; onSave: (value: string) => Promise<string>;
-  onDirtyChange: DirtyChange; multiline?: boolean; type?: string; picker?: "owner" | "company" | "contact"; required?: boolean; selectedLabel?: string;
+  onDirtyChange: DirtyChange; multiline?: boolean; type?: string; picker?: "owner" | "company" | "contact"; required?: boolean; selectedLabel?: string; readOnly?: boolean;
 }) {
   const { store, generation } = useAppData();
   const id = useId();
@@ -33,6 +33,7 @@ export function InlineField({ fieldKey, label, value, display, onSave, onDirtyCh
   }, [value, editing]);
   const discard = () => { if (flight.current) return; cancelBlur.current = true; editingRef.current = false; draftRef.current = confirmedRef.current; setDraft(confirmedRef.current); setEditing(false); setError(""); };
   const save = (): Promise<boolean> => {
+    if (readOnly) return Promise.resolve(false);
     if (flight.current) return flight.current;
     if (!editingRef.current) return Promise.resolve(true);
     if (draftRef.current === confirmedRef.current) { editingRef.current = false; setEditing(false); return Promise.resolve(true); }
@@ -79,6 +80,6 @@ export function InlineField({ fieldKey, label, value, display, onSave, onDirtyCh
       <div className="flex gap-2"><Button size="sm" type="button" disabled={pending} aria-label={`Save ${label.toLowerCase()}`} onClick={() => void save()}>{pending ? "Saving…" : "Save"}</Button>
         <Button size="sm" type="button" variant="ghost" disabled={pending} onMouseDown={() => { cancelBlur.current = true; }} onClick={discard}>Cancel</Button></div>
     </div> : <div className="flex items-start justify-between gap-2"><div className="min-w-0 whitespace-pre-wrap break-words text-sm">{display ?? (confirmed || <span className="text-muted-foreground">Not set</span>)}</div>
-      <Button type="button" variant="ghost" size="sm" aria-label={`Edit ${label.toLowerCase()}`} onClick={() => { cancelBlur.current = false; editingRef.current = true; setDraft(confirmed); setEditing(true); }}>Edit</Button></div>}
+      {!readOnly && <Button type="button" variant="ghost" size="sm" aria-label={`Edit ${label.toLowerCase()}`} onClick={() => { cancelBlur.current = false; editingRef.current = true; setDraft(confirmed); setEditing(true); }}>Edit</Button>}</div>}
   </div>;
 }

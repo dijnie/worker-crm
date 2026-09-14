@@ -1,4 +1,5 @@
 "use client";
+import { canPermission } from "@/lib/auth/permissions";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type { DirtyEditor } from "../record-sheet/inline-field";
 import { ApiError } from "@/lib/api";
@@ -59,6 +60,7 @@ export function RecordForm({
   onDirtyChange?: (state: DirtyEditor | null) => void;
 }) {
   const { api, account, invalidate, generation, store } = useAppData();
+  const permitted = canPermission(account, entity, "create") && (entity !== "deal" || canPermission(account, "company", "read"));
   const prefix = useId();
   const [draft, setDraft] = useState<RecordDraft>(() => ({
     ...(entity === "deal" ? { currency: "USD", ownerId: account.id } : {}),
@@ -142,10 +144,12 @@ export function RecordForm({
     onDirtyChange?.(dirty ? { dirty: true, pending, save: () => latestSave.current(), discard: () => { setDraft(initialDraft.current); setError(null); } } : null);
     return () => onDirtyChange?.(null);
   }, [dirty, pending, onDirtyChange]);
+  if (!permitted) return <p role="alert" className="text-sm">Your role cannot create this record. Creating deals also requires Company Read.</p>;
   return (
     <form ref={formRef} onSubmit={submit} className="space-y-5">
       <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">
         {fields.map((key) => {
+          if (key === "companyId" && !canPermission(account, "company", "read") || key === "primaryContactId" && !canPermission(account, "contact", "read")) return null;
           if (
             key === "ownerId" ||
             key === "companyId" ||

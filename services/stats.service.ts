@@ -4,6 +4,7 @@ import type { Database } from "@/lib/db";
 import { activities, companies, contacts, deals, DEAL_STAGES, type DealStage } from "@/lib/db/schema";
 import { centsToDecimal } from "@/lib/utils/money";
 import { currencyCode } from "@/lib/utils/validation";
+import { canRead, activityReadPredicate } from "@/lib/server/read-access";
 
 export const statsInput = z.object({ currency: currencyCode.default("USD") }).strict();
 
@@ -17,15 +18,15 @@ export class StatsService {
     const now = new Date();
     const weekStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     weekStart.setUTCDate(weekStart.getUTCDate() - (weekStart.getUTCDay() + 6) % 7);
-    const activeDeals = isNull(deals.archivedAt);
+    const activeDeals = and(isNull(deals.archivedAt), canRead(this.db, "deal") ? undefined : sql`0`);
     const openDeals = and(activeDeals, notInArray(deals.stage, [...closedStages]));
     const selectedCurrencyDeals = and(activeDeals, eq(deals.currency, currency));
     const [companyCount, contactCount, dealCount, openDealCount, activityCount, amounts] = await this.db.batch([
-      this.db.select({ total: count() }).from(companies).where(isNull(companies.archivedAt)),
-      this.db.select({ total: count() }).from(contacts).where(isNull(contacts.archivedAt)),
+      this.db.select({ total: count() }).from(companies).where(and(isNull(companies.archivedAt), canRead(this.db, "company") ? undefined : sql`0`)),
+      this.db.select({ total: count() }).from(contacts).where(and(isNull(contacts.archivedAt), canRead(this.db, "contact") ? undefined : sql`0`)),
       this.db.select({ total: count() }).from(deals).where(activeDeals),
       this.db.select({ total: count() }).from(deals).where(openDeals),
-      this.db.select({ total: count() }).from(activities).where(sql`julianday(${activities.createdAt}) >= julianday(${weekStart.toISOString()}) AND julianday(${activities.createdAt}) <= julianday(${now.toISOString()})`),
+      this.db.select({ total: count() }).from(activities).where(and(activityReadPredicate(this.db), sql`julianday(${activities.createdAt}) >= julianday(${weekStart.toISOString()}) AND julianday(${activities.createdAt}) <= julianday(${now.toISOString()})`)),
       this.db.select({ stage: deals.stage, amount: deals.amount }).from(deals).where(selectedCurrencyDeals),
     ]);
     // D1 returns one safe integer per deal; BigInt keeps totals exact beyond that range.
@@ -43,14 +44,14 @@ export class StatsService {
       return { stage, count: bucket.count, value: centsToDecimal(bucket.cents) };
     });
     return {
-      totalCompanies: companyCount[0].total,
-      totalContacts: contactCount[0].total,
-      totalDeals: dealCount[0].total,
-      openDeals: openDealCount[0].total,
-      openDealValue: centsToDecimal(openCents),
+      totalCompanies: canRead(this.db, "company") ? companyCount[0].total : null,
+      totalContacts: canRead(this.db, "contact") ? contactCount[0].total : null,
+      totalDeals: canRead(this.db, "deal") ? dealCount[0].total : null,
+      openDeals: canRead(this.db, "deal") ? openDealCount[0].total : null,
+      openDealValue: canRead(this.db, "deal") ? centsToDecimal(openCents) : null,
       currency,
-      activitiesThisWeek: activityCount[0].total,
-      pipeline,
+      activitiesThisWeek: canRead(this.db, "activity") ? activityCount[0].total : null,
+      pipeline: canRead(this.db, "deal") ? pipeline : null,
     };
   }
 }

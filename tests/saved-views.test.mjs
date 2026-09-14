@@ -3,7 +3,7 @@ import { before, after, test } from 'node:test';
 import { createAuthHarness } from './auth-harness.mjs';
 import { assertApiResponse } from './openapi-assertions.mjs';
 let h, owner, member, spec;
-before(async () => { h = await createAuthHarness(); owner = await h.signupVerified(); member = await h.signupVerified(); spec = await (await h.request('/api/openapi')).json(); });
+before(async () => { h = await createAuthHarness(); owner = await h.signupSystem(); member = await h.signupAuthorized(); spec = await (await h.request('/api/openapi')).json(); });
 after(async () => h?.dispose());
 async function call(account, path, method = 'GET', body) {
   const response = await h.request(path, { cookie: account.cookie, method, body });
@@ -52,7 +52,7 @@ test('saved-view writes reject prototype-named unknown facets without silently d
 });
 
 test('custom saved views retain stable keys and retired options, while stale views remain readable for repair', async () => {
-  const definitionResponse = await call(member, '/api/fields', 'POST', { entity: 'COMPANY', key: 'saved_segment', label: 'Segment', type: 'SELECT', showOnFilter: true, showOnTable: true, options: [{ label: 'Priority' }, { label: 'Other' }] });
+  const definitionResponse = await call(owner, '/api/fields', 'POST', { entity: 'COMPANY', key: 'saved_segment', label: 'Segment', type: 'SELECT', showOnFilter: true, showOnTable: true, options: [{ label: 'Priority' }, { label: 'Other' }] });
   assert.equal(definitionResponse.status, 201);
   const definition = await definitionResponse.json();
   const option = definition.options[0];
@@ -61,8 +61,8 @@ test('custom saved views retain stable keys and retired options, while stale vie
   assert.equal(created.status, 201);
   const view = await created.json();
   assert.equal((await call(owner, `/api/saved-views/${view.id}`, 'PATCH', { name: 'Not mine' })).status, 404);
-  assert.equal((await call(member, `/api/fields/${definition.id}`, 'PATCH', { label: 'Renamed segment' })).status, 200);
-  assert.equal((await call(member, `/api/fields/${definition.id}/options/${option.id}`, 'PATCH', { archived: true })).status, 200);
+  assert.equal((await call(owner, `/api/fields/${definition.id}`, 'PATCH', { label: 'Renamed segment' })).status, 200);
+  assert.equal((await call(owner, `/api/fields/${definition.id}/options/${option.id}`, 'PATCH', { archived: true })).status, 200);
   assert.equal((await call(member, `/api/saved-views/${view.id}`, 'PATCH', { filters })).status, 200);
   const personal = await call(owner, '/api/saved-views', 'POST', { entity: 'COMPANY', name: 'Personal custom segment', filters });
   assert.equal(personal.status, 201);
@@ -72,13 +72,13 @@ test('custom saved views retain stable keys and retired options, while stale vie
     { entity: 'CONTACT', name: 'Wrong entity', filters },
     { entity: 'COMPANY', name: 'Wrong option', filters: { filters: { 'field:saved_segment': ['foreign-option'] } } },
   ]) assert.equal((await call(member, '/api/saved-views', 'POST', body)).status, 400);
-  assert.equal((await call(member, `/api/fields/${definition.id}`, 'DELETE')).status, 200);
+  assert.equal((await call(owner, `/api/fields/${definition.id}`, 'DELETE')).status, 200);
   const retained = (await (await call(owner, '/api/saved-views?entity=COMPANY')).json()).find(item => item.id === view.id);
   assert.deepEqual(retained.filters, filters);
   assert.equal((await call(member, `/api/saved-views/${view.id}`, 'PATCH', { name: 'Repair later' })).status, 200);
   assert.equal((await call(member, `/api/saved-views/${view.id}`, 'PATCH', { filters })).status, 400);
   assert.equal((await call(member, `/api/companies?filters=${encodeURIComponent(JSON.stringify(filters.filters))}`)).status, 400);
   assert.equal((await call(member, `/api/saved-views/${view.id}`, 'PATCH', { filters: { filters: {} } })).status, 200);
-  assert.equal((await call(member, `/api/fields/${definition.id}/restore`, 'POST')).status, 200);
+  assert.equal((await call(owner, `/api/fields/${definition.id}/restore`, 'POST')).status, 200);
   assert.equal((await call(member, `/api/saved-views/${view.id}`, 'PATCH', { filters })).status, 200);
 });

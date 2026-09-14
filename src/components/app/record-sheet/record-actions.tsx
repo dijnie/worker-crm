@@ -1,4 +1,5 @@
 "use client";
+import { canPermission } from "@/lib/auth/permissions";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -6,7 +7,7 @@ import { useAppData } from "../app-data-provider";
 import { RECORD_INVALIDATIONS, type RecordEntity } from "../records/form-values";
 import { propertyError } from "./property-values";
 export function RecordActions({ entity, id, archivedAt }: { entity: RecordEntity; id: string; archivedAt: string | null }) {
-  const { api, store, generation, invalidate } = useAppData();
+  const { api, store, generation, invalidate, account } = useAppData();
   const [confirm, setConfirm] = useState(false);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
@@ -27,6 +28,7 @@ export function RecordActions({ entity, id, archivedAt }: { entity: RecordEntity
     } catch (failure) { if (mounted.current && store.isCurrent(generation)) setError(propertyError(failure)); }
     finally { submitting.current = false; if (mounted.current && store.isCurrent(generation)) setPending(false); }
   }
+  if (!canPermission(account, entity, archivedAt ? "restore" : "archive")) return null;
   return <div className="space-y-2">
     <div className="flex items-center gap-3">{archivedAt && <span className="rounded bg-muted px-2 py-1 text-xs">Archived</span>}
       <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => archivedAt ? void run() : setConfirm(true)}>{pending ? "Updating…" : archivedAt ? "Restore record" : "Archive record"}</Button></div>

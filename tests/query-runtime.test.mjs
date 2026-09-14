@@ -29,7 +29,7 @@ test('D1 literal substring searches retain the full contract across records and 
     await h.db.insert(h.schema.contacts).values({ id, firstName: name, title: name });
     await h.db.insert(h.schema.deals).values({ id, name, companyId: id, ownerId: 'historical' });
     await h.db.insert(h.schema.user).values({ id, name, email: `${id}@example.test`, emailVerified: true });
-    await h.db.insert(h.schema.singletonMembership).values({ userId: id, role: 'member', status: 'active', createdAt: new Date(), updatedAt: new Date() });
+    await h.db.insert(h.schema.singletonMembership).values({ userId: id, roleId: null, status: 'active', createdAt: new Date(), updatedAt: new Date() });
     await fields.upsertValue(reviewer.id, 'COMPANY', id, id);
     await fields.upsertValue(definition.id, 'COMPANY', id, definition.options[index].id);
   }
@@ -95,7 +95,7 @@ test('D1 company summaries support 97, 98 and 100 row pages with accurate counts
 
 test('authenticated search, directory and saved-view HTTP contracts accept long literal queries', async t => {
   const h = await createAuthHarness(t);
-  const owner = await h.signupVerified();
+  const owner = await h.signupSystem();
   const request = (path, options = {}) => h.request(path, { ...options, cookie: owner.cookie });
   const created = await request('/api/companies', { method: 'POST', body: { name: longUnicode, industry: longUnicode } });
   assert.equal(created.status, 201);

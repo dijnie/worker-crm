@@ -54,7 +54,7 @@ test('custom SELECT and USER facets count full matching sets, retain historical 
     options: Array.from({ length: 65 }, (_, i) => ({ label: `Option ${String(i).padStart(2, '0')}` })) });
   const assignee = await fields.createDefinition({ entity: 'COMPANY', key: 'reviewer', label: 'Reviewer', type: 'USER', showOnFilter: true });
   await h.db.insert(h.schema.user).values({ id: 'active', name: 'Active Reviewer', email: 'reviewer@example.test', emailVerified: true });
-  await h.db.insert(h.schema.singletonMembership).values({ userId: 'active', role: 'member', status: 'active', createdAt: new Date(), updatedAt: new Date() });
+  await h.db.insert(h.schema.singletonMembership).values({ userId: 'active', roleId: null, status: 'active', createdAt: new Date(), updatedAt: new Date() });
   for (let i = 0; i < 65; i++) {
     await h.db.insert(h.schema.companies).values({ id: `c${i}`, name: `Company ${String(i).padStart(2, '0')}`, industry: i < 40 ? 'Tech' : 'Finance' });
     await fields.upsertValue(select.id, 'COMPANY', `c${i}`, select.options[i].id);
@@ -124,8 +124,8 @@ test('ordinary members use custom projections and facets over HTTP for every ent
   const { createAuthHarness } = await import('./auth-harness.mjs');
   const { assertApiResponse } = await import('./openapi-assertions.mjs');
   const h = await createAuthHarness(t);
-  await h.signupVerified();
-  const member = await h.signupVerified();
+  const system = await h.signupSystem();
+  const member = await h.signupAuthorized();
   const spec = await (await h.request('/api/openapi')).json();
   const request = async (path, method = 'GET', body) => {
     const response = await h.request(path, { cookie: member.cookie, method, body });
@@ -137,7 +137,7 @@ test('ordinary members use custom projections and facets over HTTP for every ent
     assert.equal(created.status, 201);
     const record = await created.json();
     if (entity === 'COMPANY') companyId = record.id;
-    const definition = await (await request('/api/fields', 'POST', { entity, key: 'http_reviewer', label: 'Reviewer', type: 'USER', showOnTable: true, showOnFilter: true })).json();
+    const definition = await (await h.request('/api/fields', { cookie: system.cookie, method: 'POST', body: { entity, key: 'http_reviewer', label: 'Reviewer', type: 'USER', showOnTable: true, showOnFilter: true } })).json();
     assert.equal((await request(`/api/fields/${definition.id}/value`, 'PUT', { entity, entityId: record.id, value: member.user.id })).status, 200);
     const filters = encodeURIComponent(JSON.stringify({ 'field:http_reviewer': [member.user.id] }));
     const list = await request(`/api/${resource}?includeFields=true&includeSummary=true&filters=${filters}`);

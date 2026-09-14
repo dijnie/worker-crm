@@ -61,8 +61,8 @@ export function assertPopulatedBusiness(rows) {
 }
 
 export async function seedAuthHistory(h) {
-  const owner = await h.signupVerified('upgrade-owner@example.test', 'Upgrade Owner');
-  const member = await h.signupVerified('upgrade-member@example.test', 'Upgrade Member');
+  const owner = await h.signupSystem('upgrade-owner@example.test', 'Upgrade Owner');
+  const member = await h.signupAuthorized('upgrade-member@example.test', 'Upgrade Member');
   for (const [expectedRevision, action] of ['revoke', 'restore'].entries()) {
     const result = await h.request(`/api/members/${member.user.id}`, { method: 'PATCH', cookie: owner.cookie, body: { action, expectedRevision } });
     assert.equal(result.status, 200, await result.clone().text());

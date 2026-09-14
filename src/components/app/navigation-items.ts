@@ -1,3 +1,5 @@
+import type { AccountIdentity } from "@/lib/auth/request-context";
+import { canPermission } from "@/lib/auth/permissions";
 import Building from "@carbon/icons-react/es/Building";
 import Api from "@carbon/icons-react/es/Api";
 import Dashboard from "@carbon/icons-react/es/Dashboard";
@@ -16,4 +18,14 @@ export const navigationItems = [
 
 export function matchesNavigationPath(href: string, pathname: string) {
   return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
+}
+
+export function visibleNavigationItems(account: AccountIdentity) {
+  return navigationItems.filter(item => {
+    if (item.href === "/settings") return account.role?.isSystem;
+    if (item.href === "/companies") return canPermission(account, "company", "read");
+    if (item.href === "/contacts") return canPermission(account, "contact", "read");
+    if (item.href === "/deals") return canPermission(account, "deal", "read");
+    return true;
+  });
 }

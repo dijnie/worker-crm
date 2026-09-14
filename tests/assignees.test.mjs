@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { createAuthHarness } from './auth-harness.mjs';
 let h, owner, member;
-before(async () => { h = await createAuthHarness(); owner = await h.signupVerified(); member = await h.signupVerified(); });
+before(async () => { h = await createAuthHarness(); owner = await h.signupSystem(); member = await h.signupAuthorized(); });
 after(async () => h?.dispose());
 const call = (account,path,method='GET',body) => h.request(path,{cookie:account.cookie,method,body});
 test('ordinary member receives only safe active verified directory data with bounded pagination', async () => {
@@ -30,7 +30,7 @@ test('directory searches display names case-insensitively and excludes unverifie
   assert.equal(created.status, 200);
   const pending = await h.binding.prepare('SELECT id FROM user WHERE email = ?').bind('directory-unverified@example.test').first();
   // Unverified accounts cannot gain membership even through a direct admission attempt.
-  await assert.rejects(h.binding.prepare("INSERT INTO singleton_membership (user_id, role, status, created_at, updated_at) VALUES (?, 'member', 'active', ?, ?)").bind(pending.id, Date.now(), Date.now()).run(), /membership_admission_denied/);
+  await assert.rejects(h.binding.prepare("INSERT INTO singleton_membership (user_id, role_id, status, created_at, updated_at) VALUES (?, NULL, 'active', ?, ?)").bind(pending.id, Date.now(), Date.now()).run(), /membership_admission_denied/);
   await h.binding.prepare("INSERT INTO user (id, name, email, email_verified) VALUES ('directory-orphan', 'Hidden Orphan', 'directory-orphan@example.test', 1)").run();
   const response = await call(owner, '/api/assignees?search=ALPHA');
   assert.equal(response.status, 200);

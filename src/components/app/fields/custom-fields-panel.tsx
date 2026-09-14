@@ -1,4 +1,5 @@
 "use client";
+import { canPermission } from "@/lib/auth/permissions";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,7 @@ export function CustomFieldsPanel(props: { record: RecordRef; onDirtyChange: Dir
   return <PanelSession key={`${generation}:${props.record.kind}:${props.record.id}`} {...props} />;
 }
 function PanelSession({ record, onDirtyChange }: { record: RecordRef; onDirtyChange: DirtyChange }) {
-  const { api } = useAppData();
+  const { api, account } = useAppData();
   const entity = record.kind.toUpperCase() as FieldEntity;
   const values = useAppQuery("fields:values", { entity, id: record.id }, signal => api.fields.values(entity, record.id, { signal }));
   const [dirtyIds, setDirtyIds] = useState<string[]>([]);
@@ -29,7 +30,7 @@ function PanelSession({ record, onDirtyChange }: { record: RecordRef; onDirtyCha
   const visible = (values.error ? remembered.current.filter(row => dirtyIds.includes(row.id)) : remembered.current).filter(row => row.showOnSheet || dirtyIds.includes(row.id));
   const directory = useAssigneeDirectory();
   return <section className="mt-5" aria-label="Custom fields">
-    <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">Custom fields</h3><Link className="text-xs underline" href={`/settings?returnTo=${encodeURIComponent(typeof window === "undefined" ? "/" : window.location.pathname + window.location.search)}`}>Manage fields</Link></div>
+    <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">Custom fields</h3>{account.role?.isSystem && <Link className="text-xs underline" href={`/settings?returnTo=${encodeURIComponent(typeof window === "undefined" ? "/" : window.location.pathname + window.location.search)}`}>Manage fields</Link>}</div>
     {values.loading && <p role="status" className="py-3 text-sm text-muted-foreground">Loading custom fields…</p>}
     {values.error ? <p role="alert" className="py-3 text-sm text-destructive">{values.error instanceof Error ? values.error.message : "Custom fields unavailable."} <button type="button" className="underline" onClick={values.refresh}>Retry custom fields</button></p> : !values.loading && !visible.length && <p className="py-3 text-sm text-muted-foreground">No custom fields shown on this record.</p>}
     {visible.some(definition => definition.type === "USER") && !!directory.error && <p role="alert" className="py-2 text-xs text-destructive">User directory unavailable. <button type="button" className="underline" onClick={directory.refresh}>Retry user directory</button></p>}
@@ -44,7 +45,7 @@ function PanelSession({ record, onDirtyChange }: { record: RecordRef; onDirtyCha
 function ValueEditor({ record, definition, onDirtyChange, userLabel, unavailable }: {
   record: RecordRef; definition: ValueDefinition; onDirtyChange: DirtyChange; userLabel?: string; unavailable: boolean;
 }) {
-  const { api, store, generation, invalidate } = useAppData();
+  const { api, store, generation, invalidate, account } = useAppData();
   const id = useId();
   const [opening, setOpening] = useState<ValueDefinition | null>(null);
   const [draft, setDraft] = useState<FieldValue>(fieldDraft(definition.type, definition.value));
@@ -117,7 +118,7 @@ function ValueEditor({ record, definition, onDirtyChange, userLabel, unavailable
           <Input id={id} aria-label={active.label} autoFocus type={active.type === "DATE" ? "date" : active.type === "EMAIL" ? "email" : active.type === "URL" ? "url" : active.type === "PHONE" ? "tel" : "text"} inputMode={active.type === "NUMBER" ? "decimal" : undefined} value={text} disabled={pending} maxLength={maxLength} onChange={event => setDraft(event.target.value)} />}
       {error && <p role="alert" className="text-xs text-destructive">{error} Last saved: <FieldValueDisplay definition={opening} value={confirmed} userLabel={userLabel} /></p>}
       <div className="flex flex-wrap gap-2"><Button size="sm" type="button" aria-label={`Save ${active.label.toLowerCase()}`} disabled={pending} onClick={() => void save()}>Save</Button><Button size="sm" type="button" variant="ghost" disabled={pending} onClick={discard}>Cancel</Button>{!active.required && <Button type="button" size="sm" variant="outline" aria-label={`Clear ${active.label.toLowerCase()}`} disabled={pending} onClick={() => setDraft(null)}>Clear</Button>}</div>
-    </div> : <div className="flex items-start justify-between gap-2"><div className="min-w-0 text-sm"><FieldValueDisplay definition={definition} value={confirmed} userLabel={userLabel} /></div><Button ref={editButton} type="button" variant="ghost" size="sm" aria-label={`Edit ${definition.label.toLowerCase()}`} disabled={unavailable} onClick={() => { setOpening(definition); setDraft(fieldDraft(definition.type, confirmed)); setError(""); setSuccess(""); }}>Edit</Button></div>}
+    </div> : <div className="flex items-start justify-between gap-2"><div className="min-w-0 text-sm"><FieldValueDisplay definition={definition} value={confirmed} userLabel={userLabel} /></div>{canPermission(account, record.kind, "update") && <Button ref={editButton} type="button" variant="ghost" size="sm" aria-label={`Edit ${definition.label.toLowerCase()}`} disabled={unavailable} onClick={() => { setOpening(definition); setDraft(fieldDraft(definition.type, confirmed)); setError(""); setSuccess(""); }}>Edit</Button>}</div>}
     <div role="status" aria-live="polite" className="text-xs text-muted-foreground">{pending ? "Saving…" : success}</div>
   </div>;
 }

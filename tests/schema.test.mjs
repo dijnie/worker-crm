@@ -12,7 +12,7 @@ const migrationFolder = join(projectRoot, 'migrations');
 const tableNames = [
   'activities', 'companies', 'contacts', 'deal_contacts', 'deals',
   'field_definitions', 'field_options', 'field_values', 'saved_views',
-  'account', 'rate_limit', 'session', 'singleton_membership', 'singleton_workspace', 'user', 'verification',
+  'roles', 'role_permissions', 'request_authorization_guard', 'account', 'rate_limit', 'session', 'singleton_membership', 'singleton_workspace', 'user', 'verification',
 ].sort();
 let temporaryDirectory;
 let miniflare;

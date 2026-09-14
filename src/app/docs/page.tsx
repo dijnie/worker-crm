@@ -8,7 +8,7 @@ export default function DocsPage() {
         <p className="max-w-3xl text-sm text-muted-foreground">
           Explore endpoints and send requests to this application. <a href="/sign-in?returnTo=/docs" className="text-link underline underline-offset-4">Sign in</a>,
           then return here to use Try it out. Your browser sends the session cookie automatically. Signed-out requests return 401;
-          member administration requires an owner account.
+          role and member administration requires a system account. New accounts have no CRM access until a role is assigned.
         </p>
         <p className="max-w-3xl text-sm text-muted-foreground">
           Changes require the configured same Origin, supplied automatically by your browser, and JSON content type for JSON bodies.

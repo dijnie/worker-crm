@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { parse } from 'jsonc-parser';
 import { chromium } from 'playwright';
+import { fullCrmPermissions } from '../auth-harness.mjs';
 
 export const origin = 'http://localhost:3100';
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -56,7 +57,7 @@ export async function createBrowserHarness({ onCleanup = () => {} } = {}) {
   const state = join(app, '.wrangler/state');
   const processes = new Set();
   const contexts = new Set();
-  let browser, active, cleanupPromise;
+  let browser, active, cleanupPromise, systemAccount;
   const logs = [];
   const env = Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'SYSTEMROOT', 'PLAYWRIGHT_BROWSERS_PATH'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
   Object.assign(env, { CI: '1', WRANGLER_SEND_METRICS: 'false', NO_COLOR: '1' });
@@ -247,5 +248,29 @@ export async function createBrowserHarness({ onCleanup = () => {} } = {}) {
     console.log(`[browser] Native simulated verification consumed; verified ${name} signed in through browser.`);
     return { context, email, user: session.user };
   }
-  return { directory, app, state, browser, start, stopServer, dispose, newContext, signup, signIn, api, safeLogs };
+  async function signupSystem(name) {
+    const account = await signup(name);
+    if (systemAccount) {
+      const identity = await api(account.context, '/api/account');
+      await api(systemAccount.context, `/api/members/${account.user.id}`, { method: 'PATCH', body: { action: 'change-role', roleId: 'system', expectedRevision: identity.membershipRevision } });
+    } else {
+      // Only the disposable browser application's D1 binding is touched.
+      const sqlPath = join(directory, 'bootstrap-browser-system.sql');
+      const userId = account.user.id.replaceAll("'", "''");
+      await writeFile(sqlPath, `UPDATE singleton_membership SET role_id = 'system' WHERE user_id = '${userId}' AND role_id IS NULL AND status = 'active';`);
+      await command('bootstrap disposable system fixture', process.execPath, [join(root, 'node_modules/wrangler/bin/wrangler.js'), 'd1', 'execute', 'DB', '--local', '--persist-to', state, '--config', 'wrangler.jsonc', '--file', sqlPath]);
+      systemAccount = account;
+    }
+    assert.equal((await api(account.context, '/api/account')).role?.isSystem, true);
+    return account;
+  }
+  async function signupAuthorized(name, permissions = fullCrmPermissions) {
+    assert.ok(systemAccount, 'Create an explicit system fixture first');
+    const account = await signup(name);
+    const role = await api(systemAccount.context, '/api/roles', { method: 'POST', body: { name: `Fixture ${randomUUID()}`, permissions } });
+    const identity = await api(account.context, '/api/account');
+    await api(systemAccount.context, `/api/members/${account.user.id}`, { method: 'PATCH', body: { action: 'change-role', roleId: role.id, expectedRevision: identity.membershipRevision } });
+    return { ...account, roleId: role.id };
+  }
+  return { directory, app, state, browser, start, stopServer, dispose, newContext, signup, signupSystem, signupAuthorized, signIn, api, safeLogs };
 }

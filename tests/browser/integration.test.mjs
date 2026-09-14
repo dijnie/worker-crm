@@ -47,6 +47,8 @@ async function login(page, email, secret = password, destination = '/companies')
     assert.ok(Number.isFinite(seconds) && seconds >= 0 && seconds <= 120, 'Auth retry window is bounded');
     console.log(`[browser] Real sign-in rate limit reached; respecting Retry-After (${seconds}s) before one explicit retry.`);
     await delay((seconds + 1) * 1000);
+    await page.getByLabel('Email', { exact: true }).fill(email);
+    await page.getByLabel('Password', { exact: true }).fill(secret);
     response = await submit();
     assert.notEqual(response.status(), 429, 'Sign-in retry succeeds after the server rate window');
   }
@@ -109,7 +111,7 @@ async function authAndDocs(h, { mode, owner }) {
   });
 
   await scenario(mode, 'native reset is one-use, revokes old sessions and returns safely to a queried record', async () => {
-    const actor = await h.signup(`${mode} Reset Member`);
+    const actor = await h.signupAuthorized(`${mode} Reset Member`);
     const oldContext = await h.newContext();
     await oldContext.addCookies(await actor.context.cookies());
     const publicContext = await h.newContext();
@@ -169,25 +171,25 @@ async function authAndDocs(h, { mode, owner }) {
 }
 
 async function memberLifecycle(h, { mode, owner }) {
-  await scenario(mode, 'owner roles, last-owner guard, revoke restore and signin changes protect warmed data', async () => {
-    const actor = await h.signup(`${mode} Lifecycle Member`);
-    const other = await h.signup(`${mode} Replacement Member`);
+  await scenario(mode, 'dynamic roles, last-system guard, revoke restore and signin changes protect warmed data', async () => {
+    const actor = await h.signupAuthorized(`${mode} Lifecycle Member`);
+    const other = await h.signupAuthorized(`${mode} Replacement Member`);
     const oldContext = await h.newContext();
     await oldContext.addCookies(await actor.context.cookies());
     const ownerPage = await owner.context.newPage();
     const page = await actor.context.newPage();
     try {
       await page.goto('/settings/members');
-      await page.getByText('Only workspace owners can manage members. Contact an owner if you need access.', { exact: true }).waitFor();
+      await page.getByText('Your role does not allow access to this page. Contact a system account to request access.', { exact: true }).waitFor();
       assert.equal((await actor.context.request.get('/api/members')).status(), 403);
       await ownerPage.goto('/settings/members');
-      await ownerPage.getByRole('button', { name: `Make ${owner.user.name} a member`, exact: true }).click();
-      await ownerPage.getByRole('alert').filter({ hasText: 'At least one active owner must remain' }).waitFor();
-      await ownerPage.getByRole('button', { name: `Make ${actor.user.name} an owner`, exact: true }).click();
-      await ownerPage.getByRole('button', { name: `Make ${actor.user.name} a member`, exact: true }).waitFor();
+      await ownerPage.getByRole('combobox', { name: `Role for ${owner.user.name}`, exact: true }).selectOption('');
+      await ownerPage.getByRole('alert').filter({ hasText: 'At least one active system account must remain' }).waitFor();
+      await ownerPage.getByRole('combobox', { name: `Role for ${actor.user.name}`, exact: true }).selectOption('system');
+      await eventually(async () => (await ownerPage.getByRole('combobox', { name: `Role for ${actor.user.name}`, exact: true }).inputValue()) === 'system', 'Role promotion is visible');
       assert.equal((await actor.context.request.get('/api/members')).status(), 200);
-      await ownerPage.getByRole('button', { name: `Make ${actor.user.name} a member`, exact: true }).click();
-      await ownerPage.getByRole('button', { name: `Make ${actor.user.name} an owner`, exact: true }).waitFor();
+      await ownerPage.getByRole('combobox', { name: `Role for ${actor.user.name}`, exact: true }).selectOption(actor.roleId);
+      await eventually(async () => (await ownerPage.getByRole('combobox', { name: `Role for ${actor.user.name}`, exact: true }).inputValue()) === actor.roleId, 'Custom role assignment is visible');
       assert.equal((await actor.context.request.get('/api/members')).status(), 403);
       const company = await h.api(actor.context, '/api/companies', { method: 'POST', body: { name: `${mode} Revocation warm company` } });
       await page.goto(`/companies?q=${encodeURIComponent(company.name)}&record=company%3A${company.id}`);
@@ -207,7 +209,9 @@ async function memberLifecycle(h, { mode, owner }) {
       await page.waitForURL('**/access-revoked');
       await page.getByRole('heading', { name: 'Workspace access revoked', exact: true }).waitFor();
       await ownerPage.getByRole('button', { name: `Restore access for ${actor.user.name}`, exact: true }).click();
-      await ownerPage.getByText('Access restored as a member. This account must sign in again.', { exact: true }).waitFor();
+      await ownerPage.getByText('Access restored with no role. This account must sign in again and be assigned a role.', { exact: true }).waitFor();
+      await ownerPage.getByRole('combobox', { name: `Role for ${actor.user.name}`, exact: true }).selectOption(actor.roleId);
+      await eventually(async () => (await ownerPage.getByRole('combobox', { name: `Role for ${actor.user.name}`, exact: true }).inputValue()) === actor.roleId, 'Restored account explicitly receives its role');
       assert.equal((await oldContext.request.get('/api/companies')).status(), 401, 'Restoration never revives the old session');
       await login(page, actor.email);
       await page.waitForURL('**/companies');
@@ -254,9 +258,9 @@ async function createRecord(page, kind, fields, relations = {}) {
   await page.getByRole('link', { name: kind === 'contact' ? record.firstName : record.name, exact: true }).waitFor();
   return record;
 }
-export async function crossScreenJourney(h, { mode }) {
-  await scenario(mode, 'member creates linked records, resolves a duplicate and carries edits through fields activities and overview', async () => {
-    const actor = await h.signup(`${mode} Journey Member`);
+export async function crossScreenJourney(h, { mode, owner }) {
+  await scenario(mode, 'system configures fields and carries linked record edits through activities and overview', async () => {
+    const actor = await h.signupSystem(`${mode} Journey System`);
     const api = (path, options) => h.api(actor.context, path, options);
     const page = await actor.context.newPage();
     const errors = [];
@@ -380,7 +384,11 @@ export async function crossScreenJourney(h, { mode }) {
       }).catch(() => ({ documentUnavailable: true }));
       console.error(`[browser] Journey failure UI state: ${JSON.stringify(state)}`);
       throw error;
-    } finally { await actor.context.close(); }
+    } finally {
+      const identity = await h.api(actor.context, '/api/account');
+      await h.api(owner.context, `/api/members/${actor.user.id}`, { method: 'PATCH', body: { action: 'change-role', roleId: null, expectedRevision: identity.membershipRevision } });
+      await actor.context.close();
+    }
   });
 }
 

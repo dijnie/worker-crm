@@ -1,4 +1,5 @@
 "use client";
+import { canPermission } from "@/lib/auth/permissions";
 import type { ReactNode } from "react";
 import { CustomFieldsPanel } from "../fields/custom-fields-panel";
 import { useAppData } from "../app-data-provider";
@@ -19,7 +20,7 @@ export function PropertyPanel({ entity, record, onDirtyChange, relationLabels = 
   entity: RecordEntity; record: { id: string; [key: string]: unknown }; onDirtyChange: DirtyChange;
   relationLabels?: Record<string, string>; renderCustomFields?: (context: PropertyExtensionContext) => ReactNode;
 }) {
-  const { api, invalidate } = useAppData();
+  const { api, invalidate, account } = useAppData();
   return <section aria-label="Record properties" className="min-w-0">
     <h3 className="font-semibold">Properties</h3>
     {fieldsFor(entity).map(field => {
@@ -27,8 +28,9 @@ export function PropertyPanel({ entity, record, onDirtyChange, relationLabels = 
       const value = field === "expectedCloseDate" ? stored.slice(0, 10) : stored;
       const href = /Url$/.test(field) || field === "website" ? safePropertyHref(stored) : undefined;
       const picker = field === "ownerId" ? "owner" : field === "companyId" ? "company" : field === "primaryContactId" ? "contact" : undefined;
+      if (picker && picker !== "owner" && !canPermission(account, picker, "read")) return null;
       const display = picker && value ? relationLabels[field] ?? `Unavailable / historical (${value})` : href ? <a href={href} target="_blank" rel="noopener noreferrer" className="underline">{stored}</a> : undefined;
-      return <InlineField key={field} fieldKey={`${entity}:${record.id}:${field}`} label={propertyLabels[field]} value={value} display={display}
+      return <InlineField readOnly={!canPermission(account, entity, "update")} key={field} fieldKey={`${entity}:${record.id}:${field}`} label={propertyLabels[field]} value={value} display={display}
         onDirtyChange={onDirtyChange} multiline={field === "description"} type={field === "expectedCloseDate" ? "date" : field === "email" ? "email" : "text"}
         picker={picker} required={entity === "deal" && !!picker} selectedLabel={relationLabels[field]} onSave={async input => {
           const parsed = parseProperty(entity, field, input);
@@ -42,7 +44,7 @@ export function PropertyPanel({ entity, record, onDirtyChange, relationLabels = 
     <CustomFieldsPanel record={{ kind: entity, id: record.id }} onDirtyChange={onDirtyChange} />
     {renderCustomFields?.({ record: { kind: entity, id: record.id }, onDirtyChange })}
     <details className="mt-5"><summary className="cursor-pointer text-sm font-medium">System information</summary><dl className="mt-3 space-y-3">
-      {["id", "createdAt", "updatedAt", "lastActivityAt", "archivedAt", ...metadata[entity]].map(key => {
+      {["id", "createdAt", "updatedAt", ...((["company", "contact", "deal", "activity"] as const).every(kind => canPermission(account, kind, "read")) ? ["lastActivityAt"] : []), "archivedAt", ...metadata[entity]].map(key => {
         const value = record[key];
         const text = value == null || value === "" ? "Not set" : typeof value === "string" ? value : JSON.stringify(value);
         const href = /Url$/.test(key) ? safePropertyHref(text) : undefined;

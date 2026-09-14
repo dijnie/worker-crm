@@ -17,7 +17,7 @@ before(async () => {
   const specification = await harness.request('/api/openapi');
   assert.equal(specification.status, 200);
   openApiDocument = await specification.json();
-  account = await harness.signupVerified();
+  account = await harness.signupSystem();
   const clientPath = join(harness.directory, 'client.mjs');
   await build({ stdin: { contents: `export * from './src/lib/api.ts'; export { default as endpoints } from './src/lib/api-endpoints.ts'; export { DEAL_STAGES } from './src/lib/db/schema/constants.ts';`, resolveDir: root, loader: 'ts' }, bundle: true, platform: 'browser', format: 'esm', outfile: clientPath, logLevel: 'silent' });
   const bundledClient = await import(pathToFileURL(clientPath).href);
@@ -283,8 +283,8 @@ test('public actor properties are rejected even when they match the current user
   assert.equal((await client.deals.get(deal.id)).ownerId, 'legacy-owner');
 });
 
-test('owner member API enforces revisions, revocation, restoration and current permissions', async () => {
-  const member = await harness.signupVerified();
+test('system membership API enforces revisions, revocation, restoration and current permissions', async () => {
+  const member = await harness.signupAuthorized();
   const asMember = (path, options = {}) => harness.request(path, { cookie: member.cookie, ...options });
   const assertOldSessionDenied = async () => {
     for (const endpoint of endpoints) {
@@ -301,23 +301,24 @@ test('owner member API enforces revisions, revocation, restoration and current p
   assert.ok(row);
   assert.doesNotMatch(JSON.stringify(row), /password|token|accessVersion|secret/);
   await assert.rejects(client.members.update(row.id, { action: 'revoke', expectedRevision: row.revision + 1 }), error => error.status === 409);
-  const promoted = await client.members.update(row.id, { action: 'change-role', role: 'owner', expectedRevision: row.revision });
+  const promoted = await client.members.update(row.id, { action: 'change-role', roleId: (await binding.prepare('SELECT id FROM roles WHERE is_system = 1').first()).id, expectedRevision: row.revision });
   assert.equal((await asMember('/api/members')).status, 200);
   const revoked = await client.members.update(row.id, { action: 'revoke', expectedRevision: promoted.revision });
   assert.equal(revoked.status, 'revoked');
   await assertOldSessionDenied();
   const restored = await client.members.update(row.id, { action: 'restore', expectedRevision: revoked.revision });
-  assert.equal(restored.role, 'member');
+  assert.equal(restored.roleId, null);
+  assert.equal(restored.role, null);
   await assertOldSessionDenied();
   const signedIn = await harness.signIn(member.email);
-  assert.equal((await harness.request('/api/companies', { cookie: signedIn.cookie })).status, 200);
+  assert.equal((await harness.request('/api/companies', { cookie: signedIn.cookie })).status, 403);
   assert.equal((await harness.request('/api/members', { cookie: signedIn.cookie })).status, 403);
   await assert.rejects(client.members.update('missing', { action: 'revoke', expectedRevision: 0 }), error => error.status === 404);
   await assert.rejects(client.members.update(account.user.id, { action: 'revoke', expectedRevision: 0 }), error => error.status === 409);
 });
 
 test('ordinary members attach external participants, update roles and detach through strict protected APIs', async () => {
-  const member = await harness.signupVerified();
+  const member = await harness.signupAuthorized();
   const memberRequest = async (path, options = {}) => assertApiResponse(openApiDocument, `${baseUrl}${path}`, options.method ?? 'GET', await harness.request(path, { cookie: member.cookie, ...options }));
   const company = await client.companies.create({ name: 'Deal company' });
   const employer = await client.companies.create({ name: 'External employer' });
@@ -366,7 +367,7 @@ test('activity view HTTP pagination, counts, strict filters and abortable client
     assert.equal((await request(`/api/activities/counts?${query}`)).status, 400);
   }
   assert.equal((await request('/api/activities?view=unknown')).status, 400);
-  const member = await harness.signupVerified();
+  const member = await harness.signupAuthorized();
   const memberCounts = await harness.request(`/api/activities/counts?companyId=${company.id}`, { cookie: member.cookie });
   assert.equal(memberCounts.status, 200);
   assert.equal(memberCounts.headers.get('cache-control'), 'no-store');

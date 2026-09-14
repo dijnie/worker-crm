@@ -74,7 +74,7 @@ async function saveDefinition(page, method = 'PATCH') {
 }
 
 export async function runSuite(h, { mode, owner }) {
-  const member = await h.signup(`${mode} Field Member`);
+  const member = await h.signupSystem(`${mode} Field Member`);
   const api = (path, options) => h.api(member.context, path, options);
   const company = await api('/api/companies', { method: 'POST', body: { name: `${mode} fields company` } });
   const contact = await api('/api/contacts', { method: 'POST', body: { firstName: `${mode} fields contact`, companyId: company.id } });
@@ -210,9 +210,9 @@ export async function runSuite(h, { mode, owner }) {
       assert.equal((await api('/api/fields?entity=COMPANY')).filter(field => field.label === `${mode} link saved field`).length, 1);
     });
 
-    await test(`${mode}: ordinary members manage fields while only owners see member management`, async () => {
+    await test(`${mode}: system accounts can manage fields and workspace membership`, async () => {
       await openSettings(page);
-      assert.equal(await page.getByRole('link', { name: 'Manage members', exact: true }).count(), 0);
+      assert.equal(await page.getByRole('link', { name: 'Manage members', exact: true }).count(), 1);
       const ownerPage = await owner.context.newPage();
       try { await ownerPage.goto('/settings'); await ownerPage.getByRole('link', { name: 'Manage members', exact: true }).waitFor(); await settings(ownerPage).waitFor(); }
       finally { await ownerPage.close(); }

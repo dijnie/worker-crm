@@ -21,7 +21,7 @@ test('real workerd signup, verification, session mapping, renewal, expiry and si
   const verified = await h.request(message.url);
   assert.equal(verified.status, 302);
   assert.equal(verified.headers.get('set-cookie'), null);
-  assert.equal((await h.binding.prepare('SELECT * FROM singleton_membership').first()).role, 'owner');
+  assert.equal((await h.binding.prepare('SELECT * FROM singleton_membership').first()).role_id, null);
   const login = await h.signIn(' ALICE@example.test ', { body: { accessVersion: 888 } });
   const cookie = login.response.headers.get('set-cookie');
   assert.match(cookie, /__Secure-better-auth\.session_token=/);
@@ -33,10 +33,11 @@ test('real workerd signup, verification, session mapping, renewal, expiry and si
   const session = await current.json();
   assert.equal(session.user.id, user.id);
   assert.equal('accessVersion' in session.session, false);
-  assert.equal((await h.request('/api/companies', { cookie: login.cookie })).status, 200);
+  assert.equal((await h.request('/api/companies', { cookie: login.cookie })).status, 403);
+  assert.equal((await h.request('/api/account', { cookie: login.cookie })).status, 200);
   await h.binding.prepare('UPDATE session SET updated_at = ?, expires_at = ? WHERE id = ?').bind(Date.now() - 360000, Date.now() + 300000, stored.id).run();
   const expiryBeforePrivateRead = (await h.binding.prepare('SELECT expires_at FROM session WHERE id=?').bind(stored.id).first()).expires_at;
-  const privateRead = await h.request('/api/companies', { cookie: login.cookie });
+  const privateRead = await h.request('/api/account', { cookie: login.cookie });
   assert.equal(privateRead.status, 200);
   assert.equal(privateRead.headers.get('set-cookie'), null);
   assert.equal((await h.binding.prepare('SELECT expires_at FROM session WHERE id=?').bind(stored.id).first()).expires_at, expiryBeforePrivateRead);
@@ -71,7 +72,8 @@ test('awaited signup delivery failure keeps unverified user recoverable by norma
   assert.equal(resend.status, 200, await resend.clone().text());
   await h.request((await h.outbox())[0].url);
   const login = await h.signIn('recover@example.test');
-  assert.equal((await h.request('/api/companies', { cookie: login.cookie })).status, 200);
+  assert.equal((await h.request('/api/companies', { cookie: login.cookie })).status, 403);
+  assert.equal((await h.request('/api/account', { cookie: login.cookie })).status, 200);
 });
 
 test('real reset is generic, canonical, one-use, expires in fifteen minutes and invalidates sessions', async t => {
@@ -168,7 +170,7 @@ test('concurrent email failures stay request-local and reset delivery failure is
 
 test('real delayed signin cannot issue sessions after revoke or revoke followed by restore', async t => {
   const h = await createAuthHarness(t);
-  const owner = await h.signupVerified('race-owner@example.test');
+  const owner = await h.signupSystem('race-owner@example.test');
   const member = await h.signupVerified('race-member@example.test');
   let revision = 0;
   for (const restore of [false, true]) {
@@ -201,7 +203,8 @@ test('real delayed signin cannot issue sessions after revoke or revoke followed 
     assert.equal((await h.request('/api/companies', { cookie: member.cookie })).status, 401);
   }
   const fresh = await h.signIn(member.email);
-  assert.equal((await h.request('/api/companies', { cookie: fresh.cookie })).status, 200);
+  assert.equal((await h.request('/api/companies', { cookie: fresh.cookie })).status, 403);
+  assert.equal((await h.request('/api/account', { cookie: fresh.cookie })).status, 200);
   const stored = await h.binding.prepare('SELECT access_version FROM session WHERE user_id=?').bind(member.user.id).first();
   assert.equal(stored.access_version, 4);
 });
@@ -230,7 +233,7 @@ test('expired and absent verification links fail; replay is idempotent and inter
   await h.binding.prepare('DROP TRIGGER fail_admission').run();
   await h.signIn('verify@example.test');
   const membership = await h.binding.prepare('SELECT * FROM singleton_membership').first();
-  assert.equal(membership.role, 'owner');
+  assert.equal(membership.role_id, null);
   const replay = await h.request(message.url);
   assert.equal(replay.status, 302);
   assert.equal(replay.headers.get('set-cookie'), null);
@@ -256,7 +259,7 @@ test('signup and general limits persist while loopback without edge IP stays con
 test('invalid cookies, mismatched access versions and revoked credentials fail without revealing access anonymously', async t => {
   const h = await createAuthHarness(t);
   assert.equal((await h.request('/api/companies', { cookie: '__Secure-better-auth.session_token=fabricated.invalid' })).status, 401);
-  const owner = await h.signupVerified();
+  const owner = await h.signupSystem();
   const member = await h.signupVerified();
   await h.binding.prepare('UPDATE singleton_membership SET access_version = access_version + 1 WHERE user_id = ?').bind(member.user.id).run();
   assert.equal((await h.request('/api/companies', { cookie: member.cookie })).status, 403);

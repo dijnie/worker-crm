@@ -55,7 +55,7 @@ async function deleteActivity(page, id) {
 }
 
 export async function runSuite(h, { mode, owner }) {
-  const member = await h.signup(`${mode} Activity Member`);
+  const member = await h.signupAuthorized(`${mode} Activity Member`);
   const api = (path, options) => h.api(member.context, path, options);
   const company = await api('/api/companies', { method: 'POST', body: { name: `${mode} activity company` } });
   const employer = await api('/api/companies', { method: 'POST', body: { name: `${mode} activity employer` } });
