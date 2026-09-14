@@ -9,7 +9,7 @@ import { assertApiResponse } from './openapi-assertions.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const baseUrl = 'https://crm.test';
-let harness, binding, client, unauthorizedClient, ApiError, endpoints, openApiDocument, account;
+let harness, binding, client, unauthorizedClient, ApiError, endpoints, openApiDocument, account, dealStages;
 
 before(async () => {
   harness = await createAuthHarness();
@@ -19,10 +19,15 @@ before(async () => {
   openApiDocument = await specification.json();
   account = await harness.signupVerified();
   const clientPath = join(harness.directory, 'client.mjs');
-  await build({ stdin: { contents: `export * from './src/lib/api.ts'; export { default as endpoints } from './src/lib/api-endpoints.ts';`, resolveDir: root, loader: 'ts' }, bundle: true, platform: 'browser', format: 'esm', outfile: clientPath, logLevel: 'silent' });
+  await build({ stdin: { contents: `export * from './src/lib/api.ts'; export { default as endpoints } from './src/lib/api-endpoints.ts'; export { DEAL_STAGES } from './src/lib/db/schema/constants.ts';`, resolveDir: root, loader: 'ts' }, bundle: true, platform: 'browser', format: 'esm', outfile: clientPath, logLevel: 'silent' });
   const bundledClient = await import(pathToFileURL(clientPath).href);
   ({ ApiError, endpoints } = bundledClient);
-  const fetch = async (url, init) => assertApiResponse(openApiDocument, url, init.method ?? 'GET', await harness.runtime.dispatchFetch(url, init));
+  dealStages = bundledClient.DEAL_STAGES;
+  const fetch = async (url, init) => {
+    assert.equal(init.credentials, 'same-origin', 'Typed requests use same-origin session cookies');
+    assert.equal(init.cache, 'no-store', 'Typed private requests bypass browser caches');
+    return assertApiResponse(openApiDocument, url, init.method ?? 'GET', await harness.runtime.dispatchFetch(url, init));
+  };
   client = bundledClient.createApiClient({ baseUrl, headers: { cookie: account.cookie, origin: baseUrl }, fetch });
   unauthorizedClient = bundledClient.createApiClient({ baseUrl, fetch });
   const clientSource = await readFile(clientPath, 'utf8');
@@ -59,10 +64,56 @@ test('empty database returns an array, pagination headers and zero statistics', 
   assert.equal(response.headers.get('x-total-count'), '0');
   assert.equal(response.headers.get('x-page'), '1');
   assert.equal(response.headers.get('x-limit'), '25');
-  assert.deepEqual(await client.stats(), { totalCompanies: 0, totalContacts: 0, totalDeals: 0, openDealValue: '0.00', currency: 'USD', activitiesThisWeek: 0 });
+  assert.deepEqual(await client.stats(), { totalCompanies: 0, totalContacts: 0, totalDeals: 0, openDeals: 0, openDealValue: '0.00', currency: 'USD', activitiesThisWeek: 0,
+    pipeline: dealStages.map(stage => ({ stage, count: 0, value: '0.00' })) });
   const lowercaseStats = await request('/api/stats?currency=usd');
   assert.equal(lowercaseStats.status, 200);
   assert.equal((await lowercaseStats.json()).currency, 'USD');
+});
+
+test('overview aggregates and opt-in activity links preserve protected HTTP and typed-client contracts', async () => {
+  const company = await client.companies.create({ name: 'Overview company' });
+  const contact = await client.contacts.create({ firstName: 'Overview', lastName: 'Contact' });
+  const createDeal = (amount, currency = 'USD') => client.deals.create({ name: `${currency} deal`, companyId: company.id, ownerId: account.user.id, amount, currency });
+  const first = await createDeal('0.10');
+  await createDeal('0.20');
+  await createDeal('100.20', 'EUR');
+  for (const stage of ['CLOSED_WON', 'CLOSED_LOST', 'UNQUALIFIED_TO_BUY']) {
+    const deal = await createDeal('100.00');
+    await client.deals.setStage(deal.id, { stage, reason: 'Closed for aggregate coverage' });
+  }
+  const archived = await createDeal('999.00'); await client.deals.archive(archived.id);
+  const usd = await client.stats(), eur = await client.stats('eur');
+  assert.deepEqual([usd.totalCompanies, usd.totalContacts, usd.totalDeals, usd.openDeals], [1, 1, 6, 3]);
+  assert.equal(usd.openDealValue, '0.30'); assert.equal(eur.openDealValue, '100.20');
+  assert.equal(eur.openDeals, usd.openDeals);
+  assert.deepEqual(usd.pipeline.map(bucket => bucket.stage), dealStages);
+  assert.deepEqual(usd.pipeline.find(bucket => bucket.stage === 'DEMO_BOOKED'), { stage: 'DEMO_BOOKED', count: 2, value: '0.30' });
+  assert.equal(eur.pipeline.reduce((sum, bucket) => sum + bucket.count, 0), 1);
+  for (const bucket of usd.pipeline) {
+    const page = await client.deals.list({ stage: bucket.stage, currency: 'USD' });
+    assert.equal(page.total, bucket.count, 'Stage link filters agree with the aggregate bucket');
+  }
+  const activity = await client.activities.create({ type: 'NOTE', subject: 'Linked overview note', companyId: company.id, contactId: contact.id, dealId: first.id });
+  assert.equal(Object.hasOwn((await client.activities.list({ type: 'NOTE' })).items[0], 'links'), false);
+  assert.equal(Object.hasOwn((await client.activities.list({ type: 'NOTE', includeLinks: false })).items[0], 'links'), false);
+  const projected = await client.activities.list({ type: 'NOTE', limit: 10, includeLinks: true });
+  assert.equal(projected.limit, 10); assert.equal(projected.total, 1);
+  assert.deepEqual(projected.items[0], { ...activity, links: [
+    { kind: 'company', id: company.id, name: company.name, archivedAt: null },
+    { kind: 'contact', id: contact.id, name: 'Overview Contact', archivedAt: null },
+    { kind: 'deal', id: first.id, name: first.name, archivedAt: null },
+  ] });
+  await client.companies.update(company.id, { name: 'Renamed overview company' });
+  await client.contacts.archive(contact.id);
+  const refreshed = (await client.activities.list({ type: 'NOTE', includeLinks: true })).items[0];
+  assert.equal(refreshed.links[0].name, 'Renamed overview company'); assert.ok(refreshed.links[1].archivedAt);
+  for (const path of ['/api/activities?includeLinks=maybe', '/api/activities?includeLinks=1', '/api/activities?includeLinks=true&includeLinks=false', '/api/activities?sort=desc', '/api/stats?includeLinks=true']) assert.equal((await request(path)).status, 400, path);
+  for (const path of ['/api/stats?currency=EUR', '/api/activities?includeLinks=true']) {
+    const denied = await request(path, { authorized: false });
+    assert.equal(denied.status, 401); assert.equal(denied.headers.get('cache-control'), 'no-store');
+    assert.equal((await request(path)).headers.get('cache-control'), 'no-store');
+  }
 });
 
 test('field ordering, editor preconditions and opt-in custom projections agree with protected HTTP and OpenAPI', async () => {
@@ -206,7 +257,9 @@ test('private writes require canonical Origin and JSON and token headers grant n
     }
     if (endpoint.method === 'GET') continue;
     for (const origin of [null, 'https://attacker.test']) {
-      assert.equal((await request(path, { method: endpoint.method, origin, body: '{' })).status, 403, path);
+      const denied = await request(path, { method: endpoint.method, origin, body: '{' });
+      assert.equal(denied.status, 403, path);
+      assert.equal((await denied.json()).code, 'FORBIDDEN_ACTION', 'Origin denial must not be mistaken for lost membership');
     }
     assert.equal((await request(path, { method: endpoint.method, body: '{}', headers: { 'content-type': 'text/plain' } })).status, 415, path);
   }
@@ -226,6 +279,13 @@ test('public actor properties are rejected even when they match the current user
 test('owner member API enforces revisions, revocation, restoration and current permissions', async () => {
   const member = await harness.signupVerified();
   const asMember = (path, options = {}) => harness.request(path, { cookie: member.cookie, ...options });
+  const assertOldSessionDenied = async () => {
+    for (const endpoint of endpoints) {
+      const path = endpoint.path.replace(/:id|:optionId|:contactId/g, 'missing');
+      const response = await assertApiResponse(openApiDocument, `${baseUrl}${path}`, endpoint.method, await asMember(path, { method: endpoint.method, ...(endpoint.method === 'GET' ? {} : { body: '{' }) }));
+      assert.equal(response.status, 401, `${endpoint.method} ${path} rejects the old session before parsing input`);
+    }
+  };
   assert.equal((await asMember('/api/companies')).status, 200);
   assert.equal((await asMember('/api/members')).status, 403);
   assert.equal((await asMember(`/api/members/${account.user.id}`, { method: 'PATCH', body: { action: 'revoke', expectedRevision: 0 } })).status, 403);
@@ -238,10 +298,10 @@ test('owner member API enforces revisions, revocation, restoration and current p
   assert.equal((await asMember('/api/members')).status, 200);
   const revoked = await client.members.update(row.id, { action: 'revoke', expectedRevision: promoted.revision });
   assert.equal(revoked.status, 'revoked');
-  assert.equal((await asMember('/api/companies')).status, 401);
+  await assertOldSessionDenied();
   const restored = await client.members.update(row.id, { action: 'restore', expectedRevision: revoked.revision });
   assert.equal(restored.role, 'member');
-  assert.equal((await asMember('/api/companies')).status, 401);
+  await assertOldSessionDenied();
   const signedIn = await harness.signIn(member.email);
   assert.equal((await harness.request('/api/companies', { cookie: signedIn.cookie })).status, 200);
   assert.equal((await harness.request('/api/members', { cookie: signedIn.cookie })).status, 403);

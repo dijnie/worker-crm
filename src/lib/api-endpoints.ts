@@ -25,7 +25,7 @@ const apiEndpoints: APIEndpoint[] = [
   { method: "POST", path: "/api/deals/:id/contacts", description: "Attach an existing contact independently of employer; duplicate participation returns 409." },
   { method: "PATCH", path: "/api/deals/:id/contacts/:contactId", description: "Set or clear a participant role; missing deal or link returns 404." },
   { method: "DELETE", path: "/api/deals/:id/contacts/:contactId", description: "Detach a participant; missing deal or link returns 404." },
-  { method: "GET", path: "/api/activities", description: "List activities by companyId, contactId, dealId, type and optional named view, with pagination headers." },
+  { method: "GET", path: "/api/activities", description: "List activities by companyId, contactId, dealId, type and optional named view, with pagination headers. includeLinks=true adds page-batched record names and archive state." },
   { method: "GET", path: "/api/activities/counts", description: "Full-dataset counts for all, history, notes, upcoming, done, email and meetings in the same anchor/type context." },
   { method: "POST", path: "/api/activities", description: "Create a linked activity attributed to the signed-in account. Supplied createdById is rejected." },
   { method: "GET", path: "/api/activities/:id", description: "Get an activity." },
@@ -45,7 +45,7 @@ const apiEndpoints: APIEndpoint[] = [
   { method: "PUT", path: "/api/fields/:id/value", description: "Set a typed value for entity and entityId; null clears an optional value. Optional expectedType rejects stale editors with 409." },
   { method: "GET", path: "/api/members", description: "Owners list workspace members with pagination headers and an optional active or revoked status filter." },
   { method: "PATCH", path: "/api/members/:id", description: "Owners change a role, revoke access or restore access using the current expectedRevision. Restore grants the member role and requires a new sign-in. Last-owner and stale changes return 409." },
-  { method: "GET", path: "/api/stats", description: "Active record counts, activity count for the UTC week, and open deal value in the requested currency (default USD)." },
+  { method: "GET", path: "/api/stats", description: "Global active record/open-deal counts and UTC weekly activity count, plus exact open value and all seven pipeline stage counts/values in the requested currency (default USD)." },
 ];
 
 export default apiEndpoints;

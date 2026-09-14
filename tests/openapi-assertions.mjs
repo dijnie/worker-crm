@@ -36,6 +36,11 @@ export async function assertApiResponse(document, url, method, response) {
   assert.ok(result, `Undocumented status ${response.status}: ${method} ${pathname}`);
   if (result.$ref) result = document.components.responses[result.$ref.split('/').at(-1)];
   const label = `${method} ${pathname} ${response.status}`;
+  for (const [name, definition] of Object.entries(result.headers ?? {})) {
+    const value = response.headers.get(name);
+    assert.notEqual(value, null, `Missing header ${name}: ${label}`);
+    if (definition.schema) assertSchema(document, definition.schema, definition.schema.type === 'integer' ? Number(value) : value, `${label} ${name}`);
+  }
   if (response.status === 204) {
     assert.equal(await response.clone().text(), '', label);
     assert.equal(result.content, undefined, label);
@@ -44,10 +49,5 @@ export async function assertApiResponse(document, url, method, response) {
   const schema = result.content?.['application/json']?.schema;
   assert.ok(schema, `Missing JSON schema: ${label}`);
   assertSchema(document, schema, await response.clone().json(), label);
-  for (const [name, definition] of Object.entries(result.headers ?? {})) {
-    const value = response.headers.get(name);
-    assert.notEqual(value, null, `Missing header ${name}: ${label}`);
-    if (definition.schema) assertSchema(document, definition.schema, definition.schema.type === 'integer' ? Number(value) : value, `${label} ${name}`);
-  }
   return response;
 }

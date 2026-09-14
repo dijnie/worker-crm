@@ -1,10 +1,5 @@
-import { AppEmptyState } from "@/components/app/app-empty-state";
+import { OverviewDashboard } from "@/components/app/overview/overview-dashboard";
 
 export default function OverviewPage() {
-  return (
-    <AppEmptyState
-      title="Overview"
-      description="Your overview is not available yet. Manage your companies, contacts, and deals from the sidebar."
-    />
-  );
+  return <OverviewDashboard />;
 }

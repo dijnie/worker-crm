@@ -68,3 +68,36 @@ test('membership changes discard cached USER facets and their in-flight pre-revo
  assert.deepEqual(store.state(key).data,[{value:'former',label:'Unavailable / former (former)'}]);
  store.invalidate(['members']);assert.equal(store.state(key),undefined);
 });
+
+test('record display edits and activity writes refresh overview projections while obsolete currency reads stay isolated',async()=>{
+ const store=new AppDataStore();
+ const usd=store.key('stats',{currency:'USD'}),eur=store.key('stats',{currency:'EUR'}),feed=store.key('activities:recent',{limit:10,includeLinks:true});
+ const old=deferred(),pending=store.load('stats',usd,()=>old.promise);await Promise.resolve();
+ await store.load('stats',eur,async()=>({currency:'EUR',openDealValue:'0.30'}));
+ await store.load('activities:recent',feed,async()=>[{links:[{kind:'company',id:'a',name:'Old name'}]}]);
+ store.invalidate(['companies']);
+ assert.equal(store.state(usd),undefined);assert.equal(store.state(eur),undefined);assert.equal(store.state(feed),undefined);
+ await store.load('stats',usd,async()=>({currency:'USD',openDealValue:'0.20'}));
+ await store.load('activities:recent',feed,async()=>[{links:[{kind:'company',id:'a',name:'New name'}]}]);
+ old.resolve({currency:'USD',openDealValue:'999.00'});await pending;
+ assert.equal(store.state(usd).data.openDealValue,'0.20');assert.equal(store.state(feed).data[0].links[0].name,'New name');
+ store.invalidate(['task-complete']);assert.equal(store.state(feed),undefined);assert.ok(store.state(usd));
+ store.invalidate(['activity-delete']);assert.equal(store.state(usd),undefined);
+});
+
+test('recent activity respects endpoint denial until an explicit activity retry',async()=>{
+ const store=new AppDataStore(),key=store.key('activities:recent',{limit:10,includeLinks:true});
+ const failure=new ApiError(403,'Action forbidden',undefined,'FORBIDDEN_ACTION');let calls=0;
+ store.clear(true);store.deny('activities',failure);store.resume();
+ for(let attempt=0;attempt<3;attempt++) await store.load('activities:recent',key,async()=>{calls++;return []});
+ assert.equal(calls,0);assert.equal(store.state(key).error,failure);
+ store.invalidate(['activities']);await store.load('activities:recent',key,async()=>{calls++;return []});
+ assert.equal(calls,1);assert.deepEqual(store.state(key).data,[]);
+});
+
+test('overview stats and projected activity reads pass caller cancellation to transport',async()=>{
+ const signals=[];const client=createApiClient({fetch:async(input,init)=>{signals.push(init.signal);return String(input).startsWith('/api/stats') ? Response.json({}) : Response.json([],{headers:{'X-Total-Count':'0','X-Page':'1','X-Limit':'10'}});}});
+ const controller=new AbortController();
+ await client.stats('EUR',{signal:controller.signal});await client.activities.list({includeLinks:true,limit:10},{signal:controller.signal});
+ assert.deepEqual(signals,[controller.signal,controller.signal]);
+});

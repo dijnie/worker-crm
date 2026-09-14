@@ -115,6 +115,24 @@ test('custom field ordering, projections and editor-time type preconditions are 
   }
 });
 
+test('overview schemas distinguish global counts, currency-local pipeline and optional activity links', () => {
+  const stats = document.components.schemas.Stats;
+  assert.ok(stats.required.includes('openDeals'));
+  assert.ok(stats.required.includes('pipeline'));
+  assert.equal(stats.properties.pipeline.minItems, 7);
+  assert.equal(stats.properties.pipeline.maxItems, 7);
+  assert.equal(schemaValidator(document, stats.properties.pipeline.items)({ stage: 'DEMO_BOOKED', count: 3, value: '180143985094819.82' }), true);
+  assert.equal(schemaValidator(document, stats.properties.pipeline.items)({ stage: 'DEMO_BOOKED', count: 3, value: 0.3 }), false);
+  const linksQuery = document.paths['/api/activities'].get.parameters.find(parameter => parameter.name === 'includeLinks');
+  assert.equal(linksQuery.schema.type, 'boolean');
+  assert.equal(linksQuery.schema.default, false);
+  const row = document.components.schemas.ActivityListRow;
+  assert.ok(row.properties.links); assert.equal(row.required.includes('links'), false);
+  assert.equal(Object.hasOwn(document.components.schemas.Activity.properties, 'links'), false);
+  assert.equal(schemaValidator(document, document.components.schemas.ActivityLink)({ kind: 'contact', id: 'legacy', name: 'Unavailable / historical (legacy)', archivedAt: null }), true);
+  assert.equal(schemaValidator(document, document.components.schemas.ActivityLink)({ kind: 'user', id: 'legacy', name: 'Former', archivedAt: null }), false);
+});
+
 test('request examples satisfy their documented schemas and destructive activity deletion has no response body', () => {
   let exampleCount = 0;
   function checkExamples(schema, label) {

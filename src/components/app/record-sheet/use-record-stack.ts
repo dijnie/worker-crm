@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useAppData } from "../app-data-provider";
 import { RECORD_OPEN_EVENT, openRecord, parseRecordStack, writeRecordStack, type RecordRef } from "./record-navigation";
 import type { DirtyEditor } from "./inline-field";
@@ -13,6 +14,9 @@ function readLocation() {
 /** The browser URL owns the stack; the registry contains drafts, never another stack. */
 export function useRecordStack() {
   const { generation, store } = useAppData();
+  const pathname = usePathname();
+  const search = useSearchParams().toString();
+  const syncLocation = useRef<(() => void) | null>(null);
   const [location, setLocation] = useState<{ stack: RecordRef[]; error: Error | null }>({ stack: [], error: null });
   const editors = useRef(new Map<string, DirtyEditor>());
   const [pending, setPending] = useState(false);
@@ -51,6 +55,7 @@ export function useRecordStack() {
     let restoring = false;
     originalReplace.call(window.history, { ...window.history.state, [HISTORY_INDEX]: index }, "");
     const sync = () => { href = window.location.href; setLocation(readLocation()); };
+    syncLocation.current = sync;
     sync();
     function wrap(method: typeof originalPush, push: boolean): typeof originalPush {
       return function (data, unused, url) {
@@ -112,6 +117,7 @@ export function useRecordStack() {
     window.addEventListener("beforeunload", unload);
     document.addEventListener("click", link, true);
     return () => {
+      if (syncLocation.current === sync) syncLocation.current = null;
       if (window.history.pushState === push) window.history.pushState = originalPush;
       if (window.history.replaceState === replace) window.history.replaceState = originalReplace;
       window.removeEventListener(RECORD_OPEN_EVENT, open);
@@ -119,6 +125,10 @@ export function useRecordStack() {
       document.removeEventListener("click", link, true);
     };
   }, [dirty, request, store]);
+
+  // Framework navigation can use a captured history method instead of our wrapper.
+  // A dirty Back/Forward transition still belongs to the popstate draft guard.
+  useEffect(() => { if (!dirty()) syncLocation.current?.(); }, [pathname, search, dirty]);
 
   const stay = () => { if (!busy.current) { next.current = null; setPending(false); setSaveError(""); } };
   const finish = () => {

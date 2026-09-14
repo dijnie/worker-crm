@@ -1,10 +1,10 @@
 import { and, count, desc, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod/v3";
 import type { Database } from "@/lib/db";
-import { activities, ACTIVITY_TYPES } from "@/lib/db/schema";
+import { activities, ACTIVITY_TYPES, companies, contacts, deals, type ActivitySelect } from "@/lib/db/schema";
 import { ActivityStampService } from "./activity-stamp.service";
 import { requireRecord, ServiceError } from "@/lib/utils/service-error";
-import { dateTime, identifier, listInput, nullableId, optionalText } from "@/lib/utils/validation";
+import { dateTime, identifier, listInput, nullableId, optionalText, type Page } from "@/lib/utils/validation";
 
 export const activityCreateShape = {
   type: z.enum(["NOTE", "CALL", "EMAIL", "MEETING", "TASK"]),
@@ -47,7 +47,47 @@ export type ActivityCountsInput = z.input<typeof activityCountsInput>;
 export const activityListInput = listInput.pick({ page: true, limit: true }).extend({
   ...activityCountsInput.shape,
   view: z.enum(ACTIVITY_VIEWS).optional(),
+  includeLinks: z.boolean().default(false),
 }).strict();
+
+export type ActivityLink = {
+  kind: "company" | "contact" | "deal";
+  id: string;
+  name: string;
+  archivedAt: string | null;
+};
+export type ActivityWithLinks = ActivitySelect & { links: ActivityLink[] };
+export type ActivityListItem = ActivitySelect & { links?: ActivityLink[] };
+
+async function projectActivityLinks(db: Database, items: ActivitySelect[]): Promise<ActivityWithLinks[]> {
+  if (!items.length) return [];
+  const ids = (key: "companyId" | "contactId" | "dealId") =>
+    JSON.stringify([...new Set(items.flatMap(item => item[key] === null ? [] : [item[key]]))]);
+  // Each relation uses one JSON binding even for the maximum 100-row page.
+  const [companyRows, contactRows, dealRows] = await db.batch([
+    db.select({ id: companies.id, name: companies.name, archivedAt: companies.archivedAt }).from(companies)
+      .where(sql`${companies.id} IN (SELECT value FROM json_each(${ids("companyId")}))`),
+    db.select({ id: contacts.id, firstName: contacts.firstName, lastName: contacts.lastName, archivedAt: contacts.archivedAt }).from(contacts)
+      .where(sql`${contacts.id} IN (SELECT value FROM json_each(${ids("contactId")}))`),
+    db.select({ id: deals.id, name: deals.name, archivedAt: deals.archivedAt }).from(deals)
+      .where(sql`${deals.id} IN (SELECT value FROM json_each(${ids("dealId")}))`),
+  ]);
+  const records = {
+    company: new Map(companyRows.map(row => [row.id, row])),
+    contact: new Map(contactRows.map(row => [row.id, { ...row, name: [row.firstName, row.lastName].filter(Boolean).join(" ") }])),
+    deal: new Map(dealRows.map(row => [row.id, row])),
+  };
+  return items.map(item => {
+    const links: ActivityLink[] = [];
+    for (const kind of ["company", "contact", "deal"] as const) {
+      const id = item[`${kind}Id`];
+      if (id === null) continue;
+      const record = records[kind].get(id);
+      links.push({ kind, id, name: record?.name ?? `Unavailable / historical (${id})`, archivedAt: record?.archivedAt ?? null });
+    }
+    return { ...item, links };
+  });
+}
 
 function viewPredicate(view: ActivityView = "all") {
   switch (view) {
@@ -88,7 +128,10 @@ export class ActivityService {
     this.stamps = new ActivityStampService(db);
   }
 
-  async list(input: unknown = {}) {
+  async list(input: ActivityListInput & { includeLinks: true }): Promise<Page<ActivityWithLinks>>;
+  async list(input?: ActivityListInput & { includeLinks?: false }): Promise<Page<ActivitySelect>>;
+  async list(input: unknown): Promise<Page<ActivityListItem>>;
+  async list(input: unknown = {}): Promise<Page<ActivityListItem>> {
     const options = activityListInput.parse(input);
     const where = activityPredicate(options, options.view);
     const [items, totals] = await this.db.batch([
@@ -97,7 +140,8 @@ export class ActivityService {
         .limit(options.limit).offset((options.page - 1) * options.limit),
       this.db.select({ total: count() }).from(activities).where(where),
     ]);
-    return { items, total: totals[0].total, page: options.page, limit: options.limit };
+    return { items: options.includeLinks ? await projectActivityLinks(this.db, items) : items,
+      total: totals[0].total, page: options.page, limit: options.limit };
   }
 
   async counts(input: unknown = {}): Promise<ActivityCounts> {

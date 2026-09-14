@@ -41,7 +41,7 @@ register("POST", "/api/deals/:id/contacts", { operationId: "attachDealContact", 
 register("PATCH", "/api/deals/:id/contacts/:contactId", { operationId: "updateDealContactRole", tag: "Deals", body: "UpdateDealContactRole", response: "DealContact" });
 register("DELETE", "/api/deals/:id/contacts/:contactId", { operationId: "detachDealContact", tag: "Deals", status: 204 });
 register("GET", "/api/activities/counts", { operationId: "countActivities", tag: "Activities", query: "ActivityCountsQuery", response: "ActivityCounts" });
-register("GET", "/api/activities", { operationId: "listActivities", tag: "Activities", query: "ActivityQuery", response: "Activity", array: true, paginated: true });
+register("GET", "/api/activities", { operationId: "listActivities", tag: "Activities", query: "ActivityQuery", response: "ActivityListRow", array: true, paginated: true });
 register("POST", "/api/activities", { operationId: "createActivity", tag: "Activities", body: "CreateActivity", response: "Activity", status: 201 });
 register("GET", "/api/activities/:id", { operationId: "getActivity", tag: "Activities", response: "Activity" });
 register("DELETE", "/api/activities/:id", { operationId: "deleteActivity", tag: "Activities", status: 204 });

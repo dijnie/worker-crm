@@ -1,11 +1,11 @@
-export type { ActivityView, ActivityCounts, ActivityCountsInput, ActivityListInput } from "@services/activity.service";
+export type { ActivityView, ActivityCounts, ActivityCountsInput, ActivityListInput, ActivityLink, ActivityWithLinks, ActivityListItem } from "@services/activity.service";
 import type { DealContactService, AttachDealContactInput, UpdateDealContactRoleInput } from "@services/deal-contact.service";
 import type { z } from "zod/v3";
 import type { FieldEntity, FieldType } from "./db/schema/constants";
 import type { CompanyService, CreateCompanyInput, UpdateCompanyInput } from "@services/company.service";
 import type { ContactService, CreateContactInput, UpdateContactInput } from "@services/contact.service";
 import type { DealService, CreateDealInput, UpdateDealInput, DealListInput } from "@services/deal.service";
-import type { ActivityService, ActivityListInput, ActivityCountsInput, ActivityCounts, CompleteTaskInput } from "@services/activity.service";
+import type { ActivityService, ActivityListInput, ActivityCountsInput, ActivityCounts, CompleteTaskInput, ActivityWithLinks, ActivityListItem } from "@services/activity.service";
 import type { FieldService, createFieldInput, updateFieldInput, createOptionInput, updateOptionInput } from "@services/field.service";
 import type { StatsService } from "@services/stats.service";
 import type { CreateActivityApiInput } from "./server/activity-api-inputs";
@@ -95,6 +95,11 @@ export function createApiClient(options: { baseUrl?: string; headers?: HeadersIn
     };
   }
 
+  function activityList(query: ActivityListInput & { includeLinks: true }, transport?: ApiRequestOptions): Promise<Page<ActivityWithLinks>>;
+  function activityList(query?: ActivityListInput & { includeLinks?: false }, transport?: ApiRequestOptions): Promise<Page<Result<ActivityService["getById"]>>>;
+  function activityList(query?: ActivityListInput, transport?: ApiRequestOptions): Promise<Page<ActivityListItem>>;
+  function activityList(query?: ActivityListInput, transport?: ApiRequestOptions) { return list<ActivityListItem>("/api/activities", query, transport); }
+
   return {
     companies: records<Result<CompanyService["create"]>, Result<CompanyService["getById"]>, CreateCompanyInput, UpdateCompanyInput, RecordListQuery>("companies"),
     contacts: records<Result<ContactService["create"]>, Result<ContactService["getById"]>, CreateContactInput, UpdateContactInput, RecordListQuery & { companyId?: string }>("contacts"),
@@ -106,7 +111,7 @@ export function createApiClient(options: { baseUrl?: string; headers?: HeadersIn
       setStage: (id: string, body: StageApiInput) => json<Result<DealService["setStage"]>>(`/api/deals/${pathId(id)}/stage`, "POST", body),
     },
     activities: {
-      list: (query?: ActivityListInput, transport?: ApiRequestOptions) => list<Result<ActivityService["getById"]>>("/api/activities", query, transport),
+      list: activityList,
       counts: (query?: ActivityCountsInput, transport?: ApiRequestOptions) => json<ActivityCounts>("/api/activities/counts", "GET", undefined, query, transport),
       get: (id: string) => json<Result<ActivityService["getById"]>>(`/api/activities/${pathId(id)}`),
       create: (body: CreateActivityApiInput) => json<Result<ActivityService["create"]>>("/api/activities", "POST", body),
@@ -138,6 +143,6 @@ export function createApiClient(options: { baseUrl?: string; headers?: HeadersIn
       list: (query?: MemberListInput, transport?: ApiRequestOptions) => list<MemberRecord>("/api/members", query, transport),
       update: (id: string, body: MemberMutationInput) => json<MemberRecord>(`/api/members/${pathId(id)}`, "PATCH", body),
     },
-    stats: (currency = "USD") => json<Result<StatsService["getStats"]>>("/api/stats", "GET", undefined, { currency }),
+    stats: (currency = "USD", transport?: ApiRequestOptions) => json<Result<StatsService["getStats"]>>("/api/stats", "GET", undefined, { currency }, transport),
   };
 }

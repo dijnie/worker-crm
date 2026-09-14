@@ -7,7 +7,8 @@ Workers/D1. Verified email/password sessions protect business APIs and the works
 Companies, Contacts and Deals have interactive lists, creation forms and nested
 record sheets with property editing and activity history, alongside account and
 owner-only member administration. Record sheets support manual activities and task
-actions and typed custom fields; the live overview remains under development. The former SaaS customer/subscription tools
+actions and typed custom fields. The overview shows live workspace counts,
+currency-specific pipeline values and linked recent activity. The former SaaS customer/subscription tools
 and endpoints are retired. Interactive API documentation is public at `/docs`.
 
 <!-- dash-content-end -->
@@ -81,19 +82,27 @@ filters require explicit repair. Fields shown in tables are display-only columns
 List APIs keep their default response shape; `includeFields=true` adds a typed
 map keyed by field key. The [OpenAPI contract](src/lib/openapi/document.ts)
 documents projections, `field:<key>` filters, reorder and optional `expectedType`
-write preconditions. The overview retains the
-[availability state](src/components/app/app-empty-state.tsx).
+write preconditions. The [overview](src/components/app/overview/overview-dashboard.tsx)
+shows active company/contact totals and a global open-deal count. Its exact open
+value and all seven pipeline stage counts/values use the selected currency only;
+the validated `currency` URL parameter defaults to USD. Stage links open matching
+deal lists. The ten latest activities open record sheets, and record edits refresh
+their linked names and archive state. Statistics and activity have separate retry
+states, so a failed request does not appear as zero data.
 
 The [workspace data provider](src/components/app/app-data-provider.tsx) and
 [invalidation store](src/lib/app-data-store.ts) are the shared integration point
-for lists, sheets and account/member controls. Extend that
-workspace scope for the overview so mutations and access changes
-remain consistent across screens.
+for lists, sheets, overview and account/member controls. Mutations and access
+changes remain consistent across these screens.
 Standalone authentication pages use flat `/sign-up`, `/sign-in`, `/verify-email`,
 `/forgot-password`, `/reset-password`, and `/access-revoked` URLs; see the
 [auth route group](src/app/(auth)).
 The former `/admin` routes, including customer and subscription detail URLs,
 have been removed and return 404.
+Anonymous workspace links return after signin with their record stack and table
+query intact, including encoded search spaces. The [request proxy](src/proxy.ts)
+and [safe return URL boundary](src/lib/auth/safe-return-url.ts) own this navigation;
+return destinations stay inside the application.
 
 ## Accounts and shared access
 
@@ -146,6 +155,10 @@ must be replaced in your private `.dev.vars`. Local development uses
 Existing local setups must include both values in `.dev.vars`; they are no longer
 provided by `wrangler.jsonc`. Do not copy another application's origin or unrelated
 secret keys.
+
+After changing bindings, regenerate [Worker types](worker-configuration.d.ts) with
+`npx wrangler types --env-file .dev.vars.example --strict-vars=false` so generated
+types use the public example rather than private local values.
 
 Keep `secrets.required` out of the shared Wrangler configuration: it filters local
 dotenv keys and would exclude the auth origin and sender. This also means Wrangler
@@ -216,6 +229,16 @@ applying pending migrations. It stops if export fails. Keep these backups privat
 they can contain account and business data. Verify restoration on an isolated
 copy before manually recovering or replacing existing storage.
 
+Populated company/contact relationships can be cyclic, so direct Wrangler import
+of an exported SQL file is not the verified local recovery path. The
+[restore helper](tests/upgrade-preservation-harness.mjs), exercised by
+[migration](tests/migration.test.mjs) and [local-runner tests](tests/local-dev.test.mjs),
+imports the unchanged export into a separate stopped disposable SQLite store
+initialized by D1. Foreign-key enforcement is disabled only during that import;
+an empty `foreign_key_check` is required before reopening through D1 and comparing
+every business/auth row and the migration ledger. This establishes local recovery
+evidence, not a remote restore procedure.
+
 Stop local writers before copying an entire persistence directory. Copy the
 actual `.wrangler/state` used by this project; another directory is a different
 database. Startup never resets storage or rewrites incompatible migration history.
@@ -242,7 +265,10 @@ convert its records or initialize a fresh local database.
 Before an authorized deployment, reconcile remote resources with
 [wrangler.jsonc](wrangler.jsonc). Renaming configured resources does not rename
 existing Cloudflare resources; verify the actual D1 ID and target before any
-remote migration. Prefer a forward fix during recovery. A rollback must preserve
+remote migration. D1 is the configured application data store; removed template
+bindings do not delete existing local R2 data or remote buckets. Authentication's
+database rate limits remain owned by the [auth factory](src/lib/auth/auth.ts).
+Prefer a forward fix during recovery. A rollback must preserve
 the session access boundary and newer business writes; do not restore token-only
 code or overwrite newer data with an older backup.
 
@@ -312,13 +338,18 @@ handlers and client against temporary D1 storage; the test scripts in
 For list integration, start with the browser-safe
 [query contract](src/lib/record-list-contracts.ts),
 [server query implementation](services/record-list-query.ts) and
-[list tests](tests/record-lists.test.mjs). The
+[list tests](tests/record-lists.test.mjs). Sorting and filtering cover the full
+matching dataset before pagination. Send `filters` as one JSON query value;
+saved-view `q` maps to the list's `search` input. `includeSummary=true` opts into
+relationship summaries, while `includeFields=true` opts into custom values;
+default list responses retain their existing shape. The
 [assignee service](services/assignee.service.ts) is the member-accessible assignment
 directory; owner-only member administration remains a separate boundary.
 [Saved-view ownership](services/saved-view.service.ts) is personal even in a shared
-workspace: sharing a view does not transfer editing rights to readers or workspace
-owners. The [field list query](services/field-list-query.ts) owns page-bounded
-custom-field projections and SELECT/USER facets, including retained retired
+workspace: members see their own and shared views, but only the creator can edit
+or delete one, including when a reader is a workspace owner. Revoking a creator
+does not remove their shared views. The [field list query](services/field-list-query.ts)
+owns page-bounded custom-field projections and SELECT/USER facets, including retained retired
 selections and counts that exclude their own facet predicate.
 
 For independent deal participation, start with the
@@ -350,9 +381,20 @@ employer, preserving the source workflow.
 
 List bodies are arrays, with pagination metadata in response headers; the typed
 client reconstructs the page result. Monetary API values are decimal strings to
-preserve exact cents. [Stats](services/stats.service.ts) uses a requested
-currency, default USD, rather than adding amounts in different currencies; it
-does not perform FX conversion. Its weekly activity window starts Monday UTC.
+preserve exact cents. [Stats](services/stats.service.ts) keeps active record and
+open-deal counts global; `openDealValue` and the seven ordered `pipeline` buckets
+use the requested currency, default USD, without FX conversion. The weekly activity
+window starts Monday UTC. Exact sums use one consistent batch and a scan of the
+selected currency's active deal amounts; time and memory grow with that dataset.
+`GET /api/activities?limit=10&includeLinks=true` adds bounded company/contact/deal
+link labels and archive state, including fallbacks for unresolved stored IDs.
+The default activity response remains unchanged.
+
+Date-only inputs represent a calendar day, encoded at UTC midnight in the existing
+ISO datetime API contract to preserve that day across timezones. The
+[record form conversion](src/components/app/records/form-values.ts) and
+[custom-field conversion](src/lib/field-form-values.ts) own this boundary;
+timestamped activities retain their datetime semantics.
 
 ## Storage decisions
 
@@ -379,28 +421,37 @@ Run focused auth checks with `node --test tests/auth.test.mjs tests/email.test.m
 [auth harness](tests/auth-harness.mjs) uses disposable workerd/D1 and captures
 actual Better Auth verification/reset links for HTTP consumption. It does not
 SQL-flip verification to prove successful signup. [Migration tests](tests/migration.test.mjs)
-cover fresh installs and baseline upgrades; [API tests](tests/api.test.mjs) cover
-the protected HTTP boundary. These checks preserve existing local databases.
+and [local-runner tests](tests/local-dev.test.mjs) cover fresh installs, populated
+baseline/current-auth upgrades, repeat apply, backup-failure abort and actual
+export restoration using the [preservation harness](tests/upgrade-preservation-harness.mjs).
+[API tests](tests/api.test.mjs) cover the protected HTTP boundary. These checks
+preserve existing local databases.
 Captured-link tests and adapter tests do not prove remote email delivery or
 production HTTPS cookie behavior; verify those in an authorized target environment.
 
 The [browser runner](scripts/run-browser-tests.mjs) owns suite registration and
 runtime modes; [the harness](tests/browser/browser-harness.mjs) owns disposable
 storage, verified browser identities and cleanup. Install its pinned Chromium
-with `npx playwright install chromium`, then run the list suite from
+with `npx playwright install chromium`, then run the integrated journey from
 this directory:
 
 ```bash
-node scripts/run-browser-tests.mjs --mode=both --suite=lists
+node scripts/run-browser-tests.mjs --mode=both --suite=integration
 ```
 
 Use `--mode=dev` or `--mode=built` for a focused run. The combined mode verifies
 the same session and record across the dev-to-built handoff; separate fresh runs
 cannot establish that continuity. Keep port 3100 free for the isolated harness.
+The [integration suite](tests/browser/integration.test.mjs) composes the workflow
+suites below with cross-screen mutations, native signup/reset links, signin return,
+public/authenticated Swagger, member lifecycle, account data clearing and real
+server-failure recovery. Local suite results do not establish production email,
+HTTPS cookies or deployment readiness.
 Select `--suite=record-sheets` for the
 [sheet acceptance suite](tests/browser/record-sheets.test.mjs) and
 [relation scenarios](tests/browser/record-sheet-relations.test.mjs), or
 `--suite=lists` for [list acceptance](tests/browser/lists.test.mjs).
 Select `--suite=activities` for [manual activity and task acceptance](tests/browser/activities.test.mjs),
-or `--suite=fields` for [custom-field acceptance](tests/browser/fields.test.mjs). The runner's
+`--suite=fields` for [custom-field acceptance](tests/browser/fields.test.mjs), or
+`--suite=overview` for [overview acceptance](tests/browser/overview.test.mjs). The runner's
 registry owns available suites; future workflow names are rejected until implemented.

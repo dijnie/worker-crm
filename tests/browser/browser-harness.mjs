@@ -153,7 +153,15 @@ export async function createBrowserHarness({ onCleanup = () => {} } = {}) {
   async function stopServer() { await stop(active); active = undefined; await assertPortFree(); }
   async function newContext() { const context = await browser.newContext({ baseURL: origin }); context.setDefaultTimeout(15_000); contexts.add(context); return context; }
   async function api(context, path, { method = 'GET', body, status } = {}) {
-    const response = await context.request.fetch(path, { method, headers: { Origin: origin }, ...(body === undefined ? {} : { data: body }) });
+    const request = () => context.request.fetch(path, { method, headers: { Origin: origin }, ...(body === undefined ? {} : { data: body }) });
+    let response = await request();
+    if (method === 'GET' && path === '/api/auth/get-session' && response.status() === 429 && status !== 429) {
+      const seconds = Number(response.headers()['retry-after'] ?? 60);
+      assert.ok(Number.isFinite(seconds) && seconds >= 0 && seconds <= 120, 'Session retry window is bounded');
+      console.log(`[browser] Real session-read rate limit reached; respecting Retry-After (${seconds}s) before one read retry.`);
+      await delay((seconds + 1) * 1000);
+      response = await request();
+    }
     assert.equal(response.status(), status ?? (method === 'POST' ? 201 : 200), `${method} ${path.split('?')[0]} status: ${response.status()}`);
     return response.status() === 204 ? undefined : response.json();
   }
@@ -163,7 +171,30 @@ export async function createBrowserHarness({ onCleanup = () => {} } = {}) {
     await page.waitForLoadState('networkidle');
     await page.getByLabel('Email', { exact: true }).fill(email);
     await page.getByLabel('Password', { exact: true }).fill(password);
-    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    const submit = async () => {
+      const pending = page.waitForResponse(response => new URL(response.url()).pathname === '/api/auth/sign-in/email');
+      await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+      return pending;
+    };
+    let response = await submit();
+    if (response.status() === 429) {
+      const seconds = Number(response.headers()['retry-after'] ?? 60);
+      assert.ok(Number.isFinite(seconds) && seconds >= 0 && seconds <= 120, 'Auth retry window is bounded');
+      console.log(`[browser] Real sign-in rate limit reached; respecting Retry-After (${seconds}s) before one explicit retry.`);
+      await delay((seconds + 1) * 1000);
+      const retryState = await page.evaluate(({ email, password }) => {
+        const emailInput = document.querySelector('#email'), passwordInput = document.querySelector('#password');
+        return { path: location.pathname, readyState: document.readyState, hasEmail: !!emailInput, hasPassword: !!passwordInput,
+          emailMatches: emailInput?.value === email, passwordMatches: passwordInput?.value === password,
+          emailValid: emailInput?.validity.valid, passwordValid: passwordInput?.validity.valid,
+          pending: document.querySelector('form')?.getAttribute('aria-busy') };
+      }, { email, password });
+      console.log(`[browser] Sign-in retry preconditions: ${JSON.stringify(retryState)}`);
+      await page.getByLabel('Email', { exact: true }).fill(email);
+      await page.getByLabel('Password', { exact: true }).fill(password);
+      response = await submit();
+    }
+    assert.equal(response.status(), 200, 'Verified browser identity signs in successfully');
     await page.waitForURL('**/companies');
     await page.close();
   }
@@ -176,10 +207,23 @@ export async function createBrowserHarness({ onCleanup = () => {} } = {}) {
     const page = await context.newPage();
     await page.goto('/sign-up');
     await page.waitForLoadState('networkidle');
-    await page.getByLabel('Name', { exact: true }).fill(name);
-    await page.getByLabel('Email', { exact: true }).fill(email);
-    await page.getByLabel('Password', { exact: true }).fill(password);
-    await page.getByRole('button', { name: 'Create account', exact: true }).click();
+    const submit = async () => {
+      await page.getByLabel('Name', { exact: true }).fill(name);
+      await page.getByLabel('Email', { exact: true }).fill(email);
+      await page.getByLabel('Password', { exact: true }).fill(password);
+      const pending = page.waitForResponse(response => new URL(response.url()).pathname === '/api/auth/sign-up/email');
+      await page.getByRole('button', { name: 'Create account', exact: true }).click();
+      return pending;
+    };
+    let response = await submit();
+    if (response.status() === 429) {
+      const seconds = Number(response.headers()['retry-after'] ?? 60);
+      assert.ok(Number.isFinite(seconds) && seconds >= 0 && seconds <= 120, 'Signup retry window is bounded');
+      console.log(`[browser] Real signup HTTP 429; respecting Retry-After (${seconds}s) before one explicit retry.`);
+      await delay((seconds + 1) * 1000);
+      response = await submit();
+    }
+    assert.ok([200, 201].includes(response.status()), `Native signup response status: ${response.status()}`);
     await page.waitForURL('**/verify-email');
     let verification;
     for (let attempt = 0; attempt < 100 && !verification; attempt++) {

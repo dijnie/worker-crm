@@ -164,3 +164,111 @@ test('activity links remain independent and company attribution uses explicit co
   const contactOnly = await activities.create({ type: 'NOTE', contactId: 'advisor', createdById: 'actor' });
   assert.equal(contactOnly.companyId, 'advisor-employer');
 });
+
+test('optional activity links preserve page order, all types, stored IDs and unprojected shape', async () => {
+  const { deal, activities } = await records();
+  const archivedAt = '2026-09-12T00:00:00.000Z';
+  await h.db.update(h.schema.companies).set({ archivedAt });
+  await h.db.update(h.schema.contacts).set({ lastName: 'Person', archivedAt });
+  await h.db.update(h.schema.deals).set({ archivedAt });
+  await h.db.batch(Array.from({ length: 14 }, (_, index) => h.db.insert(h.schema.activities).values({
+    id: `activity-${String(index).padStart(2, '0')}`, type: h.schema.ACTIVITY_TYPES[index % 7],
+    createdById: 'historical-actor', companyId: index % 3 === 0 ? 'company' : null,
+    contactId: index % 3 !== 2 ? 'contact' : null, dealId: index % 3 === 0 ? deal.id : null,
+    createdAt: index % 2 ? '2026-09-13 12:00:00' : '2026-09-13T12:00:00.000Z',
+    occurredAt: `2000-01-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`,
+    dueAt: index % 7 === 4 ? '2026-09-20T00:00:00.000Z' : null,
+    completedAt: index === 11 ? '2026-09-13T12:00:00.000Z' : null,
+  })));
+  const plain = await activities.list({ limit: 10 });
+  assert.deepEqual(await activities.list({ limit: 10, includeLinks: false }), plain);
+  assert.ok(plain.items.every(row => !Object.hasOwn(row, 'links')));
+  const projected = await activities.list({ limit: 10, includeLinks: true });
+  assert.deepEqual({ ...projected, items: projected.items.map(({ links, ...row }) => row) }, plain);
+  assert.deepEqual(projected.items.map(row => row.id), Array.from({ length: 10 }, (_, index) => `activity-${String(13 - index).padStart(2, '0')}`));
+  assert.deepEqual(new Set(projected.items.map(row => row.type)), new Set(h.schema.ACTIVITY_TYPES));
+  assert.equal(projected.total, 14);
+  for (const row of projected.items) {
+    const expected = [];
+    if (row.companyId !== null) expected.push({ kind: 'company', id: 'company', name: 'Company', archivedAt });
+    if (row.contactId !== null) expected.push({ kind: 'contact', id: 'contact', name: 'Contact Person', archivedAt });
+    if (row.dealId !== null) expected.push({ kind: 'deal', id: deal.id, name: 'Deal', archivedAt });
+    assert.deepEqual(row.links, expected);
+  }
+  assert.deepEqual(projected.items.find(row => row.id === 'activity-11').links, []);
+  assert.deepEqual(projected.items.find(row => row.id === 'activity-13').links.map(link => link.kind), ['contact']);
+  assert.deepEqual((await activities.list({ limit: 10, page: 2, includeLinks: true })).items.map(row => row.id), ['activity-03', 'activity-02', 'activity-01', 'activity-00']);
+  assert.deepEqual((await activities.list({ limit: 10, page: 3, includeLinks: true })).items, []);
+  for (const view of h.ACTIVITY_VIEWS) {
+    for (const anchor of [{}, { companyId: 'company' }, { contactId: 'contact' }, { dealId: deal.id }, { type: 'TASK' }]) {
+      const input = { ...anchor, view, limit: 10 };
+      const withLinks = await activities.list({ ...input, includeLinks: true });
+      assert.deepEqual({ ...withLinks, items: withLinks.items.map(({ links, ...row }) => row) }, await activities.list(input));
+    }
+  }
+  for (const includeLinks of ['true', 'false', 0, 1, null, {}, []]) {
+    await assert.rejects(() => activities.list({ includeLinks }));
+  }
+  await assert.rejects(() => activities.list({ includeLinks: true, sort: 'desc' }));
+});
+
+test('activity projection batches only returned IDs and supports 100 distinct links of each kind', async () => {
+  const size = 105;
+  await h.db.batch(Array.from({ length: size }, (_, index) => h.db.insert(h.schema.companies).values({ id: `company-${index}`, name: `Company ${index}` })));
+  await h.db.batch(Array.from({ length: size }, (_, index) => h.db.insert(h.schema.contacts).values({ id: `contact-${index}`, firstName: `Contact ${index}` })));
+  await h.db.batch(Array.from({ length: size }, (_, index) => h.db.insert(h.schema.deals).values({ id: `deal-${index}`, name: `Deal ${index}`, companyId: `company-${index}`, ownerId: 'owner' })));
+  await h.db.batch(Array.from({ length: size }, (_, index) => h.db.insert(h.schema.activities).values({
+    id: `activity-${String(index).padStart(3, '0')}`, type: 'NOTE', createdById: 'actor',
+    companyId: `company-${index}`, contactId: `contact-${index}`, dealId: `deal-${index}`,
+  })));
+  const queries = [];
+  const db = new Proxy(h.db, { get(target, property) {
+    if (property !== 'batch') return Reflect.get(target, property);
+    return statements => {
+      queries.push(...statements.map(statement => statement.toSQL()));
+      return target.batch(statements);
+    };
+  } });
+  const service = new h.ActivityService(db);
+  const result = await service.list({ limit: 100, includeLinks: true });
+  assert.equal(result.total, size);
+  assert.equal(result.items.length, 100);
+  assert.ok(result.items.every(row => row.links.length === 3));
+  assert.equal(queries.length, 5);
+  for (const [index, kind] of ['company', 'contact', 'deal'].entries()) {
+    const query = queries[index + 2];
+    assert.match(query.sql, /json_each/);
+    assert.equal(query.params.length, 1);
+    assert.deepEqual(new Set(JSON.parse(query.params[0])), new Set(result.items.map(row => row[`${kind}Id`])));
+    assert.equal(JSON.parse(query.params[0]).length, 100);
+  }
+  for (const input of [{ limit: 100 }, { limit: 100, includeLinks: false }, { page: 3, limit: 100, includeLinks: true }]) {
+    queries.length = 0;
+    await service.list(input);
+    assert.equal(queries.length, 2);
+  }
+});
+
+test('records disappearing after the activity page read retain unavailable links and stored IDs', async () => {
+  const { deal, activities } = await records();
+  const activity = await activities.create({ type: 'NOTE', contactId: 'contact', dealId: deal.id, createdById: 'actor' });
+  let batches = 0;
+  const db = new Proxy(h.db, { get(target, property) {
+    if (property !== 'batch') return Reflect.get(target, property);
+    return async queries => {
+      const result = await target.batch(queries);
+      if (++batches === 1) {
+        // Real deletion between page and projection reads exercises the fallback without invalid foreign keys.
+        await h.db.batch([h.db.delete(h.schema.companies), h.db.delete(h.schema.contacts)]);
+      }
+      return result;
+    };
+  } });
+  const result = await new h.ActivityService(db).list({ includeLinks: true });
+  assert.equal(result.total, 1);
+  const { links, ...row } = result.items[0];
+  assert.deepEqual(row, activity);
+  assert.deepEqual(links, ['company', 'contact', 'deal'].map(kind => ({
+    kind, id: activity[`${kind}Id`], name: `Unavailable / historical (${activity[`${kind}Id`]})`, archivedAt: null,
+  })));
+});

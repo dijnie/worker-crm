@@ -1,47 +1,68 @@
 import assert from 'node:assert/strict';
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { createAuthHarness } from './auth-harness.mjs';
+import { authTables, businessTables, migrationNames, snapshot, seedBusiness, seedAuthHistory, assertPopulatedBusiness, createMigrationProject } from './upgrade-preservation-harness.mjs';
 
-const root = fileURLToPath(new URL('../', import.meta.url));
-const businessTables = ['companies', 'contacts', 'deals', 'deal_contacts', 'activities', 'field_definitions', 'field_options', 'field_values', 'saved_views'];
-const statements = source => source.split('--> statement-breakpoint').map(sql => sql.trim()).filter(Boolean);
-async function apply(binding, queries) { await binding.batch(queries.map(sql => binding.prepare(sql))); }
-async function snapshot(binding) {
-  return Object.fromEntries(await Promise.all(businessTables.map(async table => [table, (await binding.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()).results])));
-}
-const literal = value => value === null ? 'NULL' : typeof value === 'number' ? String(value) : `'${String(value).replaceAll("'", "''")}'`;
+const preservedTables = [...businessTables, ...authTables, 'd1_migrations'];
 
-test('auth upgrade preserves every business column and the pre-upgrade export restores independently', async t => {
-  const source = await createAuthHarness(t, { migrate: false });
-  const baseline = statements(await readFile(join(root, 'migrations/0000_initial_schema.sql'), 'utf8'));
-  await apply(source.binding, baseline);
-  await apply(source.binding, [
-    "INSERT INTO companies(id,name,owner_id,created_at,updated_at) VALUES('legacy-company','Legacy company','opaque-owner','2024-01-02 03:04:05','2024-06-07 08:09:10')",
-    "INSERT INTO contacts(id,first_name,company_id,owner_id) VALUES('legacy-contact','Legacy','legacy-company','opaque-contact-owner')",
-    "INSERT INTO deals(id,name,company_id,owner_id,amount) VALUES('legacy-deal','Legacy deal','legacy-company','opaque-deal-owner',29)",
-    "INSERT INTO activities(id,type,company_id,deal_id,created_by_id,created_at,updated_at) VALUES('legacy-activity','NOTE','legacy-company','legacy-deal','historical-creator','2023-01-01 00:00:00','2023-01-02 00:00:00')",
-    "INSERT INTO saved_views(id,entity,name,owner_id,filters) VALUES('legacy-view','COMPANY','My view','opaque-view-owner','{}')",
-  ]);
-  const before = await snapshot(source.binding);
-  const backup = [...baseline, ...Object.entries(before).flatMap(([table, rows]) => rows.map(row =>
-    `INSERT INTO ${table} (${Object.keys(row).map(key => `"${key}"`).join(',')}) VALUES (${Object.values(row).map(literal).join(',')})`))];
-  const backupPath = join(source.directory, 'pre-auth-upgrade.sql');
-  await writeFile(backupPath, backup.join('\n--> statement-breakpoint\n'), { mode: 0o600 });
-  for (const filename of (await readdir(join(root, 'migrations'))).filter(name => name.endsWith('.sql') && !name.startsWith('0000')).sort()) {
-    await apply(source.binding, statements(await readFile(join(root, 'migrations', filename), 'utf8')));
+async function assertAccess(h, identities) {
+  for (const identity of [identities.owner, identities.member]) {
+    assert.equal((await h.request('/api/companies', { cookie: identity.cookie })).status, 200);
   }
-  assert.deepEqual(await snapshot(source.binding), before);
-  const restored = await createAuthHarness(t, { migrate: false });
-  await apply(restored.binding, statements(await readFile(backupPath, 'utf8')));
-  assert.deepEqual(await snapshot(restored.binding), before);
-  assert.equal((await source.binding.prepare('SELECT COUNT(*) AS count FROM user').first()).count, 0);
-  assert.equal((await source.binding.prepare('SELECT COUNT(*) AS count FROM singleton_membership').first()).count, 0);
-  assert.equal((await source.binding.prepare('SELECT owner_user_id FROM singleton_workspace').first()).owner_user_id, null);
+  assert.equal((await h.request('/api/companies', { cookie: identities.invalidCookie })).status, 401);
+}
+
+test('populated baseline upgrades preserve all business data and restore the actual guarded export', { timeout: 180000 }, async t => {
+  const h = await createAuthHarness(t, { migrate: false });
+  const names = await migrationNames();
+  const project = await createMigrationProject(t, { harness: h, names: names.slice(0, 1) });
+  await project.run(['--apply']);
+  await project.backup('before-historical-fixtures');
+  await seedBusiness(h.binding);
+  const before = await snapshot(h.binding, [...businessTables, 'd1_migrations']);
+  assertPopulatedBusiness(before);
+  const backupsBefore = await readdir(project.backupRoot);
+  for (const name of names.slice(1)) await project.addMigration(name);
+  await project.run(['--apply', '--built']);
+  assert.deepEqual(await snapshot(h.binding), Object.fromEntries(businessTables.map(table => [table, before[table]])));
+  assert.equal((await h.binding.prepare('SELECT COUNT(*) AS count FROM user').first()).count, 0);
+  assert.equal((await h.binding.prepare('SELECT COUNT(*) AS count FROM singleton_membership').first()).count, 0);
+  assert.equal((await h.binding.prepare('SELECT owner_user_id FROM singleton_workspace').first()).owner_user_id, null);
   for (const table of businessTables) {
-    const keys = (await source.binding.prepare(`PRAGMA foreign_key_list(${table})`).all()).results;
+    const keys = (await h.binding.prepare(`PRAGMA foreign_key_list(${table})`).all()).results;
     assert.ok(keys.every(key => !['user', 'singleton_membership'].includes(key.table)));
   }
+  const backups = (await readdir(project.backupRoot)).filter(name => !backupsBefore.includes(name));
+  assert.equal(backups.length, 1);
+  const backup = join(project.backupRoot, backups[0], 'database.sql');
+  assert.match(await readFile(backup, 'utf8'), /legacy-deal/);
+  const restored = await createMigrationProject(t);
+  await restored.restore(backup);
+  assert.deepEqual(await restored.snapshot([...businessTables, 'd1_migrations']), before);
+  // A baseline copy may acquire accounts normally after the additive auth upgrade.
+  const identities = await seedAuthHistory(h);
+  const current = await snapshot(h.binding, preservedTables);
+  await project.run(['--apply']);
+  assert.deepEqual(await snapshot(h.binding, preservedTables), current);
+  await assertAccess(h, identities);
+});
+
+test('fresh all-migration database retains populated auth history and exact business data on repeat apply', { timeout: 120000 }, async t => {
+  const h = await createAuthHarness(t, { migrate: false });
+  const project = await createMigrationProject(t, { harness: h });
+  await project.run(['--apply']);
+  await project.backup('before-historical-fixtures');
+  await seedBusiness(h.binding);
+  const identities = await seedAuthHistory(h);
+  const before = await snapshot(h.binding, preservedTables);
+  assertPopulatedBusiness(before);
+  assert.deepEqual(before.d1_migrations.map(row => row.name), await migrationNames());
+  const backups = await readdir(project.backupRoot);
+  await project.run(['--apply', '--built']);
+  await project.run(['--apply']);
+  assert.deepEqual(await snapshot(h.binding, preservedTables), before);
+  assert.deepEqual(await readdir(project.backupRoot), backups);
+  await assertAccess(h, identities);
 });

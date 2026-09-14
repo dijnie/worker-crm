@@ -400,3 +400,43 @@ test('USER custom fields preserve opaque user IDs without auth foreign keys', as
   assert.equal(loaded.enrichmentStatus, 'COMPLETE');
   assert.equal(loaded.fieldValues[0].field.type, 'USER');
 });
+
+test('archived records retain all ten custom field types, placements, options and nullable payloads through ORM reads', async () => {
+  const archivedAt = '2025-02-03 04:05:06';
+  const organization = await company({ archivedAt });
+  const person = await contact({ companyId: organization.id, archivedAt });
+  const opportunity = await deal(organization.id, { archivedAt });
+  const payloads = {
+    TEXT: { text: "O'Brien — Việt Nam" }, LONG_TEXT: { text: 'First line\nSecond line' },
+    NUMBER: { number: '-99999999999999999999.9999' }, DATE: { date: '2024-02-29T00:00:00.000Z' },
+    CHECKBOX: { bool: false }, SELECT: {}, URL: { text: 'https://example.test/a?b=c' },
+    EMAIL: { text: 'historical@example.test' }, PHONE: { text: '+84 123456789' }, USER: { userId: 'historical-user' },
+  };
+  assert.deepEqual(schema.FIELD_TYPES, Object.keys(payloads));
+  for (const [entity, property, record] of [
+    ['COMPANY', 'companyId', organization], ['CONTACT', 'contactId', person], ['DEAL', 'dealId', opportunity],
+  ]) {
+    for (const [position, [type, payload]] of Object.entries(payloads).entries()) {
+      const definition = await field(entity, {
+        key: type.toLowerCase(), type, position, archivedAt, agentFilled: false,
+        required: true, showOnSheet: false, showOnTable: true, showOnFilter: true,
+      });
+      const option = type === 'SELECT' ? await insert(schema.fieldOptions, {
+        fieldId: definition.id, label: 'Retired choice', position: 17, archivedAt,
+      }) : null;
+      const value = await insert(schema.fieldValues, {
+        fieldId: definition.id, [property]: record.id, ...payload, ...(option ? { optionId: option.id } : {}),
+      });
+      const loaded = await db.query.fieldValues.findFirst({
+        where: eq(schema.fieldValues.id, value.id), with: { field: true, option: true },
+      });
+      assert.deepEqual(loaded.field, definition);
+      assert.deepEqual(loaded.option, option);
+      for (const key of ['text', 'number', 'date', 'bool', 'userId']) assert.equal(loaded[key], payload[key] ?? null);
+      assert.equal(loaded[property], record.id);
+      assert.equal(loaded.optionId, option?.id ?? null);
+    }
+  }
+  assert.equal((await db.select().from(schema.fieldValues)).length, 30);
+  assert.deepEqual((await binding.prepare('PRAGMA foreign_key_check').all()).results, []);
+});

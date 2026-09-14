@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createBrowserHarness } from '../tests/browser/browser-harness.mjs';
 
 const knownSuites = ['lists', 'record-sheets', 'activities', 'fields', 'overview', 'integration', 'all'];
-const registry = { lists: () => import('../tests/browser/lists.test.mjs'), activities: () => import('../tests/browser/activities.test.mjs'), fields: () => import('../tests/browser/fields.test.mjs'), 'record-sheets': async () => { const core = await import('../tests/browser/record-sheets.test.mjs'); const relations = await import('../tests/browser/record-sheet-relations.test.mjs'); return { runSuite: async (h, context) => { await core.runSuite(h, context); await relations.runSuite(h, context); } }; } };
+const registry = { integration: () => import('../tests/browser/integration.test.mjs'), lists: () => import('../tests/browser/lists.test.mjs'), activities: () => import('../tests/browser/activities.test.mjs'), fields: () => import('../tests/browser/fields.test.mjs'), overview: () => import('../tests/browser/overview.test.mjs'), 'record-sheets': async () => { const core = await import('../tests/browser/record-sheets.test.mjs'); const relations = await import('../tests/browser/record-sheet-relations.test.mjs'); return { runSuite: async (h, context) => { await core.runSuite(h, context); await relations.runSuite(h, context); } }; } };
 let mode = 'dev', suite = 'lists';
 for (const argument of process.argv.slice(2)) {
   if (argument.startsWith('--mode=')) mode = argument.slice(7);
@@ -12,7 +12,7 @@ for (const argument of process.argv.slice(2)) {
 assert.ok(['dev', 'built', 'both'].includes(mode), 'Expected --mode=dev|built|both');
 assert.ok(knownSuites.includes(suite), `Unknown suite: ${suite}`);
 assert.ok(suite === 'all' || registry[suite], `Suite ${suite} has not been implemented yet`);
-const suites = suite === 'all' ? Object.keys(registry) : [suite];
+const suites = suite === 'all' ? ['integration'] : [suite];
 let harness, cleanup;
 const onSignal = signal => { void (async () => { try { await cleanup?.(); } finally { process.exit(signal === 'SIGINT' ? 130 : 143); } })(); };
 process.once('SIGINT', onSignal);
@@ -24,7 +24,6 @@ try {
     await harness.start(currentMode);
     if (!identity) {
       identity = await harness.signup('Browser Owner');
-      probe = await harness.api(identity.context, '/api/companies', { method: 'POST', body: { name: 'Cross-mode persistence probe' } });
     } else {
       const session = await harness.api(identity.context, '/api/auth/get-session');
       assert.equal(session.user.id, identity.user.id, 'Built mode retains the exact verified dev identity/session');
@@ -34,6 +33,7 @@ try {
       console.log('[browser] Cross-mode handoff passed: original dev session and probe record survived in built Worker.');
     }
     for (const name of suites) await (await registry[name]()).runSuite(harness, { mode: currentMode, owner: identity });
+    if (!probe) probe = await harness.api(identity.context, '/api/companies', { method: 'POST', body: { name: 'Cross-mode persistence probe' } });
     await harness.stopServer();
     if (process.exitCode) throw new Error(`${currentMode} browser scenarios failed; resolve failures before the next mode.`);
   }

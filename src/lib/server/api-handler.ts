@@ -46,7 +46,7 @@ export function readQuery(request: Request): Record<string, unknown> {
   const values: Record<string, unknown> = Object.create(null);
   for (const [key, value] of new URL(request.url).searchParams) {
     if (Object.hasOwn(values, key)) throw new ServiceError(400, `Duplicate query parameter: ${key}`);
-    if (["archived", "includeArchived", "includeSummary", "includeFields"].includes(key)) {
+    if (["archived", "includeArchived", "includeSummary", "includeFields", "includeLinks"].includes(key)) {
       if (value !== "true" && value !== "false") throw new ServiceError(400, `${key} must be true or false`);
       values[key] = value === "true";
     } else if (["page", "limit", "facetPage", "facetLimit"].includes(key)) {
