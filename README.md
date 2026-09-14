@@ -6,7 +6,7 @@ A shared-workspace CRM built with Vinext App Router, Drizzle ORM, and Cloudflare
 Workers/D1. Verified email/password sessions protect business APIs and the workspace.
 Companies, Contacts and Deals have interactive lists, creation forms and nested
 record sheets with property editing and activity history, alongside account and
-owner-only member administration. Record sheets support manual activities and task
+system-managed roles and member administration. Record sheets support manual activities and task
 actions and typed custom fields. The overview shows live workspace counts,
 currency-specific pipeline values and linked recent activity. The former SaaS customer/subscription tools
 and endpoints are retired. Interactive API documentation is public at `/docs`.
@@ -43,7 +43,8 @@ It uses locally bundled `swagger-ui-react` with the application's custom theme.
 | `/contacts` | [Contacts](src/app/(workspace)/contacts/page.tsx) |
 | `/deals` | [Deals](src/app/(workspace)/deals/page.tsx) |
 | `/settings` | [Settings](src/app/(workspace)/settings/page.tsx) |
-| `/settings/members` | [Owner-only member administration](src/app/(workspace)/settings/members/page.tsx) |
+| `/settings/members` | [System-only member administration](src/app/(workspace)/settings/members/page.tsx) |
+| `/settings/roles` | [Role and permission management](src/app/(workspace)/settings/roles/page.tsx) |
 | `/docs` | [Interactive API documentation](src/app/docs/page.tsx) |
 
 The [record list](src/components/app/data-table/record-list.tsx),
@@ -70,7 +71,7 @@ the [activity composer](src/components/app/timeline/activity-composer.tsx) and
 [task and deletion actions](src/components/app/timeline/activity-actions.tsx).
 Email and meeting entries are manual CRM logs; they do not send mail or sync
 calendars. Deleting stage history does not reverse a deal's current stage.
-All active members manage custom fields in
+System accounts manage custom field definitions in
 [Settings](src/components/app/fields/field-definition-list.tsx), including immutable
 keys, placement flags, atomic ordering, and definition/option archive and restore.
 When leaving a field-definition draft, Keep editing preserves it; Discard changes
@@ -110,19 +111,40 @@ return destinations stay inside the application.
 
 ## Accounts and shared access
 
-Signup is open, but email verification is required before admission. The first
-verified account becomes owner; later verified accounts become members. The
-intended operator must complete this first-owner bootstrap before exposing signup
-to public traffic. If ownership is uncertain, inspect existing membership and use
-deliberate recovery; never reset the claim or assign the next login as owner.
+Signup is open and requires email verification. Every new account starts with no
+role, including the first signup. It can sign in but sees only a pending-access
+screen until a system account assigns a role. There is no default role or implicit
+admin/member group. An assigned role with no grants also has no CRM access.
 
-All active members share the existing CRM dataset. Workspace roles do not change
-business record ownership. Owners can change roles, revoke access, and restore
-accounts through Members. The last active owner cannot be removed or demoted.
-Restoration returns an account as a member and requires a fresh signin; old
-sessions remain invalid. Revocation preserves account records, business owners,
-and history, with no record reassignment. The [member service](services/member.service.ts)
-and [membership migration](migrations/0001_auth_membership.sql) own these rules.
+All roles live in the [role schema](src/lib/db/schema/role.schema.ts). The protected
+system role has full access; system accounts create other roles and select grants
+from the [entity/action catalog](src/lib/auth/permissions.ts) in Settings → Roles.
+Each account has at most one role. Write grants require read for the same entity.
+Company/Contact/Deal removal remains archive/restore; Activity delete remains
+permanent. Field-definition configuration is system-only, while entering field
+values follows the record's update permission.
+
+The workspace dataset remains shared within each role's entity access; record
+ownership does not grant permissions. System accounts assign/clear roles and
+revoke/restore accounts in Members. The last active system account and system role
+are protected. Assigned roles cannot be deleted. Restoring access leaves no role
+and requires a fresh signin; old sessions remain invalid. Revocation preserves
+accounts, record assignments and history. See the [member service](services/member.service.ts)
+and [role service](services/role.service.ts).
+
+Role changes apply to the next request. The [authorized database](src/lib/auth/authorized-db.ts)
+checks the live membership/session and role revisions inside each database batch,
+including standalone queries. The UI rechecks identity on focus, periodically and
+after permission errors; changed access clears cached records and open editors.
+This is request-based enforcement, not a server push notification mechanism.
+
+For a fresh local installation, verify and sign in to the intended system account,
+then get its ID from `/api/account`. After applying local migrations, run
+`npm run db:bootstrap-system -- --user-id ID` to inspect eligibility, then add
+`--apply` to promote it. The [local bootstrap script](scripts/bootstrap-system.mjs)
+exports a private backup before writing and only promotes a verified active
+roleless account when no active system exists. It never targets a remote database.
+Existing active system accounts grant further system roles through Members.
 
 Verify the email link, then sign in explicitly. A failed signup email may leave
 an unverified account: use resend verification instead of assuming access was
@@ -130,6 +152,8 @@ granted. Password reset uses an expiring one-use link and invalidates old sessio
 The [auth factory](src/lib/auth/auth.ts) owns expiry, cookie, rate-limit, and
 delivery-error handling; the [request guard](src/lib/auth/request-context.ts)
 checks verified active membership for protected requests.
+The [API permission boundary](src/lib/server/api-permissions.ts) additionally
+requires the configured role grants; identity access alone grants no CRM reads.
 
 ## Local setup and email
 
@@ -224,6 +248,11 @@ The [initial migration](migrations/0000_initial_schema.sql) is a fresh CRM basel
 not a conversion of an existing SaaS database. It remains unchanged. The
 [auth migration](migrations/0001_auth_membership.sql) upgrades that baseline
 additively, preserving business records and historical owner/creator IDs.
+The [RBAC migration](migrations/0002_dynamic_rbac.sql) replaces the old role enum
+with nullable role references. Existing owners become system; existing members
+become roleless and require deliberate assignment. CRM records and assignment
+IDs remain unchanged. Back up before upgrading. After migration, use compatible
+RBAC application code; an older owner/member binary cannot read the new schema.
 
 Before migrating existing storage, identify its actual D1 binding and persistence
 path, record applied migrations, and take a restorable backup outside the repository.
@@ -329,8 +358,9 @@ Sign in through `/sign-in`, then return to Swagger's **Try it out** on the same
 origin. The browser supplies its HttpOnly session cookie automatically; there is
 no manual token or cookie entry. Swagger assets are bundled locally and external
 schema validation is disabled. Better Auth delegates `/api/auth/*` separately
-from the business OpenAPI catalog; member APIs are `/api/members` and
-`/api/members/:id`.
+from the business OpenAPI catalog. Role/member administration is system-only;
+`/api/account` returns current identity even before role assignment. See the
+endpoint catalog for role CRUD and nullable membership role assignment.
 
 The [endpoint catalog](src/lib/api-endpoints.ts) and
 [typed client](src/lib/api.ts) own the REST integration surface. Business
@@ -347,14 +377,25 @@ matching dataset before pagination. Send `filters` as one JSON query value;
 saved-view `q` maps to the list's `search` input. `includeSummary=true` opts into
 relationship summaries, while `includeFields=true` opts into custom values;
 default list responses retain their existing shape. The
-[assignee service](services/assignee.service.ts) is the member-accessible assignment
-directory; owner-only member administration remains a separate boundary.
+[assignee service](services/assignee.service.ts) is the assignment directory for
+accounts with CRM read access; system-only member administration is separate.
 [Saved-view ownership](services/saved-view.service.ts) is personal even in a shared
 workspace: members see their own and shared views, but only the creator can edit
-or delete one, including when a reader is a workspace owner. Revoking a creator
+or delete one, including when a reader has the system role. Revoking a creator
 does not remove their shared views. The [field list query](services/field-list-query.ts)
 owns page-bounded custom-field projections and SELECT/USER facets, including retained retired
-selections and counts that exclude their own facet predicate.
+selections and counts that exclude their own facet predicate. Saved views also
+require entity read access; views whose related filters/sorts need unavailable
+permissions are withheld until that access is restored or the creator repairs them.
+
+Read restrictions apply to nested records and mutation responses as well as lists.
+Unread relation IDs and objects become null, unread relation arrays are empty,
+and inaccessible summary counts are omitted. Related search/sort/filter queries
+cannot probe unread entities. Denormalized last-activity timestamps and their
+sort/filter controls require all entity reads because they include linked history.
+Stats return null for inaccessible metrics. Activity lists/counts include only
+activities whose linked entities are all readable. Record details include
+`canCreateActivity` for composer availability after inferred-link checks.
 
 For independent deal participation, start with the
 [deal-contact service](services/deal-contact.service.ts) and its methods in the
@@ -369,7 +410,7 @@ grant access. The [server API boundary](src/lib/server/api-handler.ts) requires
 a session and active membership. Private POST/PATCH/PUT/DELETE requests also
 require `Origin` to equal `AUTH_BASE_URL`'s origin, including for non-browser
 clients, and `Content-Type: application/json` when a body is present. Missing or
-invalid sessions return 401; inactive membership or non-owner administration
+invalid sessions return 401; inactive membership or insufficient role permissions
 returns 403. The [typed client](src/lib/api.ts) sends same-origin credentials.
 
 Activity creation rejects caller-supplied `createdById`; deal stage changes reject
