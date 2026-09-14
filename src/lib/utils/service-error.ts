@@ -1,5 +1,5 @@
 export class ServiceError extends Error {
-  constructor(public readonly status: 400 | 401 | 403 | 404 | 409 | 415, message: string, public readonly code?: string) {
+  constructor(public readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 415, message: string, public readonly code?: string) {
     super(message);
     this.name = "ServiceError";
   }

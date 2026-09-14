@@ -1,5 +1,6 @@
 import { openApiDocument } from "@/lib/openapi/document";
+import { finalizeHttpResponse } from "@/lib/http/response";
 
-export function GET() {
-  return Response.json(openApiDocument);
+export function GET(request: Request) {
+  return finalizeHttpResponse(request, Response.json(openApiDocument));
 }

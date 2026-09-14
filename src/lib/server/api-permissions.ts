@@ -4,6 +4,7 @@ import { accountIdentity, authorizationActor, type RequestContext } from "@/lib/
 import { canPermission, type Permission } from "@/lib/auth/permissions";
 import { createAuthorizedDatabase } from "@/lib/auth/authorized-db";
 import { ServiceError } from "@/lib/utils/service-error";
+import { readJsonBody } from "@/lib/http/json-body";
 
 const recordEntities = { companies: "company", contacts: "contact", deals: "deal" } as const;
 type Entity = Permission["entity"];
@@ -44,10 +45,7 @@ export async function authorizeApiRequest(request: Request, context: RequestCont
   const id = encodedId ? decodeURIComponent(encodedId) : undefined;
   const readBody = async (): Promise<Record<string, unknown>> => {
     if (method === "GET" || request.body === null) return {};
-    const text = await request.clone().text();
-    if (!text) return {};
-    let value: unknown;
-    try { value = JSON.parse(text); } catch { throw new ServiceError(400, "Expected a valid JSON body"); }
+    const value = await readJsonBody(request, { allowEmpty: true });
     return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
   };
   const safeDb = guard([]).db;

@@ -24,7 +24,7 @@ export type RoleInput = Omit<RoleUpdateInput, "expectedRevision">;
 export interface ApiRequestOptions { signal?: AbortSignal }
 export interface ApiIssue { path: (string | number)[]; message: string }
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string, public readonly issues?: ApiIssue[], public readonly code?: string) {
+  constructor(public readonly status: number, message: string, public readonly issues?: ApiIssue[], public readonly code?: string, public readonly requestId?: string) {
     super(message);
     this.name = "ApiError";
   }
@@ -62,7 +62,9 @@ export function createApiClient(options: { baseUrl?: string; headers?: HeadersIn
             issue.path.every((part: unknown) => typeof part === "string" || (typeof part === "number" && Number.isInteger(part))));
         }
       } catch { /* Non-JSON failures still retain their HTTP status. */ }
-      const error = new ApiError(response.status, message, issues, code);
+      const responseId = response.headers.get("X-Request-Id");
+      const requestId = responseId && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(responseId) ? responseId : undefined;
+      const error = new ApiError(response.status, message, issues, code, requestId);
       await options.onError?.(error, path);
       throw error;
     }

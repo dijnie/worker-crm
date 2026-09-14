@@ -9,6 +9,9 @@ import { reconcileSingletonMembership } from "@services/member.service";
 import { ServiceError } from "../utils/service-error";
 import { normalizeEmail } from "./normalize-email";
 import { reportRequestFailure } from "../server/error-reporting";
+import { readJsonBody } from "../http/json-body";
+import { inheritRequestId } from "../http/request-metadata";
+import { finalizeHttpResponse } from "../http/response";
 
 export interface AuthConfiguration {
   secret: string;
@@ -126,11 +129,31 @@ export function createAuth(db: Database, config: AuthConfiguration, emailAdapter
   // Better Auth awaits signup/reset delivery but swallows callback failures.
   // Keep the outcome request-local so a failed send cannot produce a success response.
   auth.handler = (request) => delivery.run({ failed: false }, async () => {
-    const response = await handler(request);
-    if (delivery.getStore()?.failed) return reportRequestFailure(request, Response.json({
+    const finish = (response: Response) => finalizeHttpResponse(request, response);
+    let forwarded = request;
+    try {
+      const path = new URL(request.url).pathname.replace(/^\/api\/auth/, "");
+      const normalize = request.method === "POST" && ["/sign-up/email", "/sign-in/email", "/send-verification-email", "/request-password-reset"].includes(path);
+      const json = request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() === "application/json";
+      if (normalize || (request.body && json)) {
+        const parsed = await readJsonBody(request, { allowEmpty: !normalize });
+        if (normalize && (!parsed || typeof parsed !== "object" || !("email" in parsed) || typeof parsed.email !== "string")) {
+          return finish(Response.json({ message: "Invalid request" }, { status: 400, headers: { "cache-control": "no-store" } }));
+        }
+        const body = normalize ? { ...parsed as Record<string, unknown>, email: normalizeEmail((parsed as { email: string }).email) } : parsed;
+        forwarded = new Request(request, { body: body === undefined ? null : JSON.stringify(body) });
+        inheritRequestId(request, forwarded);
+      }
+      const response = finish(await handler(forwarded));
+      response.headers.set("cache-control", "no-store");
+      if (delivery.getStore()?.failed) return finish(reportRequestFailure(request, Response.json({
       code: "EMAIL_DELIVERY_UNAVAILABLE", message: "Email delivery is unavailable. Please retry or resend verification.",
-    }, { status: 503, headers: { "cache-control": "no-store" } }), "email_delivery_failed");
-    return reportRequestFailure(request, response, "auth_unexpected");
+      }, { status: 503, headers: { "cache-control": "no-store" } }), "email_delivery_failed"));
+      return finish(reportRequestFailure(request, response, "auth_unexpected"));
+    } catch (error) {
+      if (error instanceof ServiceError) return finish(Response.json({ message: error.status === 400 ? "Invalid request" : error.message }, { status: error.status, headers: { "cache-control": "no-store" } }));
+      return finish(reportRequestFailure(request, Response.json({ message: "Authentication is temporarily unavailable. Please retry." }, { status: 500, headers: { "cache-control": "no-store" } }), "auth_unexpected"));
+    }
   });
   return auth;
 }
@@ -142,16 +165,8 @@ export async function handleAuthRequest(request: Request, auth: ReturnType<typeo
   const headers = new Headers(request.headers);
   // Vinext can expose HTTP transport behind canonical HTTPS. Normalize only the same host.
   if (incoming.host === canonical.host && headers.get("origin") === incoming.origin) headers.set("origin", canonical.origin);
-  const path = incoming.pathname.replace(/^\/api\/auth/, "");
-  let body: BodyInit | null = request.method === "GET" || request.method === "HEAD" ? null : request.body;
-  if (request.method === "POST" && ["/sign-up/email", "/sign-in/email", "/send-verification-email", "/request-password-reset"].includes(path)) {
-    let parsed: Record<string, unknown>;
-    try { parsed = await request.json(); } catch { return Response.json({ message: "Invalid request" }, { status: 400, headers: { "cache-control": "no-store" } }); }
-    if (!parsed || typeof parsed !== "object" || typeof parsed.email !== "string") return Response.json({ message: "Invalid request" }, { status: 400, headers: { "cache-control": "no-store" } });
-    body = JSON.stringify({ ...parsed, email: normalizeEmail(parsed.email) });
-    headers.set("content-type", "application/json");
-  }
-  const response = await auth.handler(new Request(url, { method: request.method, headers, body }));
-  response.headers.set("cache-control", "no-store");
-  return response;
+  const body = request.method === "GET" || request.method === "HEAD" ? null : request.body;
+  const forwarded = new Request(url, { method: request.method, headers, body });
+  inheritRequestId(request, forwarded);
+  return auth.handler(forwarded);
 }

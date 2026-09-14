@@ -80,7 +80,8 @@ test('unexpected failures document an opaque correlation header without changing
       const failure = operation.responses['500'];
       assert.deepEqual(failure.headers['X-Request-Id']?.schema, { type: 'string', format: 'uuid' });
       assertSchema(document, failure.content['application/json'].schema, { message: 'Internal server error' }, 'generic failure body');
-      assert.equal(operation.responses['400'].headers['X-Request-Id'], undefined);
+      assert.deepEqual(operation.responses['400'].headers['X-Request-Id']?.schema, { type: 'string', format: 'uuid' });
+      assert.ok(operation.responses['413']);
     }
   }
 });

@@ -35,7 +35,10 @@ test('diagnostics contain only allowlisted metadata and independently generated 
     assert.equal(response.headers.get('cache-control'), 'no-store');
     assert.deepEqual(await response.json(), { message: 'Internal server error' });
   }
-  assert.notEqual(ids[0], ids[1]);
+  assert.equal(ids[0], ids[1], 'One Request retains its diagnostic identity across reporting layers');
+  const other = reportRequestFailure(new Request(request), new Response(null, { status: 500 }), 'api_unexpected');
+  assert.notEqual(other.headers.get('x-request-id'), ids[0], 'An unrelated Request gets a fresh identity');
+  events.pop();
   assert.deepEqual(events, ids.map(requestId => [JSON.stringify({
     event: 'request_failure', requestId, route: '/api/deals/:id/contacts/:contactId', method: 'PATCH', status: 500, category: 'api_unexpected',
   })]));

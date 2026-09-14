@@ -150,7 +150,8 @@ test('concurrent email failures stay request-local and reset delivery failure is
   ]);
   assert.equal(failed.status, 503); assert.equal(successful.status, 200);
   assert.equal((await h.outbox()).length, 1);
-  assert.equal(successful.headers.get('x-request-id'), null);
+  assert.match(successful.headers.get('x-request-id'), /^[0-9a-f-]{36}$/);
+  assert.notEqual(successful.headers.get('x-request-id'), failed.headers.get('x-request-id'));
   assert.deepEqual((await h.errorEvents()).map(([entry]) => JSON.parse(entry)), [{
     event: 'request_failure', requestId: failed.headers.get('x-request-id'), route: '/api/auth/sign-up/email', method: 'POST', status: 503, category: 'email_delivery_failed',
   }]);

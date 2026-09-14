@@ -77,7 +77,7 @@ register("DELETE", "/api/saved-views/:id", { operationId: "deleteSavedView", tag
 
 const noStore: OpenAPIV3.HeaderObject = { description: "Responses are not cached.", schema: { type: "string", enum: ["no-store"] } };
 const requestId: OpenAPIV3.HeaderObject = {
-  description: "Server-generated identifier for correlating this failure with sanitized diagnostic events. Does not contain account or request data.",
+  description: "Server-generated request identifier shared by response, request context and any sanitized failure diagnostic. Does not contain account or request data.",
   schema: { type: "string", format: "uuid" },
 };
 const paginationHeaders: Record<string, OpenAPIV3.HeaderObject> = {
@@ -91,11 +91,12 @@ const errors: OpenAPIV3.ResponsesObject = Object.fromEntries([
   [403, "Membership is inactive, role permissions are missing or changed, system authority is required, or the mutation Origin is invalid.", "Error"],
   [404, "The requested record, field, option, or target does not exist.", "Error"],
   [409, "Uniqueness conflict or concurrent changes prevent the operation.", "Error"],
+  [413, "JSON request body exceeds the aggregate 1 MiB transport limit.", "Error"],
   [415, "A nonempty mutation body requires Content-Type: application/json.", "Error"],
   [500, "Unexpected server failure. Internal details are not returned.", "Error"],
 ].map(([status, description, schema]) => [String(status), {
   description: String(description),
-  headers: { "Cache-Control": noStore, ...(status === 500 ? { "X-Request-Id": requestId } : {}) },
+  headers: { "Cache-Control": noStore, "X-Request-Id": requestId },
   content: { "application/json": { schema: reference(String(schema)) } },
 }]));
 
@@ -126,7 +127,7 @@ for (const endpoint of apiEndpoints) {
   if (!contract) throw new Error(`Missing OpenAPI contract: ${endpoint.method} ${endpoint.path}`);
   const success: OpenAPIV3.ResponseObject = {
     description: contract.status === 204 ? "Deleted successfully; no response body." : contract.status === 201 ? "Created successfully." : "Successful response.",
-    headers: { "Cache-Control": noStore, ...(contract.paginated ? paginationHeaders : {}) },
+    headers: { "Cache-Control": noStore, "X-Request-Id": requestId, ...(contract.paginated ? paginationHeaders : {}) },
   };
   if (contract.response) {
     const schema = reference(contract.response);
@@ -137,7 +138,7 @@ for (const endpoint of apiEndpoints) {
     tags: [contract.tag],
     summary: endpoint.description.split(".")[0],
     description: [endpoint.description, contract.description,
-      endpoint.method !== "GET" ? "Mutations require the configured same Origin header. JSON request bodies require Content-Type: application/json. Browsers supply Origin automatically." : undefined,
+      endpoint.method !== "GET" ? "Mutations require the configured same Origin header. Parsed JSON request bodies require Content-Type: application/json and are limited to 1 MiB in aggregate. Browsers supply Origin automatically." : undefined,
       contract.query ? "Duplicate or unknown query parameters are rejected. Booleans use true/false; page and limit use decimal digits." : undefined,
     ].filter(Boolean).join("\n\n"),
     parameters: parameters(endpoint.path, contract.query),

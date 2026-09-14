@@ -1,4 +1,5 @@
 import apiEndpoints from "../api-endpoints";
+import { getRequestId } from "../http/request-metadata";
 
 type FailureCategory = "api_unexpected" | "auth_unexpected" | "email_delivery_failed";
 
@@ -24,7 +25,7 @@ function routeTemplate(request: Request): string {
 export function reportRequestFailure(request: Request, response: Response, category: FailureCategory): Response {
   if (response.status < 500) return response;
   try {
-    const requestId = crypto.randomUUID();
+    const requestId = getRequestId(request);
     response.headers.set("X-Request-Id", requestId);
     console.error(JSON.stringify({
       event: "request_failure", requestId, route: routeTemplate(request),

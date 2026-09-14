@@ -25,6 +25,7 @@ export interface AccountIdentity {
   accessVersion: number;
 }
 export interface RequestContext {
+  requestId: string;
   db: Database;
   user: { id: string; name: string; email: string };
   membership: typeof singletonMembership.$inferSelect;
@@ -40,7 +41,7 @@ export function getAuth(db = getDb()) {
   return createAuth(db, { secret: config.BETTER_AUTH_SECRET, baseUrl: config.AUTH_BASE_URL },
     new CloudflareEmailAdapter({ binding: config.EMAIL, from: config.AUTH_EMAIL_FROM }));
 }
-export async function requireRequestContext(headers: Headers): Promise<RequestContext> {
+export async function requireRequestContext(headers: Headers, requestId = crypto.randomUUID()): Promise<RequestContext> {
   const db = getDb();
   // The auth client's session endpoint owns cookie and database expiry renewal.
   const current = await getAuth(db).api.getSession({ headers, query: { disableRefresh: true } });
@@ -59,7 +60,7 @@ export async function requireRequestContext(headers: Headers): Promise<RequestCo
   if (!state || state.membership.status !== "active" || state.sessionVersion !== state.membership.accessVersion) {
     throw new ServiceError(403, "Active membership is required", "INACTIVE_MEMBERSHIP");
   }
-  return { db, user: { id: current.user.id, name: current.user.name, email: current.user.email },
+  return { requestId, db, user: { id: current.user.id, name: current.user.name, email: current.user.email },
     membership: state.membership, role: state.role, permissions: state.role?.isSystem ? [...allPermissions] : permissions as Permission[],
     sessionId: current.session.id };
 }

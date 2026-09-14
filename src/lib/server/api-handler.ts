@@ -6,14 +6,19 @@ import { reportRequestFailure } from "./error-reporting";
 import { authorizeApiRequest } from "./api-permissions";
 import { accountIdentity } from "../auth/request-context";
 import { scopeRecord, setDatabaseAccess } from "./read-access";
+import { readJsonBody } from "../http/json-body";
+import { getRequestId } from "../http/request-metadata";
+import { finalizeHttpResponse } from "../http/response";
 
 export type RouteContext<T extends Record<string, string> = { id: string }> = {
   params: Promise<T> | T;
 };
 
 export async function withApi(request: Request, handler: (context: RequestContext) => Promise<Response>): Promise<Response> {
+  const requestId = getRequestId(request);
+  const finish = (response: Response) => finalizeHttpResponse(request, response);
   try {
-    const context = await requireRequestContext(request.headers);
+    const context = await requireRequestContext(request.headers, requestId);
     if (["POST", "PATCH", "PUT", "DELETE"].includes(request.method)) {
       if (request.headers.get("Origin") !== new URL(getAuthBaseUrl()).origin) {
         throw new ServiceError(403, "A same-origin request is required", "FORBIDDEN_ACTION");
@@ -32,25 +37,21 @@ export async function withApi(request: Request, handler: (context: RequestContex
       response = Response.json(scopeRecord(authorized.db, entity, await response.json()), { status: response.status, headers: response.headers });
     }
     response.headers.set("Cache-Control", "no-store");
-    return response;
+    return finish(response);
   } catch (error) {
     let failure = error;
     try { translateDatabaseError(error); } catch (translated) { failure = translated; }
     const headers = { "Cache-Control": "no-store" };
     if (failure instanceof ZodError) {
-      return Response.json({ message: "Invalid request", issues: failure.issues.map(({ path, message }) => ({ path, message })) }, { status: 400, headers });
+      return finish(Response.json({ message: "Invalid request", issues: failure.issues.map(({ path, message }) => ({ path, message })) }, { status: 400, headers }));
     }
-    if (failure instanceof ServiceError) return Response.json({ message: failure.message, ...(failure.code ? { code: failure.code } : failure.status === 403 ? { code: "FORBIDDEN_ACTION" } : {}) }, { status: failure.status, headers });
-    return reportRequestFailure(request, Response.json({ message: "Internal server error" }, { status: 500, headers }), "api_unexpected");
+    if (failure instanceof ServiceError) return finish(Response.json({ message: failure.message, ...(failure.code ? { code: failure.code } : failure.status === 403 ? { code: "FORBIDDEN_ACTION" } : {}) }, { status: failure.status, headers }));
+    return finish(reportRequestFailure(request, Response.json({ message: "Internal server error" }, { status: 500, headers }), "api_unexpected"));
   }
 }
 
 export async function readJson(request: Request): Promise<unknown> {
-  if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
-    throw new ServiceError(415, "Expected application/json");
-  }
-  try { return await request.json(); }
-  catch { throw new ServiceError(400, "Expected a valid JSON body"); }
+  return readJsonBody(request);
 }
 
 export function readQuery(request: Request): Record<string, unknown> {
