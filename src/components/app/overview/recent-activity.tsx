@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAppData, useAppQuery } from "../app-data-provider";
 import { useAssigneeDirectory } from "../records/use-assignee-directory";
 import { TimelineEntry } from "../timeline/timeline-entry";
@@ -27,12 +28,20 @@ export function RecentActivity() {
       <p>Actor names could not load. Historical actor IDs remain visible.</p>
       <Button type="button" variant="outline" className="min-h-11" onClick={directory.refresh}>Retry actor names</Button>
     </div>}
-    {directory.loading && <p role="status" className="text-xs text-muted-foreground">Loading actor names…</p>}
+    {directory.loading && <Skeleton className="h-3 w-32" />}
     {!!feed.error && <div role="alert" className="space-y-3 rounded-lg border bg-card p-4">
       <p className="text-sm">Recent activity could not load. {feed.error instanceof Error ? feed.error.message : "Please try again."}</p>
       <Button type="button" variant="outline" className="min-h-11" onClick={refresh}>Retry activity</Button>
     </div>}
-    {(feed.loading || feed.refreshing) && <p role="status" className="py-4 text-sm text-muted-foreground">{feed.refreshing ? "Refreshing recent activity…" : "Loading recent activity…"}</p>}
+    {feed.loading && <div className="space-y-3" aria-busy="true" aria-label="Loading recent activity">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className="space-y-2 rounded-lg border bg-card p-4">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-3 w-1/2" />
+        </div>
+      ))}
+    </div>}
+    {feed.refreshing && <p role="status" className="py-4 text-sm text-muted-foreground">Refreshing recent activity…</p>}
     {feed.data?.items.length === 0 && <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">No activity yet. Activities logged on a company, contact, or deal will appear here.</div>}
     <div aria-label="Recent activity" className="space-y-3 [&_button]:min-h-11 [&_summary]:min-h-11">{feed.data?.items.map(activity => {
       const labels = Object.fromEntries(activity.links.map(link => [`${link.kind}:${link.id}`, `${link.name || `Unavailable ${link.kind} (${link.id})`}${link.archivedAt ? " (archived)" : ""}`]));

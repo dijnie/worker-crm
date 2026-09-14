@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { FIELD_ENTITIES, type FieldEntity } from "@/lib/db/schema/constants";
 import { FIELD_TYPE_LABELS, type FieldDefinition } from "@/lib/field-form-values";
 import { safeReturnUrl } from "@/lib/auth/safe-return-url";
@@ -42,7 +43,23 @@ function DefinitionSession() {
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-medium">Custom fields</h2><p className="mt-1 text-sm text-muted-foreground">Manage record properties for your workspace.</p></div><Button onClick={() => setEditor({ entity })} disabled={pending}>New field</Button></div>
     <div className="flex flex-wrap gap-2" aria-label="Field entity">{FIELD_ENTITIES.map(value => <Button key={value} size="sm" variant={entity === value ? "default" : "outline"} aria-pressed={entity === value} disabled={pending} onClick={() => { setEntity(value); setSearch(""); setError(""); setSuccess(""); }}>{value[0] + value.slice(1).toLowerCase()}</Button>)}</div>
     <div className="flex flex-wrap items-center gap-3"><Input className="sm:max-w-xs" aria-label="Search custom fields" placeholder="Search fields…" value={search} onChange={event => setSearch(event.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeArchived} disabled={pending} onChange={event => setIncludeArchived(event.target.checked)} />Include archived fields</label></div>
-    {definitions.loading && <p role="status" className="text-sm text-muted-foreground">Loading fields…</p>}
+    {definitions.loading && <div role="status" aria-busy="true" aria-label="Loading fields" className="space-y-3 py-3">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center">
+          <div className="min-w-0 space-y-2">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-48" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+          <div className="flex flex-wrap gap-1">
+            <Skeleton className="h-8 w-8" />
+            <Skeleton className="h-8 w-8" />
+            <Skeleton className="h-8 w-14" />
+            <Skeleton className="h-8 w-16" />
+          </div>
+        </div>
+      ))}
+    </div>}
     {definitions.error ? <p role="alert" className="text-sm text-destructive">{definitions.error instanceof Error ? definitions.error.message : "Fields unavailable."} <button type="button" className="underline" onClick={definitions.refresh}>Retry fields</button></p> : !definitions.loading && !filtered.length && <p className="py-4 text-sm text-muted-foreground">{search ? "No fields match your search." : `No ${entity.toLowerCase()} fields yet.`}</p>}
     <ul className="divide-y">{filtered.map(field => {
       const index = active.findIndex(value => value.id === field.id);

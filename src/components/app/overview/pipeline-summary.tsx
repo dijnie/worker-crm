@@ -1,6 +1,7 @@
 import { DEAL_STAGES, type DealStage } from "@/lib/db/schema/constants";
 import { DEFAULT_TABLE_QUERY, tableQueryUrl } from "../data-table/table-query";
 import { stageLabel } from "../records/stage-change";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export interface PipelineBucket { stage: DealStage; count: number; value: string }
 export function PipelineSummary({ currency, pipeline, loading }: { currency: string; pipeline?: readonly PipelineBucket[]; loading: boolean }) {
@@ -21,13 +22,12 @@ export function PipelineSummary({ currency, pipeline, loading }: { currency: str
         </thead>
         <tbody>{DEAL_STAGES.map(stage => {
           const bucket = pipeline?.find(item => item.stage === stage);
-          const unavailable = loading ? "Loading…" : "Unavailable";
           return <tr key={stage} data-stage={stage} className="border-b last:border-0">
             <th scope="row" className="py-2 pr-2 text-left font-normal">
               <a href={tableQueryUrl("/deals", { ...DEFAULT_TABLE_QUERY, stage, currency })} className="inline-flex min-h-11 items-center rounded-sm text-link underline-offset-4 hover:text-link-hover hover:underline active:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card">{stageLabel(stage)}</a>
             </th>
-            <td className="py-3 text-right tabular-nums [overflow-wrap:anywhere]">{bucket?.count ?? <span className="text-xs text-muted-foreground">{unavailable}</span>}</td>
-            <td className="py-3 pl-3 text-right tabular-nums [overflow-wrap:anywhere]">{bucket?.value ?? <span className="text-xs text-muted-foreground">{unavailable}</span>}</td>
+            <td className="py-3 text-right tabular-nums [overflow-wrap:anywhere]">{bucket?.count ?? (loading ? <Skeleton className="ml-auto h-4 w-10" /> : <span className="text-xs text-muted-foreground">Unavailable</span>)}</td>
+            <td className="py-3 pl-3 text-right tabular-nums [overflow-wrap:anywhere]">{bucket?.value ?? (loading ? <Skeleton className="ml-auto h-4 w-16" /> : <span className="text-xs text-muted-foreground">Unavailable</span>)}</td>
           </tr>;
         })}</tbody>
       </table>

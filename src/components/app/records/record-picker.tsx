@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from "react";
 import { useAppData, useAppQuery } from "../app-data-provider";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 export const selectClass =
   "h-9 w-full rounded-md border border-input bg-control px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
 interface PickerProps {
@@ -136,9 +137,15 @@ export function RecordPicker({
             Retry directory
           </button>
         </p>
-      ) : result.loading || result.refreshing ? (
+      ) : result.loading ? (
+        <div role="status" aria-busy="true" aria-label="Loading options" className="space-y-2 py-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-3 w-3/4" />
+          ))}
+        </div>
+      ) : result.refreshing ? (
         <p role="status" className="text-xs text-muted-foreground">
-          Loading options…
+          Refreshing options…
         </p>
       ) : (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">

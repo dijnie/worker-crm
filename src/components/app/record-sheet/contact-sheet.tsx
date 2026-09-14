@@ -2,6 +2,7 @@
 import { ApiError } from "@/lib/api";
 import { useAppData, useAppQuery } from "../app-data-provider";
 import { useAssigneeDirectory } from "../records/use-assignee-directory";
+import { Skeleton } from "@/components/ui/skeleton";
 import { PropertyPanel, type SheetProps } from "./property-panel";
 import { RecordActions } from "./record-actions";
 import { RelatedRecords, contactName } from "./related-records";
@@ -13,7 +14,16 @@ export function ContactSheet({ id, onOpen, onDirtyChange }: SheetProps) {
   const primaryOf: unknown = contact?.primaryOf;
   const primaryCompany = primaryOf && typeof primaryOf === "object" && "id" in primaryOf && typeof primaryOf.id === "string" && "name" in primaryOf && typeof primaryOf.name === "string" ? { id: primaryOf.id, name: primaryOf.name, archivedAt: "archivedAt" in primaryOf && typeof primaryOf.archivedAt === "string" ? primaryOf.archivedAt : null } : null;
   return <div className="space-y-6" data-record-kind="contact">
-    {result.loading && <p role="status">Loading contact…</p>}
+    {result.loading && <div role="status" aria-busy="true" aria-label="Loading contact" className="space-y-4">
+      <Skeleton className="h-6 w-48" />
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-4 w-3/4" />
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-full" />
+      </div>
+    </div>}
     {!!result.error && <div role="alert"><p>{result.error instanceof ApiError && result.error.status === 404 ? "Contact not found." : result.error instanceof Error ? result.error.message : "Could not load contact."}</p><button className="underline" onClick={result.refresh}>Retry contact</button></div>}
     {contact && <>
       <div><h2 className="break-words text-xl font-semibold">{contactName(contact)}</h2>{result.refreshing && <p role="status" className="text-xs text-muted-foreground">Refreshing contact…</p>}</div>

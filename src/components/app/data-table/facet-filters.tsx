@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import Filter from "@carbon/icons-react/es/Filter";
 import ChevronDown from "@carbon/icons-react/es/ChevronDown";
 import { ToolbarMenu } from "./toolbar-menu";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { FieldDefinition } from "@/lib/field-form-values";
 import { fieldFacetDefinitions } from "../fields/field-facets";
 export const facetLabels: Record<string, string> = {
@@ -161,9 +162,16 @@ function Facet({
                 Next options
               </Button>
             </div>
-            {(result.loading || result.refreshing) && (
+            {result.loading && (
+              <div role="status" aria-busy="true" aria-label="Loading filters" className="space-y-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-3 w-3/4" />
+                ))}
+              </div>
+            )}
+            {result.refreshing && (
               <p role="status" className="text-xs">
-                Loading filters…
+                Refreshing filters…
               </p>
             )}
           </>

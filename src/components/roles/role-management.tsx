@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAppData, useAppQuery } from "@/components/app/app-data-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { ApiError, type RoleRecord } from "@/lib/api";
@@ -19,7 +20,17 @@ export function RoleManagement() {
   return <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-6">
     <Link href="/settings" className="text-sm underline">Back to settings</Link>
     <header className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-2xl font-semibold">Roles</h1><p className="mt-2 text-sm text-muted-foreground">Create roles and choose what each role can access. New roles start with no permissions.</p></div><Button onClick={() => setEditing("new")}>Create role</Button></header>
-    {roles.loading && <p role="status">Loading roles…</p>}
+    {roles.loading && <div role="status" aria-busy="true" aria-label="Loading roles" className="space-y-3">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-48" />
+          </div>
+          <Skeleton className="h-9 w-24" />
+        </div>
+      ))}
+    </div>}
     {!!roles.error && <p role="alert">{roles.error instanceof Error ? roles.error.message : "Roles could not load."} <button className="underline" onClick={roles.refresh}>Retry</button></p>}
     <ul className="divide-y rounded-lg border">{roles.data?.map(role => <li key={role.id} className="flex flex-wrap items-center justify-between gap-4 p-4"><div><h2 className="font-medium">{role.name}{role.isSystem && <span className="ml-2 text-xs text-muted-foreground">Protected system role</span>}</h2>{role.description && <p className="mt-1 text-sm text-muted-foreground">{role.description}</p>}<p className="mt-2 text-xs text-muted-foreground">{role.memberCount} assigned {role.memberCount === 1 ? "account" : "accounts"} · {role.isSystem ? "Full access" : `${role.permissions.length} permissions`}</p></div><div className="flex gap-2"><Button variant="outline" onClick={() => setEditing(role)}>{role.isSystem ? "View permissions" : "Edit role"}</Button>{!role.isSystem && <Button variant="outline" disabled={role.memberCount > 0} title={role.memberCount ? "Remove role assignments before deleting this role." : undefined} onClick={() => { setError(""); setDeleting(role); }}>Delete role</Button>}</div></li>)}</ul>
     <Dialog open={editing !== null} onOpenChange={open => { if (!open) setEditing(null); }}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl"><DialogTitle>{editing === "new" ? "Create role" : editing?.isSystem ? "System permissions" : "Edit role"}</DialogTitle><DialogDescription>Write permissions require Read for the same entity. Field definitions, roles, and members are managed by system accounts.</DialogDescription>{editing && <RoleEditor key={editing === "new" ? "new" : `${editing.id}:${editing.revision}`} role={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={async () => { invalidate(["roles", "members"]); setEditing(null); await refreshAccount(); }} onReload={async id => setEditing(await api.roles.get(id))} />}</DialogContent></Dialog>

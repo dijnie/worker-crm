@@ -3,6 +3,7 @@ import { canPermission } from "@/lib/auth/permissions";
 import { useCallback, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAppData, useAppQuery } from "../app-data-provider";
 import { useAssigneeDirectory } from "../records/use-assignee-directory";
 import { RECORD_INVALIDATIONS } from "../records/form-values";
@@ -21,7 +22,16 @@ export function DealSheet({ id, onOpen, onDirtyChange }: SheetProps) {
   const stageDirty = useCallback((state: DirtyEditor | null) => onDirtyChange(`deal:${id}:stage`, state), [id, onDirtyChange]);
   const deal = result.data;
   return <div className="space-y-6" data-record-kind="deal">
-    {result.loading && <p role="status">Loading deal…</p>}
+    {result.loading && <div role="status" aria-busy="true" aria-label="Loading deal" className="space-y-4">
+      <Skeleton className="h-6 w-48" />
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-4 w-3/4" />
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-full" />
+      </div>
+    </div>}
     {!!result.error && <div role="alert"><p>{result.error instanceof ApiError && result.error.status === 404 ? "Deal not found." : result.error instanceof Error ? result.error.message : "Could not load deal."}</p><button className="underline" onClick={result.refresh}>Retry deal</button></div>}
     {deal && <>
       <div><h2 className="break-words text-xl font-semibold">{deal.name}</h2>{result.refreshing && <p role="status" className="text-xs text-muted-foreground">Refreshing deal…</p>}</div>

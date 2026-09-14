@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { useAppData, useAppQuery } from "@/components/app/app-data-provider";
 import { ApiError } from "@/lib/api";
@@ -101,7 +102,24 @@ export function MemberManagement({ currentUserId }: { currentUserId: string }) {
         {notice && <p role="status" className="rounded-md border bg-muted p-3 text-sm">{notice}</p>}
         {actionError && !revokeTarget && <p ref={errorRef} role="alert" tabIndex={-1} className="rounded-sm text-sm text-destructive focus:outline-none focus:ring-2 focus:ring-ring">{actionError}</p>}
         <section aria-label="Workspace members" aria-busy={loading} className="rounded-lg border bg-card text-card-foreground">
-          {loading && <p role="status" className="p-6 text-sm text-muted-foreground">Loading members…</p>}
+          {loading && <div role="status" aria-label="Loading members" className="space-y-4 p-6">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-48" />
+                </div>
+                <div className="flex flex-wrap items-center gap-2 lg:w-36 lg:shrink-0">
+                  <Skeleton className="h-5 w-16" />
+                  <Skeleton className="h-5 w-14" />
+                </div>
+                <div className="flex flex-wrap items-center gap-2 lg:w-64 lg:shrink-0 lg:justify-end">
+                  <Skeleton className="h-11 w-28" />
+                  <Skeleton className="h-11 w-24" />
+                </div>
+              </div>
+            ))}
+          </div>}
           {loadError && <div className="space-y-3 p-6"><p role="alert" className="text-sm text-destructive">{loadError}</p><Button variant="outline" className="min-h-11" onClick={() => { invalidate(["members"]); setRevision((value) => value + 1); }}>Try again</Button></div>}
           {!loading && data && data.items.length === 0 && <p className="p-6 text-sm text-muted-foreground">No members match this access status.</p>}
           {!loading && data && data.items.length > 0 && <ul className="divide-y">

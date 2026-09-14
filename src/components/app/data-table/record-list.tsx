@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAppData, useAppQuery } from "../app-data-provider";
+import { Skeleton } from "@/components/ui/skeleton";
 import { CreateRecordDialog } from "../records/record-form";
 import { BulkActions } from "../records/bulk-actions";
 import { stageLabel } from "../records/stage-change";
@@ -414,7 +415,7 @@ function ListContent({
           </Button>
         </div>
       )}
-      {fieldQuery.error ? <p role="alert" className="text-sm text-destructive">Custom field definitions could not load. {fieldQuery.error instanceof Error ? fieldQuery.error.message : "Request failed."} <button type="button" className="underline" onClick={fieldQuery.refresh}>Retry custom fields</button></p> : fieldQuery.loading && <p role="status" className="text-sm text-muted-foreground">Loading custom fields…</p>}
+      {fieldQuery.error ? <p role="alert" className="text-sm text-destructive">Custom field definitions could not load. {fieldQuery.error instanceof Error ? fieldQuery.error.message : "Request failed."} <button type="button" className="underline" onClick={fieldQuery.refresh}>Retry custom fields</button></p> : fieldQuery.loading && <Skeleton className="h-4 w-40" />}
       {!!directory.error && fieldQuery.data?.some(field => field.type === "USER" && (field.showOnTable || field.showOnFilter) && !field.archivedAt) && <p role="alert" className="text-sm text-destructive">User directory unavailable. <button type="button" className="underline" onClick={directory.refresh}>Retry user directory</button></p>}
       {unavailableFilters.length > 0 && <div role="alert" className="space-y-2 rounded border border-destructive/30 p-3 text-sm"><p>A selected custom field is retired or no longer supports filtering. Repair the filters to continue.</p><Button variant="outline" onClick={() => update({ filters: Object.fromEntries(Object.entries(query.filters).filter(([key]) => !unavailableFilters.includes(key))) })}>Remove unavailable field filters</Button></div>}
       <section
@@ -586,7 +587,7 @@ function ListContent({
               className="border-b px-4 py-2 text-xs text-muted-foreground"
             >
               {result.loading
-                ? "Loading records…"
+                ? <Skeleton className="h-3 w-24" />
                 : result.refreshing
                   ? "Refreshing records…"
                   : `${total} ${total === 1 ? "record" : "records"}`}
@@ -721,6 +722,19 @@ function ListContent({
                     )}
                   </TableRow>
                 ))}
+                {result.loading && Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={`skeleton-${i}`}>
+                    <TableCell><Skeleton className="h-4 w-4" /></TableCell>
+                    <TableCell
+                      colSpan={
+                        table.getVisibleLeafColumns().length +
+                        (entity === "deal" ? 2 : 1)
+                      }
+                    >
+                      <Skeleton className="h-4 w-full max-w-md" />
+                    </TableCell>
+                  </TableRow>
+                ))}
                 {settled && !rows.length && (
                   <TableRow>
                     <TableCell
@@ -825,7 +839,20 @@ export function RecordList({
   return (
     <main className="mx-auto w-full max-w-screen-2xl p-4 sm:p-6 lg:p-8">
       {!state.ready ? (
-        <p role="status">Loading {labels[entity].toLowerCase()}…</p>
+        <div role="status" aria-busy="true" aria-label={`Loading ${labels[entity].toLowerCase()}`} className="space-y-4">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-4 w-full max-w-md" />
+          <div className="rounded-lg border bg-card">
+            <div className="border-b p-3">
+              <Skeleton className="h-9 w-full max-w-sm" />
+            </div>
+            <div className="space-y-3 p-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-4 w-full" />
+              ))}
+            </div>
+          </div>
+        </div>
       ) : state.error ? (
         <div role="alert" className="space-y-3">
           <h1 className="text-2xl font-semibold">{labels[entity]}</h1>

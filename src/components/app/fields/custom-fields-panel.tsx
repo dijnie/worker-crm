@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api";
 import type { FieldEntity } from "@/lib/db/schema/constants";
@@ -31,7 +32,14 @@ function PanelSession({ record, onDirtyChange }: { record: RecordRef; onDirtyCha
   const directory = useAssigneeDirectory();
   return <section className="mt-5" aria-label="Custom fields">
     <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">Custom fields</h3>{account.role?.isSystem && <Link className="text-xs underline" href={`/settings?returnTo=${encodeURIComponent(typeof window === "undefined" ? "/" : window.location.pathname + window.location.search)}`}>Manage fields</Link>}</div>
-    {values.loading && <p role="status" className="py-3 text-sm text-muted-foreground">Loading custom fields…</p>}
+    {values.loading && <div role="status" aria-busy="true" aria-label="Loading custom fields" className="space-y-3 py-3">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="space-y-2 border-b py-3">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-4 w-full max-w-xs" />
+        </div>
+      ))}
+    </div>}
     {values.error ? <p role="alert" className="py-3 text-sm text-destructive">{values.error instanceof Error ? values.error.message : "Custom fields unavailable."} <button type="button" className="underline" onClick={values.refresh}>Retry custom fields</button></p> : !values.loading && !visible.length && <p className="py-3 text-sm text-muted-foreground">No custom fields shown on this record.</p>}
     {visible.some(definition => definition.type === "USER") && !!directory.error && <p role="alert" className="py-2 text-xs text-destructive">User directory unavailable. <button type="button" className="underline" onClick={directory.refresh}>Retry user directory</button></p>}
     {visible.map(definition => <ValueEditor key={definition.id} record={record} definition={definition}

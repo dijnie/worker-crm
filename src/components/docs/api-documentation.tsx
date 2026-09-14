@@ -3,6 +3,7 @@
 import { Component, useEffect, useState, type ComponentProps, type ComponentType, type ReactNode } from "react";
 import type SwaggerUIComponent from "swagger-ui-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import "swagger-ui-react/swagger-ui.css";
 import "@/styles/api-docs.css";
 
@@ -78,7 +79,13 @@ export function ApiDocumentation() {
 
   if (failed) return error;
   if (!SwaggerUI) {
-    return <p role="status" className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">Loading API documentation…</p>;
+    return <div role="status" aria-busy="true" aria-label="Loading API documentation" className="space-y-4 rounded-lg border bg-card p-6">
+      <Skeleton className="h-6 w-48" />
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-4 w-3/4" />
+      <Skeleton className="h-32 w-full" />
+      <Skeleton className="h-4 w-1/2" />
+    </div>;
   }
 
   return (

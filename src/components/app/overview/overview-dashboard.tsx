@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { overviewCurrencyUrl, parseOverviewCurrency } from "@/lib/overview-query";
 import { useAppData, useAppQuery } from "../app-data-provider";
 import { RECORD_OPEN_EVENT } from "../record-sheet/record-navigation";
+import { Skeleton } from "@/components/ui/skeleton";
 import { PipelineSummary } from "./pipeline-summary";
 import { RecentActivity } from "./recent-activity";
 import { StatCard } from "./stat-card";
@@ -64,7 +65,15 @@ function OverviewSession() {
         {error && <p id="overview-currency-error" role="alert" className="max-w-sm text-sm text-destructive">{error}</p>}
       </form>}
     </header>
-    {canStats && (currency === null ? <p role="status" className="text-sm text-muted-foreground">Loading overview…</p> : <OverviewStats currency={currency} />)}
+    {canStats && (currency === null ? <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="min-w-0 rounded-lg border bg-card p-4 sm:p-6 space-y-3">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-8 w-16" />
+          <Skeleton className="h-3 w-32" />
+        </div>
+      ))}
+    </div> : <OverviewStats currency={currency} />)}
     {canPermission(account, "activity", "read") && <RecentActivity />}
   </div>;
 }
