@@ -441,16 +441,39 @@ ISO datetime API contract to preserve that day across timezones. The
 [custom-field conversion](src/lib/field-form-values.ts) own this boundary;
 timestamped activities retain their datetime semantics.
 
-Unexpected business API failures and auth/email server failures return an opaque
-`X-Request-Id` header while keeping their existing generic JSON error responses.
-Use that ID to find the corresponding `request_failure` event in Cloudflare Worker
-logs. The [error reporter](src/lib/server/error-reporting.ts) records only the
+The shared [JSON reader](src/lib/http/json-body.ts) limits parsed JSON bodies to
+1 MiB (1,048,576 bytes), including JSON encoding overhead. It checks declared size
+and counts actual streamed bytes, stopping oversized reads with HTTP 413. This
+aggregate transport limit applies in addition to individual field validation.
+Malformed JSON returns 400 and unsupported content types return 415;
+`application/json; charset=utf-8` remains accepted. Permission inspection and route
+validation reuse one parsed body. Optional bodyless mutations remain supported.
+
+The shared [security policy](src/lib/http/security-headers.ts) applies to pages,
+API and auth responses. It disables framing and unused device permissions, sets
+nosniff and referrer headers, and restricts resource loading to this application
+with data images and inline scripts/styles required by Vinext and Swagger.
+Development additionally permits WebSocket connections for HMR. HSTS is emitted
+for HTTPS requests without opting other subdomains into that policy. This CSP
+permits inline execution; it is not a nonce-based policy.
+Vinext's development server can reject a foreign Origin before the application
+proxy runs; those framework-generated 403 responses have no application headers
+or request ID. React's development-only debug stack reconstruction also probes
+`eval`, which this policy blocks; React catches that failure and falls back.
+Production browser verification requires no CSP violations.
+
+Business API, OpenAPI and auth responses return an opaque `X-Request-Id` header
+on success and failure, keeping their existing JSON bodies. A server-generated
+ID follows the request through context and internal auth request reconstruction;
+the typed client's `ApiError.requestId` retains it for support correlation.
+For unexpected failures, use that ID to find the corresponding `request_failure`
+event in Cloudflare Worker logs. The [error reporter](src/lib/server/error-reporting.ts) records only the
 generated ID, a route template, method, status and a fixed failure category.
 It excludes account/record identifiers, query strings, request bodies, cookies,
 tokens, email addresses, raw SQL and error messages. Incoming request IDs are not
 trusted. Expected validation and permission failures do not generate these events.
-The [OpenAPI document](src/lib/openapi/document.ts) describes the header for
-business API 500 responses; native auth endpoints remain outside that catalog.
+The [OpenAPI document](src/lib/openapi/document.ts) describes the header on business
+API responses and HTTP 413; native auth endpoints remain outside that catalog.
 
 ## Storage decisions
 
