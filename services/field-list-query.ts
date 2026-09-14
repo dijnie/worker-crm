@@ -1,9 +1,9 @@
-import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
+import { and, eq, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { Database } from "@/lib/db";
 import { companies, contacts, deals, fieldDefinitions, fieldOptions, fieldValues, singletonMembership, user, type FieldDefinitionSelect } from "@/lib/db/schema";
 import { isCustomFieldFacet, type FacetOption, type RecordEntity, type RecordFields, type RecordFieldValue } from "@/lib/record-list-contracts";
 import { ServiceError } from "@/lib/utils/service-error";
-import { escapeLike } from "@/lib/utils/validation";
+import { literalContains } from "./sql-search";
 
 const tables = { company: companies, contact: contacts, deal: deals };
 const targetColumns = { company: fieldValues.companyId, contact: fieldValues.contactId, deal: fieldValues.dealId };
@@ -78,8 +78,7 @@ export async function customFieldFacet(db: Database, entity: RecordEntity, defin
     ? sql`coalesce((SELECT ${fieldOptions.label} || CASE WHEN ${fieldOptions.archivedAt} IS NULL THEN '' ELSE ' (retired)' END FROM ${fieldOptions} WHERE ${fieldOptions.id} = ${id} AND ${fieldOptions.fieldId} = ${definition.id}), 'Unavailable option')`
     : sql`coalesce((SELECT ${user.name} FROM ${user} INNER JOIN ${singletonMembership} ON ${singletonMembership.userId} = ${user.id} WHERE ${user.id} = ${id} AND ${user.emailVerified} = 1 AND ${singletonMembership.status} = 'active'), 'Unavailable / former user')`;
   const label = labelFor(value);
-  const pattern = search ? `%${escapeLike(search)}%` : undefined;
-  const optionWhere = and(where, sql`${value} IS NOT NULL`, pattern ? sql`(${label} LIKE ${pattern} ESCAPE '\\' OR ${value} LIKE ${pattern} ESCAPE '\\')` : undefined);
+  const optionWhere = and(where, sql`${value} IS NOT NULL`, search ? or(literalContains(label, search), literalContains(value, search)) : undefined);
   const [options, totals, chosen, retained] = await Promise.all([
     db.all<FacetOption>(sql`SELECT ${value} AS value, ${label} AS label, count(*) AS count FROM ${tables[entity]} WHERE ${optionWhere} GROUP BY ${value} ORDER BY ${label} COLLATE NOCASE ASC, ${value} ASC LIMIT ${limit} OFFSET ${(page - 1) * limit}`),
     db.all<{ total: number }>(sql`SELECT count(DISTINCT ${value}) AS total FROM ${tables[entity]} WHERE ${optionWhere}`),

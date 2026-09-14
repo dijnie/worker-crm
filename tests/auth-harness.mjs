@@ -26,11 +26,14 @@ export async function createAuthHarness(context, { baseUrl = 'https://crm.test',
     const contents = paths.map((path, index) => `import * as route${index} from './src/app/api/${path}';`).join('\n') + `
       const routes = [${definitions.map(({ expression, names, index }) => `{expression:${JSON.stringify(expression)},names:${JSON.stringify(names)},handlers:route${index}}`).join(',')}];
       globalThis.__authOutbox = [];
+      globalThis.__errorEvents = [];
+      console.error = (...args) => globalThis.__errorEvents.push(args);
       globalThis.__authEmailFailure = false;
       globalThis.__authFailureRecipient = null;
       globalThis.__authSessionPause = null;
       export default { async fetch(request) {
         const pathname = new URL(request.url).pathname;
+        if(pathname === '/__test/error-events') return Response.json(globalThis.__errorEvents);
         if(pathname === '/__test/outbox') return Response.json(globalThis.__authOutbox);
         if(pathname === '/__test/email-failure') { const body = await request.json(); globalThis.__authEmailFailure = body.enabled; globalThis.__authFailureRecipient = body.email ?? null; return Response.json({ok:true}); }
         if(pathname === '/__test/session-pause') {
@@ -98,6 +101,7 @@ export async function createAuthHarness(context, { baseUrl = 'https://crm.test',
       method, redirect: 'manual', headers: { ...(method === 'GET' ? {} : { 'content-type': 'application/json', ...(origin ? { origin } : {}) }), ...(ip ? { 'cf-connecting-ip': ip } : {}), ...(cookie ? { cookie } : {}), ...headers },
       ...(body === undefined ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
     });
+    const errorEvents = async () => (await request('/__test/error-events')).json();
     const outbox = async () => (await request('/__test/outbox')).json();
     const signIn = async (email, options = {}) => {
       const response = await request('/api/auth/sign-in/email', { method: 'POST', body: { email, password, ...options.body }, ip: options.ip ?? `198.51.100.${ipCounter++}` });
@@ -125,6 +129,6 @@ export async function createAuthHarness(context, { baseUrl = 'https://crm.test',
       return url.toString();
     };
     context?.after(dispose);
-    return { runtime, binding, request, outbox, signIn, signupVerified, expireVerificationLink, dispose, baseUrl, directory };
+    return { runtime, binding, request, outbox, errorEvents, signIn, signupVerified, expireVerificationLink, dispose, baseUrl, directory };
   } catch (error) { await dispose(); throw error; }
 }

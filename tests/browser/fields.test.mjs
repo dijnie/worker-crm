@@ -95,6 +95,121 @@ export async function runSuite(h, { mode, owner }) {
   page.on('pageerror', error => errors.push(error.message));
   const values = (entity, id = records[entity].id) => api(`/api/fields/values?${new URLSearchParams({ entity, entityId: id })}`);
   try {
+    const beginDefinition = async label => {
+      await settings(page).getByRole('button', { name: 'New field', exact: true }).click();
+      await fieldDialog(page).getByLabel('Field label', { exact: true }).fill(label);
+    };
+    const fromRecord = async () => {
+      await show(page, 'company', company.id);
+      const destination = page.url();
+      await sheet(page).getByRole('link', { name: 'Manage fields', exact: true }).click();
+      await page.waitForURL('**/settings?**');
+      await settings(page).locator('[data-field-id]').first().waitFor();
+      return destination;
+    };
+    const requestHistory = async delta => {
+      // Drive Chromium's actual history entry navigation, as browser Back/Forward
+      // does, rather than synthesizing popstate or mutating history state.
+      const session = await page.context().newCDPSession(page);
+      try {
+        const { entries, currentIndex } = await session.send('Page.getNavigationHistory');
+        assert.ok(entries[currentIndex + delta], 'The requested browser history entry exists');
+        await session.send('Page.navigateToHistoryEntry', { entryId: entries[currentIndex + delta].id });
+      } finally { await session.detach(); }
+      await fieldDialog(page).getByRole('button', { name: 'Keep editing', exact: true }).waitFor();
+    };
+    await test(`${mode}: dirty definition Back keeps its draft or discards to the original entry exactly once`, async () => {
+      const destination = await fromRecord();
+      const source = page.url();
+      const entry = await page.evaluate(() => ({ key: navigation.currentEntry.key, length: history.length }));
+      await beginDefinition(`${mode} history draft`);
+      await requestHistory(-1);
+      await fieldDialog(page).getByRole('button', { name: 'Keep editing', exact: true }).click();
+      assert.equal(page.url(), source);
+      assert.equal(await fieldDialog(page).getByLabel('Field label', { exact: true }).inputValue(), `${mode} history draft`);
+      assert.equal(await page.evaluate(() => navigation.currentEntry.key), entry.key);
+      await requestHistory(-1);
+      await fieldDialog(page).getByRole('button', { name: 'Discard changes', exact: true }).click();
+      await page.waitForURL(destination); await sheet(page).waitFor();
+      assert.equal(await page.evaluate(() => history.length), entry.length);
+      await page.goForward(); await page.waitForURL(source); await settings(page).waitFor();
+      assert.equal(await page.evaluate(() => navigation.currentEntry.key), entry.key);
+      assert.equal(await fieldDialog(page).count(), 0);
+      assert.equal((await api('/api/fields?entity=COMPANY')).some(field => field.label === `${mode} history draft`), false);
+    });
+
+    await test(`${mode}: dirty definition Forward resumes its destination and Cancel remains dialog-only`, async () => {
+      const destination = await fromRecord();
+      const source = page.url();
+      await page.getByRole('link', { name: 'Return to records', exact: true }).click();
+      await page.waitForURL(destination); await sheet(page).waitFor();
+      await page.goBack(); await page.waitForURL(source); await settings(page).waitFor();
+      await beginDefinition(`${mode} forward draft`);
+      await requestHistory(1);
+      await fieldDialog(page).getByRole('button', { name: 'Keep editing', exact: true }).click();
+      assert.equal(page.url(), source);
+      await fieldDialog(page).getByRole('button', { name: 'Cancel', exact: true }).click();
+      await fieldDialog(page).getByRole('button', { name: 'Discard changes', exact: true }).click();
+      await fieldDialog(page).waitFor({ state: 'hidden' });
+      assert.equal(page.url(), source);
+      await beginDefinition(`${mode} forward discarded draft`);
+      await requestHistory(1);
+      await fieldDialog(page).getByRole('button', { name: 'Discard changes', exact: true }).click();
+      await page.waitForURL(destination); await sheet(page).waitFor();
+    });
+
+    await test(`${mode}: definition save completes once before resuming pending Back navigation`, async () => {
+      const destination = await fromRecord();
+      const source = page.url();
+      await beginDefinition(`${mode} navigation saved field`);
+      let release, arrived, writes = 0;
+      const responseHeld = new Promise(resolve => { arrived = resolve; });
+      const gate = new Promise(resolve => { release = resolve; });
+      await page.route('**/api/fields', async route => {
+        if (route.request().method() !== 'POST') return route.continue();
+        writes++;
+        const response = await route.fetch();
+        arrived(); await gate;
+        await route.fulfill({ response });
+      });
+      try {
+        await fieldDialog(page).getByRole('button', { name: 'Save field', exact: true }).click();
+        await responseHeld;
+        await requestHistory(-1);
+        assert.equal(page.url(), source);
+        for (const name of ['Keep editing', 'Discard changes', 'Cancel', 'Save field']) {
+          assert.equal(await fieldDialog(page).getByRole('button', { name, exact: true }).isDisabled(), true);
+        }
+        release();
+        await page.waitForURL(destination); await sheet(page).waitFor();
+        assert.equal(writes, 1);
+        assert.equal((await api('/api/fields?entity=COMPANY')).filter(field => field.label === `${mode} navigation saved field`).length, 1);
+      } finally { release(); await page.unroute('**/api/fields'); }
+    });
+
+    await test(`${mode}: definition return-link guard clears cancelled actions and resumes discard or save`, async () => {
+      const destination = await fromRecord();
+      const source = page.url();
+      // The modal makes background links inert to pointer/keyboard input. Exercise
+      // its existing document click guard using the actual rendered return link.
+      const activateReturn = () => page.locator('a').filter({ hasText: /^Return to records$/ }).evaluate(anchor => anchor.click());
+      await beginDefinition(`${mode} link cancelled draft`);
+      await activateReturn();
+      await fieldDialog(page).getByRole('button', { name: 'Keep editing', exact: true }).click();
+      await saveDefinition(page, 'POST');
+      assert.equal(page.url(), source, 'Keeping clears the previous destination before an ordinary save');
+      await beginDefinition(`${mode} link discarded draft`);
+      await activateReturn();
+      await fieldDialog(page).getByRole('button', { name: 'Discard changes', exact: true }).click();
+      await page.waitForURL(destination); await sheet(page).waitFor();
+      await fromRecord();
+      await beginDefinition(`${mode} link saved field`);
+      await activateReturn();
+      await fieldDialog(page).getByRole('button', { name: 'Save field', exact: true }).click();
+      await page.waitForURL(destination); await sheet(page).waitFor();
+      assert.equal((await api('/api/fields?entity=COMPANY')).filter(field => field.label === `${mode} link saved field`).length, 1);
+    });
+
     await test(`${mode}: ordinary members manage fields while only owners see member management`, async () => {
       await openSettings(page);
       assert.equal(await page.getByRole('link', { name: 'Manage members', exact: true }).count(), 0);

@@ -70,6 +70,10 @@ register("PATCH", "/api/saved-views/:id", { operationId: "updateSavedView", tag:
 register("DELETE", "/api/saved-views/:id", { operationId: "deleteSavedView", tag: "Saved views", status: 204 });
 
 const noStore: OpenAPIV3.HeaderObject = { description: "Responses are not cached.", schema: { type: "string", enum: ["no-store"] } };
+const requestId: OpenAPIV3.HeaderObject = {
+  description: "Server-generated identifier for correlating this failure with sanitized diagnostic events. Does not contain account or request data.",
+  schema: { type: "string", format: "uuid" },
+};
 const paginationHeaders: Record<string, OpenAPIV3.HeaderObject> = {
   "X-Total-Count": { description: "Total matching records before pagination.", schema: { type: "integer", minimum: 0 } },
   "X-Page": { description: "Requested one-based page.", schema: { type: "integer", minimum: 1 } },
@@ -85,7 +89,7 @@ const errors: OpenAPIV3.ResponsesObject = Object.fromEntries([
   [500, "Unexpected server failure. Internal details are not returned.", "Error"],
 ].map(([status, description, schema]) => [String(status), {
   description: String(description),
-  headers: { "Cache-Control": noStore },
+  headers: { "Cache-Control": noStore, ...(status === 500 ? { "X-Request-Id": requestId } : {}) },
   content: { "application/json": { schema: reference(String(schema)) } },
 }]));
 

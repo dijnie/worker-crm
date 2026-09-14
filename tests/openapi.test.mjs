@@ -73,6 +73,18 @@ function requestSchema(path, method) {
   return document.paths[path][method].requestBody.content['application/json'].schema;
 }
 
+test('unexpected failures document an opaque correlation header without changing error bodies', () => {
+  for (const item of Object.values(document.paths)) {
+    for (const [method, operation] of Object.entries(item)) {
+      if (!['get', 'post', 'put', 'patch', 'delete'].includes(method)) continue;
+      const failure = operation.responses['500'];
+      assert.deepEqual(failure.headers['X-Request-Id']?.schema, { type: 'string', format: 'uuid' });
+      assertSchema(document, failure.content['application/json'].schema, { message: 'Internal server error' }, 'generic failure body');
+      assert.equal(operation.responses['400'].headers['X-Request-Id'], undefined);
+    }
+  }
+});
+
 test('request schemas describe required fields, protected properties and exact field-value types', () => {
   const samples = [
     ['/api/companies', 'post', { name: 'Example' }],

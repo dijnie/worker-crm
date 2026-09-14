@@ -57,7 +57,13 @@ test('awaited signup delivery failure keeps unverified user recoverable by norma
   await h.request('/__test/email-failure', { method: 'POST', body: { enabled: true } });
   const failed = await post(h, 'sign-up/email', { email: 'recover@example.test', name: 'Recover', password });
   assert.equal(failed.status, 503);
-  assert.doesNotMatch(await failed.text(), /Injected|token|stack/);
+  assert.deepEqual(await failed.json(), { code: 'EMAIL_DELIVERY_UNAVAILABLE', message: 'Email delivery is unavailable. Please retry or resend verification.' });
+  assert.equal(failed.headers.get('cache-control'), 'no-store');
+  const requestId = failed.headers.get('x-request-id');
+  assert.match(requestId ?? '', /^[0-9a-f-]{36}$/);
+  assert.deepEqual(await h.errorEvents(), [[JSON.stringify({
+    event: 'request_failure', requestId, route: '/api/auth/sign-up/email', method: 'POST', status: 503, category: 'email_delivery_failed',
+  })]]);
   assert.equal((await h.binding.prepare('SELECT email_verified FROM user').first()).email_verified, 0);
   assert.equal((await h.outbox()).length, 0);
   await h.request('/__test/email-failure', { method: 'POST', body: { enabled: false } });
@@ -142,11 +148,21 @@ test('concurrent email failures stay request-local and reset delivery failure is
   ]);
   assert.equal(failed.status, 503); assert.equal(successful.status, 200);
   assert.equal((await h.outbox()).length, 1);
+  assert.equal(successful.headers.get('x-request-id'), null);
+  assert.deepEqual((await h.errorEvents()).map(([entry]) => JSON.parse(entry)), [{
+    event: 'request_failure', requestId: failed.headers.get('x-request-id'), route: '/api/auth/sign-up/email', method: 'POST', status: 503, category: 'email_delivery_failed',
+  }]);
   await h.request('/__test/email-failure', { method: 'POST', body: { enabled: false } });
   const account = await h.signupVerified('reset-failure@example.test');
   await h.request('/__test/email-failure', { method: 'POST', body: { enabled: true } });
   const reset = await post(h, 'request-password-reset', { email: account.email, redirectTo: '/reset-password' });
   assert.equal(reset.status, 503);
+  const events = (await h.errorEvents()).map(([entry]) => JSON.parse(entry));
+  assert.equal(events.length, 2);
+  assert.equal(events[1].requestId, reset.headers.get('x-request-id'));
+  assert.notEqual(events[1].requestId, events[0].requestId);
+  assert.equal(events[1].route, '/api/auth/request-password-reset');
+  assert.equal(events[1].category, 'email_delivery_failed');
   assert.equal((await h.outbox()).filter(message => message.kind === 'reset').length, 0);
 });
 
@@ -201,7 +217,14 @@ test('expired and absent verification links fail; replay is idempotent and inter
   assert.equal((await h.request('/api/auth/verify-email')).status, 400);
   await h.binding.prepare("CREATE TRIGGER fail_admission BEFORE INSERT ON singleton_membership BEGIN SELECT RAISE(ABORT, 'injected_admission_failure'); END").run();
   const interrupted = await h.request(message.url);
-  assert.ok(interrupted.status >= 400);
+  assert.equal(interrupted.status, 500);
+  assert.deepEqual(await interrupted.json(), { message: 'Authentication is temporarily unavailable. Please retry.' });
+  assert.equal(interrupted.headers.get('cache-control'), 'no-store');
+  const requestId = interrupted.headers.get('x-request-id');
+  assert.match(requestId ?? '', /^[0-9a-f-]{36}$/);
+  assert.deepEqual(await h.errorEvents(), [[JSON.stringify({
+    event: 'request_failure', requestId, route: '/api/auth/verify-email', method: 'GET', status: 500, category: 'auth_unexpected',
+  })]]);
   assert.equal((await h.binding.prepare('SELECT email_verified FROM user').first()).email_verified, 1);
   assert.equal((await h.binding.prepare('SELECT count(*) AS count FROM singleton_membership').first()).count, 0);
   await h.binding.prepare('DROP TRIGGER fail_admission').run();
@@ -227,6 +250,7 @@ test('signup and general limits persist while loopback without edge IP stays con
   const local = await post(h, 'sign-in/email', { email: 'unknown@example.test', password }, { ip: null });
   assert.equal(local.status, 401);
   assert.equal(local.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(await h.errorEvents(), []);
 });
 
 test('invalid cookies, mismatched access versions and revoked credentials fail without revealing access anonymously', async t => {

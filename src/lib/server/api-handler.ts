@@ -2,6 +2,7 @@ import { ZodError } from "zod/v3";
 import { getAuthBaseUrl, requireRequestContext, type RequestContext } from "../auth/request-context";
 import { ServiceError, translateDatabaseError } from "../utils/service-error";
 import type { Page } from "../utils/validation";
+import { reportRequestFailure } from "./error-reporting";
 
 export type RouteContext<T extends Record<string, string> = { id: string }> = {
   params: Promise<T> | T;
@@ -30,7 +31,7 @@ export async function withApi(request: Request, handler: (context: RequestContex
       return Response.json({ message: "Invalid request", issues: failure.issues.map(({ path, message }) => ({ path, message })) }, { status: 400, headers });
     }
     if (failure instanceof ServiceError) return Response.json({ message: failure.message, ...(failure.code ? { code: failure.code } : failure.status === 403 ? { code: "FORBIDDEN_ACTION" } : {}) }, { status: failure.status, headers });
-    return Response.json({ message: "Internal server error" }, { status: 500, headers });
+    return reportRequestFailure(request, Response.json({ message: "Internal server error" }, { status: 500, headers }), "api_unexpected");
   }
 }
 

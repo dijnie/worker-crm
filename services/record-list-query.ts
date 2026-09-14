@@ -3,7 +3,8 @@ import { and, count, eq, inArray, isNotNull, isNull, or, sql, type SQL } from "d
 import type { Database } from "@/lib/db";
 import { companies, contacts, deals, user, type CompanySelect, type ContactSelect, type DealSelect } from "@/lib/db/schema";
 import { CLOSED_STAGES, CLOSING_WINDOWS, RECORD_FACETS, recordFacetInput, recordListInput, type FacetOption, type ParsedRecordListQuery, type RecordEntity, type RecordFacets, type RecordSummary, type RecordFields, isCustomFieldFacet } from "@/lib/record-list-contracts";
-import { escapeLike, type Page } from "@/lib/utils/validation";
+import type { Page } from "@/lib/utils/validation";
+import { literalContains } from "./sql-search";
 
 const tables = { company: companies, contact: contacts, deal: deals };
 type Rows = { company: CompanySelect; contact: ContactSelect; deal: DealSelect };
@@ -62,12 +63,12 @@ function facetPredicate(entity: RecordEntity, facet: string, values: string[], n
 /** Lists and facets use identical predicates; only the enumerated facet is omitted. */
 export function recordListWhere(entity: RecordEntity, query: ParsedRecordListQuery, now: Date, omitFacet?: string) {
   const table = tables[entity];
-  const pattern = query.search ? `%${escapeLike(query.search)}%` : undefined;
   let search: SQL | undefined;
-  if (pattern) {
-    if (entity === "company") search = sql`(${companies.name} LIKE ${pattern} ESCAPE '\\' OR ${companies.domain} LIKE ${pattern} ESCAPE '\\')`;
-    else if (entity === "contact") search = sql`(${contacts.firstName} LIKE ${pattern} ESCAPE '\\' OR ${contacts.lastName} LIKE ${pattern} ESCAPE '\\' OR trim(${contacts.firstName} || ' ' || coalesce(${contacts.lastName}, '')) LIKE ${pattern} ESCAPE '\\' OR ${contacts.email} LIKE ${pattern} ESCAPE '\\')`;
-    else search = sql`(${deals.name} LIKE ${pattern} ESCAPE '\\' OR ${companyName("deal")} LIKE ${pattern} ESCAPE '\\')`;
+  if (query.search) {
+    if (entity === "company") search = or(literalContains(companies.name, query.search), literalContains(companies.domain, query.search));
+    else if (entity === "contact") search = or(literalContains(contacts.firstName, query.search), literalContains(contacts.lastName, query.search),
+      literalContains(sql`trim(${contacts.firstName} || ' ' || coalesce(${contacts.lastName}, ''))`, query.search), literalContains(contacts.email, query.search));
+    else search = or(literalContains(deals.name, query.search), literalContains(companyName("deal"), query.search));
   }
   return and(
     query.archived ? isNotNull(table.archivedAt) : isNull(table.archivedAt), search,
@@ -118,7 +119,7 @@ export async function listRecords<E extends RecordEntity>(db: Database, entity: 
     const [owners, relatedCompanies, companyCounts] = await Promise.all([
       ownerIds.length ? db.select({ id: user.id, name: user.name, image: user.image }).from(user).where(inArray(user.id, ownerIds)) : [],
       companyIds.length ? db.select({ id: companies.id, name: companies.name, archivedAt: companies.archivedAt }).from(companies).where(inArray(companies.id, companyIds)) : [],
-      entity === "company" ? db.select({ id: companies.id, contactCount, openDealCount }).from(companies).where(inArray(companies.id, rows.map(row => row.id))) : [],
+      entity === "company" ? db.select({ id: companies.id, contactCount, openDealCount }).from(companies).where(sql`${companies.id} IN (SELECT value FROM json_each(${JSON.stringify(rows.map(row => row.id))}))`) : [],
     ]);
     const ownersById = new Map(owners.map(owner => [owner.id, owner]));
     const companiesById = new Map(relatedCompanies.map(company => [company.id, company]));
@@ -169,8 +170,8 @@ export async function recordFacets(db: Database, entity: RecordEntity, input: un
     } else {
       const value = facetValue(entity, facet);
       const label = facetLabel(entity, facet);
-      const search = query.facetSearch ? `%${escapeLike(query.facetSearch)}%` : undefined;
-      const optionWhere = and(where, sql`${value} IS NOT NULL AND ${value} <> ''`, search ? sql`(${label} LIKE ${search} ESCAPE '\\' OR ${value} LIKE ${search} ESCAPE '\\')` : undefined);
+      const optionWhere = and(where, sql`${value} IS NOT NULL AND ${value} <> ''`, query.facetSearch
+        ? or(literalContains(label, query.facetSearch), literalContains(value, query.facetSearch)) : undefined);
       const [available, totals, chosen] = await Promise.all([
         db.all<FacetOption>(sql`SELECT ${value} AS value, ${label} AS label, count(*) AS count FROM ${tables[entity]} WHERE ${optionWhere} GROUP BY ${value} ORDER BY ${label} COLLATE NOCASE ASC, ${value} ASC LIMIT ${query.facetLimit} OFFSET ${(page - 1) * query.facetLimit}`),
         db.all<{ total: number }>(sql`SELECT count(DISTINCT ${value}) AS total FROM ${tables[entity]} WHERE ${optionWhere}`),

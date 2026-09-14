@@ -73,6 +73,10 @@ calendars. Deleting stage history does not reverse a deal's current stage.
 All active members manage custom fields in
 [Settings](src/components/app/fields/field-definition-list.tsx), including immutable
 keys, placement flags, atomic ordering, and definition/option archive and restore.
+When leaving a field-definition draft, Keep editing preserves it; Discard changes
+continues the navigation that prompted the confirmation.
+Same-document Back/Forward protection uses the browser Navigation API; browser
+regressions cover current Chromium. Older-browser fallback parity is unverified.
 The [custom field panel](src/components/app/fields/custom-fields-panel.tsx) supports
 all ten types, preserves exact decimal strings, and retains drafts when a save
 fails or an editor's field type changes. Required fields reject explicit clears;
@@ -395,6 +399,17 @@ ISO datetime API contract to preserve that day across timezones. The
 [record form conversion](src/components/app/records/form-values.ts) and
 [custom-field conversion](src/lib/field-form-values.ts) own this boundary;
 timestamped activities retain their datetime semantics.
+
+Unexpected business API failures and auth/email server failures return an opaque
+`X-Request-Id` header while keeping their existing generic JSON error responses.
+Use that ID to find the corresponding `request_failure` event in Cloudflare Worker
+logs. The [error reporter](src/lib/server/error-reporting.ts) records only the
+generated ID, a route template, method, status and a fixed failure category.
+It excludes account/record identifiers, query strings, request bodies, cookies,
+tokens, email addresses, raw SQL and error messages. Incoming request IDs are not
+trusted. Expected validation and permission failures do not generate these events.
+The [OpenAPI document](src/lib/openapi/document.ts) describes the header for
+business API 500 responses; native auth endpoints remain outside that catalog.
 
 ## Storage decisions
 

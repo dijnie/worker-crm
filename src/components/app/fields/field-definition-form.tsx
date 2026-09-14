@@ -24,6 +24,8 @@ export function FieldDefinitionForm({ entity, definition, onClose }: { entity: F
   const [error, setError] = useState("");
   const [confirmClose, setConfirmClose] = useState(false);
   const mounted = useRef(true);
+  const next = useRef<(() => void) | null>(null);
+  const bypass = useRef(false);
   const dirty = initial.current !== JSON.stringify({ draft, options });
   const optionsQuery = useAppQuery("fields:options", { id: definition?.id ?? null, archived: true }, signal => definition?.type === "SELECT" ? api.fields.options(definition.id, true, { signal }) : Promise.resolve([]));
   const archived = [...(optionsQuery.data ?? []).filter(option => option.archivedAt && !options.some(active => active.id === option.id)).map(option => ({ id: option.id, localId: option.id, label: option.label })), ...removed.filter(option => !options.some(active => active.localId === option.localId))];
@@ -35,23 +37,51 @@ export function FieldDefinitionForm({ entity, definition, onClose }: { entity: F
     const historyIndex = Number(state?.workerRecordHistoryIndex);
     let restoring = false;
     const pop = (event: PopStateEvent) => {
+      if (bypass.current) return;
       event.stopImmediatePropagation();
       if (restoring) { restoring = false; return; }
       const targetIndex = Number(window.history.state?.workerRecordHistoryIndex);
       const delta = Number.isFinite(historyIndex) && Number.isFinite(targetIndex) ? targetIndex - historyIndex : 0;
-      if (delta) { restoring = true; window.history.go(-delta); }
-      else window.history.replaceState(state, "", href);
+      const target = window.location.href;
+      if (delta) {
+        restoring = true; window.history.go(-delta);
+        next.current = () => window.history.go(delta);
+      } else {
+        window.history.replaceState(state, "", href);
+        next.current = () => window.location.replace(target);
+      }
       setConfirmClose(true);
     };
-    const unload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
-    const navigation = (event: MouseEvent) => {
-      if (!(event.target instanceof Element) || !event.target.closest("a[href]")) return;
-      event.preventDefault(); event.stopPropagation(); setConfirmClose(true);
+    // Cancel traversal before the router's popstate listener can unmount this draft.
+    const traverse = (event: NavigateEvent) => {
+      if (bypass.current || event.navigationType !== "traverse" || !event.cancelable || !event.destination.sameDocument) return;
+      const navigation = window.navigation;
+      if (!navigation) return;
+      const key = event.destination.key;
+      event.preventDefault();
+      next.current = () => { navigation.traverseTo(key); };
+      setConfirmClose(true);
     };
+    const unload = (event: BeforeUnloadEvent) => { if (!bypass.current) { event.preventDefault(); event.returnValue = ""; } };
+    const navigation = (event: MouseEvent) => {
+      if (bypass.current || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
+      if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+      const url = new URL(anchor.href);
+      if (url.href === window.location.href || (url.origin === window.location.origin && url.pathname === window.location.pathname && url.search === window.location.search)) return;
+      event.preventDefault(); event.stopPropagation();
+      next.current = () => window.location.assign(url.href);
+      setConfirmClose(true);
+    };
+    window.navigation?.addEventListener("navigate", traverse);
     window.addEventListener("popstate", pop, true); window.addEventListener("beforeunload", unload); document.addEventListener("click", navigation, true);
-    return () => { window.removeEventListener("popstate", pop, true); window.removeEventListener("beforeunload", unload); document.removeEventListener("click", navigation, true); };
+    return () => { window.navigation?.removeEventListener("navigate", traverse); window.removeEventListener("popstate", pop, true); window.removeEventListener("beforeunload", unload); document.removeEventListener("click", navigation, true); };
   }, [dirty, pending]);
-  const close = () => { if (pendingRef.current) return; if (dirty) setConfirmClose(true); else onClose(); };
+  const finish = () => {
+    const action = next.current; next.current = null; bypass.current = true;
+    onClose(); action?.();
+  };
+  const close = () => { if (pendingRef.current) return; next.current = null; if (dirty) setConfirmClose(true); else onClose(); };
   const move = (index: number, offset: number) => setOptions(rows => { const next = [...rows]; [next[index], next[index + offset]] = [next[index + offset], next[index]]; return next; });
   const save = async () => {
     if (pendingRef.current || !store.isCurrent(generation)) return;
@@ -69,7 +99,7 @@ export function FieldDefinitionForm({ entity, definition, onClose }: { entity: F
       else await api.fields.create({ ...body, entity, key });
       if (!store.isCurrent(generation)) return;
       invalidate(["fields"]);
-      if (mounted.current) onClose();
+      if (mounted.current) finish();
     } catch (failure) {
       if (mounted.current && store.isCurrent(generation)) setError(failure instanceof Error ? failure.message : "The save could not be confirmed. Your draft is preserved.");
     } finally { pendingRef.current = false; if (mounted.current && store.isCurrent(generation)) setPending(false); }
@@ -94,7 +124,7 @@ export function FieldDefinitionForm({ entity, definition, onClose }: { entity: F
       </fieldset>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div role="status" aria-live="polite" className="text-sm text-muted-foreground">{pending ? "Saving field…" : ""}</div>
-      {confirmClose && <div role="alert" className="space-y-2 rounded border p-3 text-sm"><p>Keep editing or discard your unsaved field changes.</p><div className="flex gap-2"><Button type="button" size="sm" disabled={pending} onClick={() => setConfirmClose(false)}>Keep editing</Button><Button type="button" size="sm" variant="outline" disabled={pending} onClick={onClose}>Discard changes</Button></div></div>}
+      {confirmClose && <div role="alert" className="space-y-2 rounded border p-3 text-sm"><p>Keep editing or discard your unsaved field changes.</p><div className="flex gap-2"><Button type="button" size="sm" disabled={pending} onClick={() => { next.current = null; setConfirmClose(false); }}>Keep editing</Button><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => { if (!pendingRef.current) finish(); }}>Discard changes</Button></div></div>}
       <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={pending} onClick={close}>Cancel</Button><Button type="submit" disabled={pending}>Save field</Button></div>
     </form>
   </DialogContent></Dialog>;

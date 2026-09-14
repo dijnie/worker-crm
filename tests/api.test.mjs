@@ -200,9 +200,16 @@ test('API validates JSON, queries, protected writes, missing references and conf
   }
   await binding.prepare("CREATE TRIGGER reject_company BEFORE INSERT ON companies BEGIN SELECT RAISE(ABORT, 'private database detail'); END").run();
   try {
-    const response = await request('/api/companies', { method: 'POST', body: { name: 'Fails' } });
+    const before = (await harness.errorEvents()).length;
+    const response = await request('/api/companies?secret=private-query', { method: 'POST', body: { name: 'private-body' }, headers: { 'X-Request-Id': 'untrusted-request-id' } });
     assert.equal(response.status, 500);
     assert.deepEqual(await response.json(), { message: 'Internal server error' });
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    const requestId = response.headers.get('x-request-id');
+    assert.match(requestId ?? '', /^[0-9a-f-]{36}$/);
+    assert.deepEqual((await harness.errorEvents()).slice(before), [[JSON.stringify({
+      event: 'request_failure', requestId, route: '/api/companies', method: 'POST', status: 500, category: 'api_unexpected',
+    })]]);
   } finally { await binding.prepare('DROP TRIGGER reject_company').run(); }
 });
 

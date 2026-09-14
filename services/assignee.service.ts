@@ -2,7 +2,8 @@ import { and, count, eq, sql, asc } from "drizzle-orm";
 import { z } from "zod/v3";
 import type { Database } from "@/lib/db";
 import { user, singletonMembership } from "@/lib/db/schema";
-import { listInput, escapeLike, type Page } from "@/lib/utils/validation";
+import { listInput, type Page } from "@/lib/utils/validation";
+import { literalContains } from "./sql-search";
 
 export const assigneeListInput = listInput.pick({ page: true, limit: true, search: true }).strict();
 export type AssigneeListInput = z.input<typeof assigneeListInput>;
@@ -12,7 +13,7 @@ export class AssigneeService {
   async list(input: unknown = {}): Promise<Page<Assignee>> {
     const { page, limit, search } = assigneeListInput.parse(input);
     const where = and(eq(user.emailVerified, true), eq(singletonMembership.status, "active"),
-      search ? sql`${user.name} like ${`%${escapeLike(search)}%`} escape '\\'` : undefined);
+      search ? literalContains(user.name, search) : undefined);
     const [items, [total]] = await this.db.batch([
       this.db.select({ id: user.id, name: user.name, image: user.image }).from(user)
         .innerJoin(singletonMembership, eq(user.id, singletonMembership.userId)).where(where)

@@ -8,6 +8,7 @@ import type { AuthEmailAdapter } from "../email/email-adapter";
 import { reconcileSingletonMembership } from "@services/member.service";
 import { ServiceError } from "../utils/service-error";
 import { normalizeEmail } from "./normalize-email";
+import { reportRequestFailure } from "../server/error-reporting";
 
 export interface AuthConfiguration {
   secret: string;
@@ -126,10 +127,10 @@ export function createAuth(db: Database, config: AuthConfiguration, emailAdapter
   // Keep the outcome request-local so a failed send cannot produce a success response.
   auth.handler = (request) => delivery.run({ failed: false }, async () => {
     const response = await handler(request);
-    if (delivery.getStore()?.failed) return Response.json({
+    if (delivery.getStore()?.failed) return reportRequestFailure(request, Response.json({
       code: "EMAIL_DELIVERY_UNAVAILABLE", message: "Email delivery is unavailable. Please retry or resend verification.",
-    }, { status: 503, headers: { "cache-control": "no-store" } });
-    return response;
+    }, { status: 503, headers: { "cache-control": "no-store" } }), "email_delivery_failed");
+    return reportRequestFailure(request, response, "auth_unexpected");
   });
   return auth;
 }
