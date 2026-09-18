@@ -17,6 +17,8 @@ const recordEndpoints: APIEndpoint[] = ["companies", "contacts", "deals"].flatMa
 const apiEndpoints: APIEndpoint[] = [
   ...recordEndpoints,
   { method: "GET", path: "/api/account", description: "Get the signed-in verified active account and current role grants, including when no role is assigned." },
+  { method: "GET", path: "/api/settings", description: "Read the workspace reporting currency. Available to any active member with CRM read access." },
+  { method: "PATCH", path: "/api/settings", description: "System replaces the workspace reporting currency using expectedRevision; a stale edit returns 409." },
   { method: "GET", path: "/api/roles", description: "System lists the protected system role and manually configured roles." },
   { method: "POST", path: "/api/roles", description: "System creates a role with entity/action grants. Write permissions require read. No default role exists." },
   { method: "GET", path: "/api/roles/:id", description: "System reads a role and its grants." },

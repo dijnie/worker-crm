@@ -93,6 +93,13 @@ export async function authorizeApiRequest(request: Request, context: RequestCont
     add(entity, "read");
   } else if ((resource === "stats" || resource === "assignees") && method === "GET") {
     // Snapshot checking keeps the request's complete read scope current.
+  } else if (resource === "settings") {
+    // The reporting currency is workspace-wide, so reading it needs no grant
+    // beyond the CRM read already required above; changing it is a system action.
+    if (method !== "GET") {
+      if (!identity.role.isSystem) denied();
+      return guard("system");
+    }
   } else denied();
   return guard(requirements);
 }

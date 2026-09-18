@@ -95,6 +95,11 @@ export const responseSchemas = {
   Role: extend(accountRole, { description: { type: "string", nullable: true }, permissions: arrayOf(permission),
     memberCount: { type: "integer", minimum: 0 }, createdAt: { type: "string", format: "date-time" }, updatedAt: { type: "string", format: "date-time" } }),
   Assignee: ownerSummary,
+  WorkspaceSettings: objectOf({
+    reportingCurrency: { type: "string", pattern: "^[A-Z]{3}$", description: "Currency the workspace reports aggregated values in." },
+    revision: { type: "integer", minimum: 0, description: "Optimistic-concurrency counter; send it back as expectedRevision." },
+    updatedAt: { type: "string", format: "date-time" },
+  }),
   SavedView: savedView,
   CompanyListRow: listRow(company, false, true),
   ContactListRow: listRow(contact, true),

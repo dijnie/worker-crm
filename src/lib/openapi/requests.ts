@@ -13,6 +13,7 @@ import { stageApiInput } from "@/lib/server/deal-api-inputs";
 import { memberListInput, memberMutationInput } from "@services/member.service";
 import { roleCreateInput, roleUpdateInput, roleDeleteInput } from "@services/role.service";
 import { statsInput } from "@services/stats.service";
+import { workspaceSettingsUpdateInput } from "@services/workspace.service";
 import { fieldListInput, optionListInput, fieldValuesInput, fieldValueInput, reorderFieldsInput } from "@/lib/server/field-api-inputs";
 import { identifier, listInput } from "@/lib/utils/validation";
 import { annotateProperty, inputSchema } from "./schema-helpers";
@@ -57,6 +58,7 @@ export const requestSchemas = {
   UpdateOption: inputSchema(updateOptionInput),
   SetFieldValue: inputSchema(fieldValueInput),
   ReorderFields: inputSchema(reorderFieldsInput),
+  UpdateWorkspaceSettings: inputSchema(workspaceSettingsUpdateInput),
 } satisfies Record<string, OpenAPIV3.SchemaObject>;
 
 const textNormalization = "Text is trimmed. Blank optional text becomes null; omit a property to preserve it in a partial update. Unknown and protected properties are rejected.";
@@ -149,4 +151,5 @@ requestSchemas.ActivityQuery.description = "No view or all keeps createdAt desce
 annotateProperty(requestSchemas.ActivityQuery, "view", { description: requestSchemas.ActivityQuery.description });
 annotateProperty(requestSchemas.ActivityQuery, "includeLinks", { description: "Opt in to company/contact/deal links with page-batched names and archive state. Raw foreign IDs remain present; unresolved IDs retain an unavailable-name fallback. Default false preserves the scalar activity response." });
 requestSchemas.StatsQuery.description = "Currency scopes openDealValue and both counts/values in the seven-stage pipeline; defaults to USD. Active company/contact/deal/open-deal totals remain global across currencies. No currency conversion is performed.";
+requestSchemas.UpdateWorkspaceSettings.description = "System-only replacement of the workspace reporting currency using expectedRevision. The value is trimmed and upper-cased before the three-letter check; a stale revision returns 409.";
 requestSchemas.ActivityCountsQuery.description = "Counts the entire matching dataset for all seven views using the list predicates; anchors and type intersect. view, page, limit and unknown query keys are rejected.";

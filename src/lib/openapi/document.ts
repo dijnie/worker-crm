@@ -4,7 +4,7 @@ import { requestSchemas, type RequestSchemaName } from "./requests";
 import { responseSchemas, type ResponseSchemaName } from "./responses";
 import { arrayOf, reference } from "./schema-helpers";
 
-type Tag = "Companies" | "Contacts" | "Deals" | "Activities" | "Fields" | "Stats" | "Members" | "Saved views" | "Assignees" | "Roles" | "Account";
+type Tag = "Companies" | "Contacts" | "Deals" | "Activities" | "Fields" | "Stats" | "Members" | "Saved views" | "Assignees" | "Roles" | "Account" | "Settings";
 interface Contract {
   operationId: string;
   tag: Tag;
@@ -63,6 +63,8 @@ register("GET", "/api/stats", { operationId: "getStats", tag: "Stats", query: "S
 register("GET", "/api/members", { operationId: "listMembers", tag: "Members", query: "MemberQuery", response: "Member", array: true, paginated: true });
 register("PATCH", "/api/members/:id", { operationId: "mutateMember", tag: "Members", body: "MutateMember", response: "Member" });
 register("GET", "/api/account", { operationId: "getAccount", tag: "Account", response: "Account" });
+register("GET", "/api/settings", { operationId: "getWorkspaceSettings", tag: "Settings", response: "WorkspaceSettings" });
+register("PATCH", "/api/settings", { operationId: "updateWorkspaceSettings", tag: "Settings", body: "UpdateWorkspaceSettings", response: "WorkspaceSettings" });
 register("GET", "/api/roles", { operationId: "listRoles", tag: "Roles", response: "Role", array: true });
 register("POST", "/api/roles", { operationId: "createRole", tag: "Roles", body: "CreateRole", response: "Role", status: 201 });
 register("GET", "/api/roles/:id", { operationId: "getRole", tag: "Roles", response: "Role" });
