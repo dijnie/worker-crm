@@ -1,27 +1,34 @@
 import type { AccountIdentity } from "@/lib/auth/request-context";
 import { canPermission } from "@/lib/auth/permissions";
-import Building from "@carbon/icons-react/es/Building";
 import Api from "@carbon/icons-react/es/Api";
+import Building from "@carbon/icons-react/es/Building";
 import Dashboard from "@carbon/icons-react/es/Dashboard";
 import Partnership from "@carbon/icons-react/es/Partnership";
 import Settings from "@carbon/icons-react/es/Settings";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
+import type { CarbonIcon } from "@/components/ui/icon";
 
-export const navigationItems = [
+export interface NavigationItem {
+  label: string;
+  href: string;
+  icon: CarbonIcon;
+}
+
+export const navigationItems: readonly NavigationItem[] = [
   { label: "Overview", href: "/", icon: Dashboard },
   { label: "Companies", href: "/companies", icon: Building },
   { label: "Contacts", href: "/contacts", icon: UserMultiple },
   { label: "Deals", href: "/deals", icon: Partnership },
   { label: "Settings", href: "/settings", icon: Settings },
   { label: "API docs", href: "/docs", icon: Api },
-] as const;
+];
 
 export function matchesNavigationPath(href: string, pathname: string) {
   return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
 }
 
 export function visibleNavigationItems(account: AccountIdentity) {
-  return navigationItems.filter(item => {
+  return navigationItems.filter((item) => {
     if (item.href === "/settings") return account.role?.isSystem;
     if (item.href === "/companies") return canPermission(account, "company", "read");
     if (item.href === "/contacts") return canPermission(account, "contact", "read");

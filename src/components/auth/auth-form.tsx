@@ -1,11 +1,13 @@
 "use client";
 
-import Link from "next/link";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Link as TextLink } from "@/components/ui/link";
+import NextLink from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useRef, useState, type FormEvent } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth/auth-client";
 import { safeReturnUrl } from "@/lib/auth/safe-return-url";
 
@@ -18,7 +20,6 @@ const content: Record<AuthMode, { title: string; description: string; action: st
   "reset-password": { title: "Reset your password", description: "Choose a new password. You will need to sign in again on all devices.", action: "Reset password" },
   "access-revoked": { title: "Workspace access revoked", description: "Contact a workspace owner to restore your access. Once restored, sign in again to continue.", action: "Sign out" },
 };
-const linkClass = "inline-flex min-h-11 items-center rounded-sm text-sm text-link underline-offset-4 hover:text-link-hover hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function AuthForm({ mode }: { mode: AuthMode }) {
   const search = useSearchParams();
@@ -29,7 +30,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [resetComplete, setResetComplete] = useState(false);
-  const errorRef = useRef<HTMLParagraphElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
   const details = content[mode];
   const destination = (path: string) => returnTo === "/" ? path : `${path}?returnTo=${encodeURIComponent(returnTo)}`;
   const verificationCallback = `/sign-in?verified=true${returnTo === "/" ? "" : `&returnTo=${encodeURIComponent(returnTo)}`}`;
@@ -106,47 +107,62 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-balance text-2xl font-medium tracking-tight">{details.title}</h1>
-        <p className="text-sm leading-relaxed text-muted-foreground">{details.description}</p>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl/8 font-semibold tracking-tight text-balance">{details.title}</h1>
+        <p className="max-w-[32ch] text-sm/5 text-muted-foreground text-pretty">{details.description}</p>
       </div>
-      {mode === "sign-in" && linkError && <p role="alert" className="text-sm text-destructive">The verification link could not be used. Request a new verification email below.</p>}
-      {mode === "sign-in" && !linkError && search.get("verified") === "true" && <p role="status" className="text-sm">Your email is verified. Sign in to continue.</p>}
-      {mode === "verify-email" && linkError && <p role="alert" className="text-sm text-destructive">This verification link is invalid or expired. Request a new link below.</p>}
-      {invalidReset && !resetComplete && <p role="alert" className="text-sm text-destructive">This reset link is missing, invalid, or expired. Request a new link below.</p>}
-      {notice && <p role="status" className="rounded-md border bg-muted p-3 text-sm leading-relaxed">{notice}</p>}
-      <form onSubmit={submit} aria-busy={pending} className="space-y-4">
-        {!invalidReset && !resetComplete && <fieldset disabled={pending} className="space-y-4">
-          {mode === "sign-up" && <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
-            <Input id="name" name="name" autoComplete="name" required maxLength={200} className="h-11" />
-          </div>}
-          {showEmail && <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} required className="h-11" aria-describedby={error ? "auth-error" : undefined} />
-          </div>}
-          {showPassword && <div className="space-y-2">
-            <Label htmlFor="password">{mode === "reset-password" ? "New password" : "Password"}</Label>
-            <Input id="password" name="password" type="password" autoComplete={mode === "sign-in" ? "current-password" : "new-password"} required minLength={mode === "sign-in" ? undefined : 8} maxLength={128} className="h-11" aria-describedby={mode === "sign-in" ? (error ? "auth-error" : undefined) : "password-hint"} />
-            {mode !== "sign-in" && <p id="password-hint" className="text-xs text-muted-foreground">Use 8 to 128 characters.</p>}
-          </div>}
-          {mode === "reset-password" && <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm new password</Label>
-            <Input id="confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" required minLength={8} maxLength={128} className="h-11" aria-describedby={error ? "auth-error" : undefined} />
-          </div>}
-          <Button type="submit" disabled={pending} className="min-h-11 w-full whitespace-normal">{pending ? "Please wait…" : details.action}</Button>
+
+      {mode === "sign-in" && linkError && <Alert variant="destructive">The verification link could not be used. Request a new verification email below.</Alert>}
+      {mode === "sign-in" && !linkError && search.get("verified") === "true" && <Alert role="status">Your email is verified. Sign in to continue.</Alert>}
+      {mode === "verify-email" && linkError && <Alert variant="destructive">This verification link is invalid or expired. Request a new link below.</Alert>}
+      {invalidReset && !resetComplete && <Alert variant="destructive">This reset link is missing, invalid, or expired. Request a new link below.</Alert>}
+      {notice && <Alert role="status">{notice}</Alert>}
+
+      <form onSubmit={submit} aria-busy={pending} className="flex flex-col gap-4">
+        {!invalidReset && !resetComplete && <fieldset disabled={pending}>
+          <FieldGroup>
+            {mode === "sign-up" && <Field>
+              <FieldLabel htmlFor="name">Name</FieldLabel>
+              <Input id="name" name="name" autoComplete="name" required maxLength={200} />
+            </Field>}
+            {showEmail && <Field>
+              <FieldLabel htmlFor="email">Email</FieldLabel>
+              <Input id="email" name="email" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} required aria-describedby={error ? "auth-error" : undefined} />
+            </Field>}
+            {showPassword && <Field>
+              <FieldLabel htmlFor="password">{mode === "reset-password" ? "New password" : "Password"}</FieldLabel>
+              <Input id="password" name="password" type="password" autoComplete={mode === "sign-in" ? "current-password" : "new-password"} required minLength={mode === "sign-in" ? undefined : 8} maxLength={128} aria-describedby={mode === "sign-in" ? (error ? "auth-error" : undefined) : "password-hint"} />
+              {mode !== "sign-in" && <FieldDescription id="password-hint">Use 8 to 128 characters.</FieldDescription>}
+            </Field>}
+            {mode === "reset-password" && <Field>
+              <FieldLabel htmlFor="confirmPassword">Confirm new password</FieldLabel>
+              <Input id="confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" required minLength={8} maxLength={128} aria-describedby={error ? "auth-error" : undefined} />
+            </Field>}
+            <Button type="submit" disabled={pending} className="w-full whitespace-normal">{pending ? "Please wait…" : details.action}</Button>
+          </FieldGroup>
         </fieldset>}
-        {error && <p id="auth-error" ref={errorRef} role="alert" tabIndex={-1} className="rounded-sm text-sm leading-relaxed text-destructive focus:outline-none focus:ring-2 focus:ring-ring">{error}</p>}
+        {error && <Alert id="auth-error" ref={errorRef} tabIndex={-1} variant="destructive">{error}</Alert>}
       </form>
-      <nav aria-label="Account help" className="flex flex-col items-start border-t pt-3">
-        {mode !== "sign-in" && <Link href={destination("/sign-in")} className={linkClass}>{mode === "access-revoked" ? "Try signing in again" : "Back to sign in"}</Link>}
+
+      <nav aria-label="Account help" className="flex flex-col items-start border-t pt-4">
+        {mode !== "sign-in" && <TextLink asChild variant="inline" className="py-1 text-xs">
+          <NextLink href={destination("/sign-in")}>{mode === "access-revoked" ? "Try signing in again" : "Back to sign in"}</NextLink>
+        </TextLink>}
         {mode === "sign-in" && <>
-          <Link href={destination("/sign-up")} className={linkClass}>Create an account</Link>
-          <Link href={destination("/forgot-password")} className={linkClass}>Forgot your password?</Link>
+          <TextLink asChild variant="inline" className="py-1 text-xs">
+            <NextLink href={destination("/sign-up")}>Create an account</NextLink>
+          </TextLink>
+          <TextLink asChild variant="inline" className="py-1 text-xs">
+            <NextLink href={destination("/forgot-password")}>Forgot your password?</NextLink>
+          </TextLink>
         </>}
-        {["sign-in", "sign-up"].includes(mode) && <Link href={destination("/verify-email")} className={linkClass}>Resend verification email</Link>}
-        {mode === "reset-password" && !resetComplete && <Link href="/forgot-password" className={linkClass}>Request a new reset link</Link>}
+        {["sign-in", "sign-up"].includes(mode) && <TextLink asChild variant="inline" className="py-1 text-xs">
+          <NextLink href={destination("/verify-email")}>Resend verification email</NextLink>
+        </TextLink>}
+        {mode === "reset-password" && !resetComplete && <TextLink asChild variant="inline" className="py-1 text-xs">
+          <NextLink href="/forgot-password">Request a new reset link</NextLink>
+        </TextLink>}
       </nav>
     </div>
   );

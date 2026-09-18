@@ -45,23 +45,23 @@ export function ActivityActions({ activity, onResult }: { activity: TimelineActi
       if (mounted.current && store.isCurrent(generation)) setPending(false);
     }
   }
-  return <div ref={actions} className="space-y-2">
+  return <div ref={actions} className="flex flex-col gap-2">
     <div className="flex flex-wrap gap-2" aria-busy={pending}>
       {activity.type === "TASK" && canPermission(account, "activity", "complete") && <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => void run("complete")}>{activity.completedAt ? "Reopen task" : "Complete task"}</Button>}
-      {canPermission(account, "activity", "delete") && <Button ref={opener} type="button" variant="ghost" size="sm" disabled={pending} onClick={() => { setError(""); setConfirm(true); }}>Delete activity</Button>}
+      {canPermission(account, "activity", "delete") && <Button ref={opener} type="button" variant="outline" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={pending} onClick={() => { setError(""); setConfirm(true); }}>Delete activity</Button>}
     </div>
     {pending && <p role="status" className="text-xs text-muted-foreground">Updating activity…</p>}
     {error && !confirm && <p role="alert" className="text-xs text-destructive">{error}</p>}
     <Dialog open={confirm} onOpenChange={open => { if (!busy.current) setConfirm(open); }}>
-      <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-lg" onEscapeKeyDown={event => { if (busy.current) event.preventDefault(); }} onCloseAutoFocus={event => {
+      <DialogContent className="sm:max-w-md" onEscapeKeyDown={event => { if (busy.current) event.preventDefault(); }} onCloseAutoFocus={event => {
         event.preventDefault();
         const target = opener.current?.isConnected ? opener.current : document.querySelector<HTMLElement>('[aria-label="Activity views"] [aria-selected="true"]');
         target?.focus();
       }}>
         <DialogTitle>Delete activity</DialogTitle>
         <DialogDescription>Delete “{activity.subject || ACTIVITY_PRESENTATION[activity.type].label}”? This removes the activity from all linked timelines. This cannot be undone.{activity.type === "STAGE_CHANGE" && " Deleting this history entry does not change the deal’s current stage."}</DialogDescription>
-        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={pending} onClick={() => setConfirm(false)}>Cancel</Button><Button type="button" variant="destructive" disabled={pending} onClick={() => void run("delete")}>{pending ? "Deleting…" : "Delete"}</Button></div>
+        {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+        <div className="flex justify-end gap-2"><Button data-dialog-close type="button" variant="outline" disabled={pending} onClick={() => setConfirm(false)}>Cancel</Button><Button type="button" variant="destructive" disabled={pending} onClick={() => void run("delete")}>{pending ? "Deleting…" : "Delete"}</Button></div>
       </DialogContent>
     </Dialog>
   </div>;

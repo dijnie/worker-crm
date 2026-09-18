@@ -1,11 +1,56 @@
-import Link from "next/link";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { FieldDefinitionList } from "@/components/app/fields/field-definition-list";
 import { PermissionGate } from "@/components/app/permission-gate";
-import { Button } from "@/components/ui/button";
+import {
+  PageShell,
+  PageShellContent,
+  PageShellDescription,
+  PageShellHeader,
+  PageShellHeading,
+  PageShellTitle,
+} from "@/components/app/page-shell";
+import Link from "next/link";
+
 export default function SettingsPage() {
-  return <PermissionGate system><div className="p-4 md:p-6"><div className="mx-auto flex max-w-7xl flex-col gap-6">
-    <h1 className="text-2xl font-medium">Settings</h1>
-    <section className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-6"><div><h2 className="font-medium">Roles and members</h2><p className="mt-2 text-sm text-muted-foreground">Create roles, configure permissions, and assign workspace access.</p></div><div className="flex gap-2"><Button asChild variant="outline"><Link href="/settings/roles">Manage roles</Link></Button><Button asChild variant="outline"><Link href="/settings/members">Manage members</Link></Button></div></section>
-    <FieldDefinitionList />
-  </div></div></PermissionGate>;
+  return (
+    <PermissionGate system>
+      <PageShell>
+        <PageShellHeader>
+          <PageShellHeading>
+            <PageShellTitle>Settings</PageShellTitle>
+            <PageShellDescription>
+              Workspace access and the custom properties records carry.
+            </PageShellDescription>
+          </PageShellHeading>
+        </PageShellHeader>
+
+        <PageShellContent>
+          <Card role="region" aria-label="Roles and members">
+            <CardHeader>
+              <CardTitle>Roles and members</CardTitle>
+              <CardDescription>
+                Create roles, configure permissions, and assign workspace access.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex-row flex-wrap items-center gap-2">
+              <Button asChild variant="outline">
+                <Link href="/settings/roles">Manage roles</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/settings/members">Manage members</Link>
+              </Button>
+            </CardContent>
+          </Card>
+          <FieldDefinitionList />
+        </PageShellContent>
+      </PageShell>
+    </PermissionGate>
+  );
 }

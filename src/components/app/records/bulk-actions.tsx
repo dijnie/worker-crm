@@ -18,6 +18,32 @@ export interface BulkTarget {
   id: string;
   name: string;
 }
+export interface BulkReport {
+  outcomes: BulkOutcome[];
+  names: Record<string, string>;
+}
+/** Bulk results report their own outcome; the selection bar is too short to hold them. */
+export function BulkReportView({ report }: { report: BulkReport }) {
+  const failed = report.outcomes.filter((item) => !item.ok);
+  return (
+    <div role="status" className="rounded-md border bg-card p-3 text-xs">
+      <p>
+        {report.outcomes.length - failed.length} succeeded; {failed.length}{" "}
+        failed.
+      </p>
+      {failed.map((item) => (
+        <p key={item.id} className="text-destructive">
+          {report.names[item.id] ?? item.id}:{" "}
+          {item.status ? `${item.status} — ` : ""}
+          {item.error}
+        </p>
+      ))}
+      {failed.length > 0 && (
+        <p>Failed records remain selected. Choose the action again to retry.</p>
+      )}
+    </div>
+  );
+}
 export function BulkActions({
   entity,
   targets,
@@ -25,6 +51,7 @@ export function BulkActions({
   disabled,
   retainFailures,
   stageOnly = false,
+  onReport,
 }: {
   entity: RecordEntity;
   targets: BulkTarget[];
@@ -32,6 +59,8 @@ export function BulkActions({
   disabled: boolean;
   retainFailures: (ids: string[]) => void;
   stageOnly?: boolean;
+  /** Set by the list surface, which renders the report beside the table. */
+  onReport?: (report: BulkReport | null) => void;
 }) {
   const { api, generation, store, invalidate, account } = useAppData();
   const [action, setAction] = useState<
@@ -39,8 +68,7 @@ export function BulkActions({
   >(null);
   const [value, setValue] = useState("");
   const [pending, setPending] = useState(false);
-  const [outcomes, setOutcomes] = useState<BulkOutcome[]>([]);
-  const [names, setNames] = useState<Record<string, string>>({});
+  const [report, setReport] = useState<BulkReport | null>(null);
   const busy = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -58,16 +86,17 @@ export function BulkActions({
     setAction(null);
     setValue("");
     setPending(false);
-    setOutcomes([]);
-    setNames({});
+    setReport(null);
+    onReport?.(null);
   }, [generation]);
   async function execute(operation: (id: string) => Promise<unknown>) {
     if (busy.current || disabled || !targets.length) return;
     busy.current = true;
     setPending(true);
-    setOutcomes([]);
-    setNames(
-      Object.fromEntries(targets.map((target) => [target.id, target.name])),
+    setReport(null);
+    onReport?.(null);
+    const names = Object.fromEntries(
+      targets.map((target) => [target.id, target.name]),
     );
     try {
       const results = await runBulkOperation(
@@ -76,9 +105,10 @@ export function BulkActions({
         { isCurrent: () => store.isCurrent(generation) },
       );
       if (mounted.current && store.isCurrent(generation)) {
-        if (results.some((result) => result.ok))
-          invalidate(RECORD_INVALIDATIONS);
-        setOutcomes(results);
+        if (results.some((result) => result.ok)) invalidate(RECORD_INVALIDATIONS);
+        const next = { outcomes: results, names };
+        setReport(next);
+        onReport?.(next);
         retainFailures(
           results.filter((result) => !result.ok).map((result) => result.id),
         );
@@ -118,7 +148,7 @@ export function BulkActions({
   if (stageOnly && !canUpdate || !canUpdate && !canArchive) return null;
   const blocked = disabled || pending || !targets.length;
   return (
-    <div className="space-y-2">
+    <>
       {stageOnly ? (
         <Button
           type="button"
@@ -130,23 +160,8 @@ export function BulkActions({
           Change stage
         </Button>
       ) : targets.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-4 py-3">
-          <span className="text-sm text-muted-foreground">
-            {targets.length} selected on this page
-          </span>
-          {canUpdate && <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={blocked}
-            onClick={() => {
-              setValue("");
-              setAction("owner");
-            }}
-          >
-            Assign owner
-          </Button>}
-          {canUpdate && canPermission(account, "company", "read") && entity === "contact" && (
+        <>
+          {canUpdate && (
             <Button
               type="button"
               size="sm"
@@ -154,12 +169,28 @@ export function BulkActions({
               disabled={blocked}
               onClick={() => {
                 setValue("");
-                setAction("company");
+                setAction("owner");
               }}
             >
-              Assign company
+              Assign owner
             </Button>
           )}
+          {canUpdate &&
+            canPermission(account, "company", "read") &&
+            entity === "contact" && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={blocked}
+                onClick={() => {
+                  setValue("");
+                  setAction("company");
+                }}
+              >
+                Assign company
+              </Button>
+            )}
           {canUpdate && entity === "deal" && (
             <Button
               type="button"
@@ -171,39 +202,20 @@ export function BulkActions({
               Change stage
             </Button>
           )}
-          {canArchive && <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={blocked}
-            onClick={() => setAction(archived ? "restore" : "archive")}
-          >
-            {archived ? "Restore selected" : "Archive selected"}
-          </Button>}
-        </div>
-      ) : null}
-      {outcomes.length > 0 && (
-        <div role="status" className="rounded-md border p-3 text-sm">
-          <p>
-            {outcomes.filter((item) => item.ok).length} succeeded;{" "}
-            {outcomes.filter((item) => !item.ok).length} failed.
-          </p>
-          {outcomes
-            .filter((item) => !item.ok)
-            .map((item) => (
-              <p key={item.id} className="text-destructive">
-                {names[item.id] ?? item.id}:{" "}
-                {item.status ? `${item.status} — ` : ""}
-                {item.error}
-              </p>
-            ))}
-          {outcomes.some((item) => !item.ok) && (
-            <p>
-              Failed records remain selected. Choose the action again to retry.
-            </p>
+          {canArchive && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={blocked}
+              onClick={() => setAction(archived ? "restore" : "archive")}
+            >
+              {archived ? "Restore selected" : "Archive selected"}
+            </Button>
           )}
-        </div>
-      )}
+        </>
+      ) : null}
+      {!onReport && report && <BulkReportView report={report} />}
       <StageChangeDialog
         key={generation}
         open={action === "stage"}
@@ -249,7 +261,7 @@ export function BulkActions({
               disabled={pending}
             />
           ) : (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {action === "restore"
                 ? "Records will return to the active list."
                 : "Records will move to the archived list and can be restored."}
@@ -272,6 +284,6 @@ export function BulkActions({
           </Button>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

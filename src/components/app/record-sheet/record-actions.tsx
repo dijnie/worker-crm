@@ -30,13 +30,15 @@ export function RecordActions({ entity, id, archivedAt }: { entity: RecordEntity
   }
   if (!canPermission(account, entity, archivedAt ? "restore" : "archive")) return null;
   return <div className="space-y-2">
-    <div className="flex items-center gap-3">{archivedAt && <span className="rounded bg-muted px-2 py-1 text-xs">Archived</span>}
-      <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => archivedAt ? void run() : setConfirm(true)}>{pending ? "Updating…" : archivedAt ? "Restore record" : "Archive record"}</Button></div>
-    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}{message && <p role="status" className="text-sm">{message}</p>}
-    <Dialog open={confirm} onOpenChange={open => { if (!pending) setConfirm(open); }}><DialogContent>
+    <div className="flex items-center gap-2">
+      {archivedAt && <span className="rounded-sm bg-muted px-2 py-0.5 text-muted-foreground text-xs">Archived</span>}
+      <Button type="button" variant="outline-ghost" size="sm" disabled={pending} onClick={() => archivedAt ? void run() : setConfirm(true)}>{pending ? "Updating…" : archivedAt ? "Restore record" : "Archive record"}</Button>
+    </div>
+    {error && <p role="alert" className="text-destructive text-xs">{error}</p>}{message && <p role="status" className="text-muted-foreground text-xs">{message}</p>}
+    <Dialog open={confirm} onOpenChange={open => { if (!pending) setConfirm(open); }}><DialogContent className="gap-3 sm:max-w-md">
       <DialogTitle>Archive {entity}?</DialogTitle><DialogDescription>The record stays available in archived views and can be restored.</DialogDescription>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      <div className="flex justify-end gap-2"><Button variant="outline" disabled={pending} onClick={() => setConfirm(false)}>Cancel</Button><Button disabled={pending} onClick={() => void run()}>{pending ? "Archiving…" : "Archive"}</Button></div>
+      {error && <p role="alert" className="text-destructive text-xs">{error}</p>}
+      <div className="flex justify-end gap-2"><Button data-dialog-close variant="outline" disabled={pending} onClick={() => setConfirm(false)}>Cancel</Button><Button disabled={pending} onClick={() => void run()}>{pending ? "Archiving…" : "Archive"}</Button></div>
     </DialogContent></Dialog>
   </div>;
 }

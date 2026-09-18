@@ -1,6 +1,13 @@
 "use client";
 import Bookmark from "@carbon/icons-react/es/Bookmark";
-import { ToolbarMenu } from "./toolbar-menu";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { selectClass } from "../records/record-picker";
 import { useEffect, useRef, useState } from "react";
 import {
   recordListInput,
@@ -8,9 +15,6 @@ import {
 } from "@/lib/record-list-contracts";
 import type { FieldEntity } from "@/lib/db/schema/constants";
 import { useAppData, useAppQuery } from "../app-data-provider";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { selectClass } from "../records/record-picker";
 import type { FieldDefinition } from "@/lib/field-form-values";
 import { supportedFieldFilter } from "../fields/field-facets";
 import {
@@ -143,155 +147,180 @@ export function SavedViews({
     }
   }
   return (
-    <ToolbarMenu
-      icon={<Bookmark aria-hidden="true" />}
-      label={`Saved views${current ? ` · ${current.name}` : ""}`}
-      active={!!current}
-      wide
-    >
-      <div className="space-y-4">
-        <label className="block text-sm">
-          Apply saved view
-          <select
-            aria-label="Apply saved view"
-            className={`${selectClass} mt-2`}
-            value={query.view ?? ""}
-            disabled={pending || result.loading || result.refreshing || !definitionsReady}
-            onChange={(event) =>
-              event.target.value ? select(event.target.value) : clear()
-            }
-          >
-            <option value="">Choose a view</option>
-            {result.data?.map((view) => (
-              <option key={view.id} value={view.id}>
-                {view.name}
-                {view.shared ? " (shared)" : " (private)"}
-              </option>
-            ))}
-          </select>
-        </label>
-        {!!result.error && (
-          <p role="alert" className="text-sm text-destructive">
-            {result.error instanceof Error
-              ? result.error.message
-              : "Could not load saved views"}{" "}
-            <button type="button" onClick={result.refresh}>
-              Retry views
-            </button>
-          </p>
-        )}
-        <div className="grid gap-3 border-t pt-4">
-          <Input
-            aria-label="View name"
-            className="w-full"
-            placeholder="View name"
-            value={name}
-            maxLength={100}
-            onChange={(event) => setName(event.target.value)}
-          />
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={shared}
-              onChange={(event) => setShared(event.target.checked)}
-            />
-            Shared view
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="justify-start sm:justify-center">
+          <Bookmark data-icon="inline-start" />
+          <span className="max-w-40 truncate">
+            Saved views{current ? ` · ${current.name}` : ""}
+          </span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-80 p-3"
+        /* The panel is a form: only Escape leaves it to the menu. */
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") event.stopPropagation();
+        }}
+      >
+        <div className="space-y-4">
+          <label className="block text-xs">
+            Apply saved view
+            <select
+              aria-label="Apply saved view"
+              className={`${selectClass} h-8 bg-background text-xs`}
+              value={query.view ?? ""}
+              disabled={pending || result.loading || result.refreshing || !definitionsReady}
+              onChange={(event) =>
+                event.target.value ? select(event.target.value) : clear()
+              }
+            >
+              <option value="">Choose a view</option>
+              {result.data?.map((view) => (
+                <option key={view.id} value={view.id}>
+                  {view.name}
+                  {view.shared ? " (shared)" : " (private)"}
+                </option>
+              ))}
+            </select>
           </label>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending || !name.trim()}
-            onClick={() =>
-              mutate(async () => {
-                const created = await api.savedViews.create({
-                  entity: fieldEntity,
-                  name: name.trim(),
-                  shared,
-                  filters: savedConfiguration(query),
-                });
-                if (mounted.current && store.isCurrent(generation))
-                  apply({ ...query, page: 1, view: created.id });
-              })
-            }
-          >
-            Save as new view
-          </Button>
-        </div>
-        {current?.mine && (
-          <div className="grid gap-2 sm:grid-cols-2">
+          {!!result.error && (
+            <p role="alert" className="text-xs text-destructive">
+              {result.error instanceof Error
+                ? result.error.message
+                : "Could not load saved views"}{" "}
+              <button type="button" onClick={result.refresh}>
+                Retry views
+              </button>
+            </p>
+          )}
+          <div className="grid gap-3 border-t pt-4">
+            <Input
+              aria-label="View name"
+              className="w-full"
+              placeholder="View name"
+              value={name}
+              maxLength={100}
+              onChange={(event) => setName(event.target.value)}
+            />
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                className="size-3.5 accent-primary"
+                checked={shared}
+                onChange={(event) => setShared(event.target.checked)}
+              />
+              Shared view
+            </label>
             <Button
               type="button"
               variant="outline"
+              size="sm"
               disabled={pending || !name.trim()}
               onClick={() =>
-                mutate(() =>
-                  api.savedViews.update(current.id, { name: name.trim() }),
-                )
-              }
-            >
-              Rename view
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={pending}
-              onClick={() =>
-                mutate(() =>
-                  api.savedViews.update(current.id, {
-                    filters: savedConfiguration(query),
-                  }),
-                )
-              }
-            >
-              Update view configuration
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={pending}
-              onClick={() =>
-                mutate(() =>
-                  api.savedViews.update(current.id, {
-                    shared: !current.shared,
-                  }),
-                )
-              }
-            >
-              {current.shared ? "Make private" : "Share view"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={pending}
-              onClick={() =>
                 mutate(async () => {
-                  await api.savedViews.delete(current.id);
-                  if (mounted.current && store.isCurrent(generation)) clear();
+                  const created = await api.savedViews.create({
+                    entity: fieldEntity,
+                    name: name.trim(),
+                    shared,
+                    filters: savedConfiguration(query),
+                  });
+                  if (mounted.current && store.isCurrent(generation))
+                    apply({ ...query, page: 1, view: created.id });
                 })
               }
             >
-              Delete view
+              Save as new view
             </Button>
           </div>
-        )}
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
-        {unsupported && (
+          {current?.mine && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending || !name.trim()}
+                onClick={() =>
+                  mutate(() =>
+                    api.savedViews.update(current.id, { name: name.trim() }),
+                  )
+                }
+              >
+                Rename view
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={() =>
+                  mutate(() =>
+                    api.savedViews.update(current.id, {
+                      filters: savedConfiguration(query),
+                    }),
+                  )
+                }
+              >
+                Update view configuration
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={() =>
+                  mutate(() =>
+                    api.savedViews.update(current.id, {
+                      shared: !current.shared,
+                    }),
+                  )
+                }
+              >
+                {current.shared ? "Make private" : "Share view"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={() =>
+                  mutate(async () => {
+                    await api.savedViews.delete(current.id);
+                    if (mounted.current && store.isCurrent(generation)) clear();
+                  })
+                }
+              >
+                Delete view
+              </Button>
+            </div>
+          )}
+          {error && (
+            <p role="alert" className="text-xs text-destructive">
+              {error}
+            </p>
+          )}
+          {unsupported && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => select(unsupported, true)}
+            >
+              Remove unsupported field filters
+            </Button>
+          )}
           <Button
             type="button"
-            variant="outline"
-            onClick={() => select(unsupported, true)}
+            variant="ghost"
+            size="sm"
+            className="w-full"
+            onClick={clear}
           >
-            Remove unsupported field filters
+            Clear filters
           </Button>
-        )}
-        <Button type="button" variant="ghost" onClick={clear}>
-          Clear filters
-        </Button>
-      </div>
-    </ToolbarMenu>
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

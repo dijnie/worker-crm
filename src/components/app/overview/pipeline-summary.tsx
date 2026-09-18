@@ -1,37 +1,55 @@
+import { Badge } from "@/components/ui/badge";
+import {
+  Card, CardAction, CardDescription, CardHeader, CardPanel, CardTitle,
+} from "@/components/ui/card";
+import { CardTableEmpty } from "@/components/ui/card-table";
+import { EmptyCellValue } from "@/components/ui/empty-cell";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Link } from "@/components/ui/link";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import { DEAL_STAGES, type DealStage } from "@/lib/db/schema/constants";
 import { DEFAULT_TABLE_QUERY, tableQueryUrl } from "../data-table/table-query";
 import { stageLabel } from "../records/stage-change";
-import { Skeleton } from "@/components/ui/skeleton";
 
 export interface PipelineBucket { stage: DealStage; count: number; value: string }
+
+const CELL = "px-3 py-2.5 whitespace-normal";
+
 export function PipelineSummary({ currency, pipeline, loading }: { currency: string; pipeline?: readonly PipelineBucket[]; loading: boolean }) {
-  return <section aria-labelledby="overview-pipeline-heading" className="min-w-0 space-y-4">
-    <div>
-      <h2 id="overview-pipeline-heading" className="text-lg font-semibold">Deal pipeline <span className="font-normal text-muted-foreground">· {currency}</span></h2>
-      <p className="mt-1 text-sm text-muted-foreground">Active deals in {currency}, including closed stages.</p>
-    </div>
-    <div className="rounded-lg border bg-card p-4 sm:p-6">
-      <table aria-label="Deal pipeline" className="w-full table-fixed text-sm">
+  return <Card className="min-w-0">
+    <CardHeader>
+      <CardTitle><h2>Deal pipeline</h2></CardTitle>
+      <CardDescription>Active deals in {currency}, including closed stages</CardDescription>
+      <CardAction><Badge variant="outline">{currency}</Badge></CardAction>
+    </CardHeader>
+    <CardPanel className="h-auto">
+      <Table
+        aria-label="Deal pipeline"
+        className="table-fixed"
+        containerClassName="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
+      >
         <caption className="sr-only">Deal counts and exact values for all seven stages in {currency}. Select a stage to view matching deals.</caption>
-        <thead>
-          <tr className="border-b text-left text-xs text-muted-foreground">
-            <th scope="col" className="w-[42%] pb-3 font-medium">Stage</th>
-            <th scope="col" className="w-[18%] pb-3 text-right font-medium">Deals</th>
-            <th scope="col" className="w-[40%] pb-3 pl-3 text-right font-medium">Value ({currency})</th>
-          </tr>
-        </thead>
-        <tbody>{DEAL_STAGES.map(stage => {
+        <TableHeader className="sticky top-0 z-10 bg-background">
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="w-[42%] px-3 font-normal">Stage</TableHead>
+            <TableHead className="w-[18%] px-3 text-right font-normal">Deals</TableHead>
+            <TableHead className="w-[40%] px-3 text-right font-normal">Value ({currency})</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>{DEAL_STAGES.map(stage => {
           const bucket = pipeline?.find(item => item.stage === stage);
-          return <tr key={stage} data-stage={stage} className="border-b last:border-0">
-            <th scope="row" className="py-2 pr-2 text-left font-normal">
-              <a href={tableQueryUrl("/deals", { ...DEFAULT_TABLE_QUERY, stage, currency })} className="inline-flex min-h-11 items-center rounded-sm text-link underline-offset-4 hover:text-link-hover hover:underline active:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card">{stageLabel(stage)}</a>
-            </th>
-            <td className="py-3 text-right tabular-nums [overflow-wrap:anywhere]">{bucket?.count ?? (loading ? <Skeleton className="ml-auto h-4 w-10" /> : <span className="text-xs text-muted-foreground">Unavailable</span>)}</td>
-            <td className="py-3 pl-3 text-right tabular-nums [overflow-wrap:anywhere]">{bucket?.value ?? (loading ? <Skeleton className="ml-auto h-4 w-16" /> : <span className="text-xs text-muted-foreground">Unavailable</span>)}</td>
-          </tr>;
-        })}</tbody>
-      </table>
-      {pipeline?.every(bucket => bucket.count === 0) && <p className="mt-4 text-sm text-muted-foreground">No active deals in {currency} yet.</p>}
-    </div>
-  </section>;
+          return <TableRow key={stage} data-stage={stage} className="hover:bg-transparent">
+            <TableHead scope="row" className={`${CELL} font-normal text-foreground`}>
+              <Link variant="quiet" className="font-medium" href={tableQueryUrl("/deals", { ...DEFAULT_TABLE_QUERY, stage, currency })}>{stageLabel(stage)}</Link>
+            </TableHead>
+            <TableCell className={`${CELL} text-right tabular-nums`}>{bucket ? bucket.count : loading ? <Skeleton className="ml-auto h-4 w-10" /> : <EmptyCellValue />}</TableCell>
+            <TableCell className={`${CELL} text-right tabular-nums [overflow-wrap:anywhere]`}>{bucket ? bucket.value : loading ? <Skeleton className="ml-auto h-4 w-16" /> : <EmptyCellValue />}</TableCell>
+          </TableRow>;
+        })}</TableBody>
+      </Table>
+      {pipeline?.every(bucket => bucket.count === 0) && <CardTableEmpty>No active deals in {currency} yet.</CardTableEmpty>}
+    </CardPanel>
+  </Card>;
 }

@@ -15,24 +15,50 @@ and endpoints are retired. Interactive API documentation is public at `/docs`.
 
 ## Design intent
 
-Use the captured Cloudflare dashboard for the application header, sidebar controls,
-and theme: neutral surfaces, blue primary actions, orange brand accents, and Inter
-typography. The business model and record workflows draw from htcrm; the shared
-application shell uses neutral names so it can serve additional areas.
-The [theme stylesheet](src/styles/globals.css) owns visual tokens, and
-[programmatic tokens](src/lib/design-tokens.ts) reference those CSS values.
-The [application shell](src/components/app/app-shell.tsx) composes the
-[header](src/components/app/app-header.tsx) and
-[desktop sidebar](src/components/app/app-sidebar.tsx). The collapsed sidebar opens
-temporarily on mouse hover, overlaying content without shifting the page. Leaving
-the sidebar or pressing Escape dismisses that preview. The bottom button pins it
-open or collapses it; mobile navigation remains a separate drawer.
-Ask AI and Support remain disabled placeholders.
-[Account](src/components/app/account-menu.tsx) shows the signed-in identity and role
-and provides signout.
+The interface is htcrm's design system. The
+[theme stylesheet](src/styles/globals.css) is htcrm's
+`packages/ui/src/styles/globals.css` carried over verbatim: flat white and
+untinted neutral greys, one brand green (`#006B4F`), `--primary` and
+`--destructive` identical in both themes, a 4/5/8/12px radius scale driven by
+`--radius: 5px`, a single `--border` token applied to every element by
+`* { @apply border-border }`, htcrm's shadow scale, its page spacing and container
+tokens, and its view-transition and icon-motion utilities. The former programmatic
+token module was removed with it, because a second copy of the values could drift.
+
+Radius is a rule, not a preference: `rounded-sm` (4px) for the smallest controls,
+`rounded-md` (5px) for buttons, inputs and segments, `rounded-lg` (8px) for
+surfaces that contain controls — popovers, dialogs, menus, table shells — and
+`rounded-none` only where an element must join its neighbour edge to edge. A
+literal radius never appears at a call site. Borders are 1px hairlines from the
+one token; only `primary` and `destructive` are ever filled.
+
+The [component library](src/components/ui) is htcrm's `packages/ui` sources,
+carried over with rewritten import specifiers; every screen composes it rather
+than restyling it. The [application shell](src/components/app/app-shell.tsx)
+composes htcrm's chrome: a 48px bordered
+[header](src/components/app/app-header.tsx) over a 56px left
+[icon rail](src/components/app/app-icon-rail.tsx) that never expands, with a
+mobile navigation [sheet](src/components/app/app-icon-rail.tsx) below the `md`
+breakpoint. Screens compose through the
+[page shell](src/components/app/page-shell.tsx) contract — `PageShell`,
+`PageShellHeader`, `PageShellTitle`, `PageShellActions`, `PageShellContent` — so
+every page shares one content width, padding and gap.
+[Account](src/components/app/account-menu.tsx) is htcrm's avatar dropdown: the
+signed-in identity and role, a light/dark toggle, member management for system
+accounts, and sign-out.
 The [workspace layout](src/app/(workspace)/layout.tsx) applies this shell to
-business screens. `/docs` is a standalone page with no application header or sidebar.
-It uses locally bundled `swagger-ui-react` with the application's custom theme.
+business screens. `/docs` is a standalone page with no application header or rail.
+It uses locally bundled `swagger-ui-react` themed through the same tokens.
+
+Four adaptations are deliberate and are the only places the port departs from
+htcrm: Geist is self-hosted through `@fontsource-variable/geist` instead of
+`next/font`, so `--font-geist-sans` and `--font-geist-mono` are bound in the
+stylesheet; `@import "shadcn/tailwind.css"` is dropped because it ships with the
+`shadcn` CLI package; htcrm's `nuqs` URL state is replaced by the application's own
+query hooks, so column visibility persists in `localStorage` under
+`record-list:<entity>:columns` rather than in the URL; and no chart component or
+`recharts` dependency is carried over, because the statistics API exposes counts
+and per-stage totals rather than a time series.
 
 ## Routes
 
@@ -51,11 +77,13 @@ The [record list](src/components/app/data-table/record-list.tsx),
 [creation forms](src/components/app/records/record-form.tsx),
 [saved views](src/components/app/data-table/saved-views.tsx) and
 [bulk actions](src/components/app/records/bulk-actions.tsx) own the list workflows.
-Search, filters, saved views and column visibility share a compact toolbar attached
-to each table. [Toolbar panels](src/components/app/data-table/toolbar-menu.tsx)
-fit the viewport and dismiss on Escape or outside interaction. Active facets appear
-as removable chips; bulk actions appear after selecting records, with results
-remaining visible after successful selections clear.
+Every list renders through htcrm's
+[data table](src/components/ui/data-table.tsx): a toolbar carrying search, facet
+filters as submenus, sort, column visibility and saved views, a sticky header over
+a bordered shell, a selection bar that replaces the toolbar while rows are chosen,
+and pagination. Radix menus are modal, so a menu closes before the page behind it
+is read again. Active facets appear as removable chips; bulk results stay visible
+after a successful selection clears. Column visibility is remembered per entity.
 Record links use the [URL navigation boundary](src/components/app/record-sheet/record-navigation.ts)
 and [sheet host](src/components/app/record-sheet/record-sheet-host.tsx). The
 [property panel](src/components/app/record-sheet/property-panel.tsx),

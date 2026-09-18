@@ -1,27 +1,44 @@
 import { ApiDocumentation } from "@/components/docs/api-documentation";
+import { Link as TextLink } from "@/components/ui/link";
+import {
+  PageShell,
+  PageShellContent,
+  PageShellDescription,
+  PageShellHeader,
+  PageShellHeading,
+  PageShellTitle,
+} from "@/components/app/page-shell";
+import NextLink from "next/link";
 
 export default function DocsPage() {
   return (
-    <main className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">API documentation</h1>
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          Explore endpoints and send requests to this application. <a href="/sign-in?returnTo=/docs" className="text-link underline underline-offset-4">Sign in</a>,
-          then return here to use Try it out. Your browser sends the session cookie automatically. Signed-out requests return 401;
+    <PageShell>
+      <PageShellHeader>
+        <PageShellHeading>
+          <PageShellTitle>API documentation</PageShellTitle>
+          <PageShellDescription>
+            Explore endpoints and send requests to this application.
+          </PageShellDescription>
+        </PageShellHeading>
+      </PageShellHeader>
+
+      <PageShellContent>
+        <p className="max-w-3xl text-xs/relaxed text-muted-foreground">
+          <TextLink asChild variant="inline">
+            <NextLink href="/sign-in?returnTo=/docs">Sign in</NextLink>
+          </TextLink>
+          , then return here to use Try it out. Your browser sends the session cookie automatically. Signed-out requests return 401;
           role and member administration requires a system account. New accounts have no CRM access until a role is assigned.
         </p>
-        <p className="max-w-3xl text-sm text-muted-foreground">
+        <p className="max-w-3xl text-xs/relaxed text-muted-foreground">
           Changes require the configured same Origin, supplied automatically by your browser, and JSON content type for JSON bodies.
           Activity creators and stage-change actors come from your session. Authentication flows under /api/auth/* are handled separately by Better Auth.
         </p>
-        <a
-          href="/api/openapi"
-          className="inline-flex min-h-11 items-center rounded-md text-sm font-medium text-link underline-offset-4 hover:text-link-hover hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-        >
-          OpenAPI JSON
-        </a>
-      </header>
-      <ApiDocumentation />
-    </main>
+        <TextLink asChild variant="inline" className="self-start text-xs font-medium">
+          <NextLink href="/api/openapi">OpenAPI JSON</NextLink>
+        </TextLink>
+        <ApiDocumentation />
+      </PageShellContent>
+    </PageShell>
   );
 }

@@ -1,8 +1,12 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSet, FieldLegend } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { FIELD_TYPES, type FieldEntity, type FieldType } from "@/lib/db/schema/constants";
 import { derivedFieldKey, FIELD_TYPE_LABELS, type FieldDefinition } from "@/lib/field-form-values";
 import { useAppData, useAppQuery } from "../app-data-provider";
@@ -104,28 +108,106 @@ export function FieldDefinitionForm({ entity, definition, onClose }: { entity: F
       if (mounted.current && store.isCurrent(generation)) setError(failure instanceof Error ? failure.message : "The save could not be confirmed. Your draft is preserved.");
     } finally { pendingRef.current = false; if (mounted.current && store.isCurrent(generation)) setPending(false); }
   };
-  return <Dialog open onOpenChange={open => { if (!open) close(); }}><DialogContent className="max-h-[90dvh] overflow-y-auto" onEscapeKeyDown={event => { if (dirty || pending) { event.preventDefault(); close(); } }} onInteractOutside={event => { if (dirty || pending) event.preventDefault(); }}>
-    <DialogHeader><DialogTitle>{definition ? "Edit field" : "New field"}</DialogTitle><DialogDescription>Configure a {entity.toLowerCase()} custom field. Changes apply across this workspace.</DialogDescription></DialogHeader>
-    <form aria-label="Field definition" className="space-y-4" onSubmit={event => { event.preventDefault(); void save(); }}>
-      <fieldset disabled={pending} className="space-y-4">
-        <div className="space-y-1"><label htmlFor={`${id}-label`} className="text-sm font-medium">Field label</label><Input id={`${id}-label`} autoFocus required maxLength={1000} value={draft.label} onChange={event => setDraft({ ...draft, label: event.target.value })} /></div>
-        {definition ? <dl className="grid grid-cols-2 gap-2 text-xs"><div><dt className="text-muted-foreground">Entity (immutable)</dt><dd>{definition.entity}</dd></div><div><dt className="text-muted-foreground">Key (immutable)</dt><dd className="break-all">{definition.key}</dd></div></dl> : <div className="space-y-1"><label htmlFor={`${id}-key`} className="text-sm font-medium">Field key (optional)</label><Input id={`${id}-key`} maxLength={200} pattern="[a-z][a-z0-9_]*" placeholder={derivedFieldKey(draft.label) || "custom_field"} value={draft.key} onChange={event => setDraft({ ...draft, key: event.target.value })} /><p className="text-xs text-muted-foreground">Key preview: {draft.key.trim() || derivedFieldKey(draft.label) || "Enter an explicit key"}. The key cannot change after creation.</p></div>}
-        <div className="space-y-1"><label htmlFor={`${id}-type`} className="text-sm font-medium">Field type</label><select id={`${id}-type`} className={selectClass} value={draft.type} onChange={event => { const type = event.target.value as FieldType; setDraft({ ...draft, type, showOnFilter: (type === "SELECT" || type === "USER") && draft.showOnFilter }); }}>{FIELD_TYPES.map(type => <option key={type} value={type}>{FIELD_TYPE_LABELS[type]}</option>)}</select>{definition && <p className="text-xs text-muted-foreground">A type change is allowed only when the field has no stored values.</p>}</div>
-        <div className="grid gap-3 sm:grid-cols-2">{([ ["required", "Required"], ["showOnSheet", "Show on sheet"], ["showOnTable", "Show on table"], ["showOnFilter", "Show on filter"] ] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft[key]} disabled={pending || key === "showOnFilter" && draft.type !== "SELECT" && draft.type !== "USER"} onChange={event => setDraft({ ...draft, [key]: event.target.checked })} />{label}</label>)}</div>
-        <p className="text-xs text-muted-foreground">Filters support Select and User fields. Required prevents clearing a value; existing empty records remain allowed.</p>
-        {draft.type === "SELECT" && <section aria-label="Select options" className="space-y-3"><h3 className="text-sm font-medium">Select options</h3>
-          {options.map((option, index) => <div key={option.localId} className="flex flex-wrap items-center gap-1"><Input className="min-w-24 flex-1" aria-label={`Option ${index + 1} label`} maxLength={1000} required value={option.label} onChange={event => setOptions(rows => rows.map(row => row.localId === option.localId ? { ...row, label: event.target.value } : row))} /><Button type="button" size="sm" variant="ghost" aria-label={`Move option ${index + 1} up`} disabled={index === 0} onClick={() => move(index, -1)}>↑</Button><Button type="button" size="sm" variant="ghost" aria-label={`Move option ${index + 1} down`} disabled={index === options.length - 1} onClick={() => move(index, 1)}>↓</Button><Button type="button" size="sm" variant="ghost" aria-label={`Archive option ${index + 1}`} onClick={() => { if (option.id) setRemoved(rows => [...rows, option]); setOptions(rows => rows.filter(row => row.localId !== option.localId)); }}>Archive</Button></div>)}
-          <Button type="button" size="sm" variant="outline" disabled={options.length >= 100} onClick={() => setOptions(rows => [...rows, { localId: crypto.randomUUID(), label: "" }])}>Add option</Button>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeArchived} onChange={event => setIncludeArchived(event.target.checked)} />Show archived options</label>
-          {includeArchived && <div className="space-y-2">{optionsQuery.loading && <p role="status" className="text-xs">Loading archived options…</p>}{optionsQuery.error ? <p role="alert" className="text-xs text-destructive">Archived options unavailable. <button type="button" className="underline" onClick={optionsQuery.refresh}>Retry options</button></p> : !optionsQuery.loading && !archived.length && <p className="text-xs text-muted-foreground">No archived options.</p>}{archived.map(option => <div key={option.localId} className="flex items-center justify-between gap-2 text-sm"><span>{option.label} (retired)</span><Button type="button" size="sm" variant="outline" aria-label={`Restore option ${option.label}`} disabled={options.length >= 100} onClick={() => { setOptions(rows => [...rows, option]); setRemoved(rows => rows.filter(row => row.localId !== option.localId)); }}>Restore</Button></div>)}</div>}
-          <p className="text-xs text-muted-foreground">Renaming, ordering, archiving and restoring options take effect when you save the field. Historical values retain their option IDs.</p>
-        </section>}
-        {definition && <details><summary className="cursor-pointer text-xs font-medium">Stored agent metadata</summary><dl className="mt-2 text-xs"><dt>Agent filled</dt><dd>{definition.agentFilled ? "Yes" : "No"}</dd><dt className="mt-2">Agent brief</dt><dd className="whitespace-pre-wrap break-words">{definition.agentBrief || "Not set"}</dd></dl></details>}
-      </fieldset>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      <div role="status" aria-live="polite" className="text-sm text-muted-foreground">{pending ? "Saving field…" : ""}</div>
-      {confirmClose && <div role="alert" className="space-y-2 rounded border p-3 text-sm"><p>Keep editing or discard your unsaved field changes.</p><div className="flex gap-2"><Button type="button" size="sm" disabled={pending} onClick={() => { next.current = null; setConfirmClose(false); }}>Keep editing</Button><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => { if (!pendingRef.current) finish(); }}>Discard changes</Button></div></div>}
-      <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={pending} onClick={close}>Cancel</Button><Button type="submit" disabled={pending}>Save field</Button></div>
-    </form>
-  </DialogContent></Dialog>;
+  const toggles = ([
+    ["required", "Required", "required"],
+    ["showOnSheet", "Show on sheet", "sheet"],
+    ["showOnTable", "Show on table", "table"],
+    ["showOnFilter", "Show on filter", "filter"],
+  ] as const);
+  return <Dialog open onOpenChange={open => { if (!open) close(); }}>
+    <DialogContent className="max-h-[90dvh] overflow-y-auto" onEscapeKeyDown={event => { if (dirty || pending) { event.preventDefault(); close(); } }} onInteractOutside={event => { if (dirty || pending) event.preventDefault(); }}>
+      <DialogHeader>
+        <DialogTitle>{definition ? "Edit field" : "New field"}</DialogTitle>
+        <DialogDescription>Configure a {entity.toLowerCase()} custom field. Changes apply across this workspace.</DialogDescription>
+      </DialogHeader>
+      <form aria-label="Field definition" className="flex flex-col gap-4" onSubmit={event => { event.preventDefault(); void save(); }}>
+        <fieldset disabled={pending}>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor={`${id}-label`}>Field label</FieldLabel>
+              <Input id={`${id}-label`} autoFocus required maxLength={1000} value={draft.label} onChange={event => setDraft({ ...draft, label: event.target.value })} />
+            </Field>
+
+            {definition ? <dl className="grid grid-cols-2 gap-2 text-xs">
+              <div><dt className="text-muted-foreground">Entity (immutable)</dt><dd>{definition.entity}</dd></div>
+              <div><dt className="text-muted-foreground">Key (immutable)</dt><dd className="break-all">{definition.key}</dd></div>
+            </dl> : <Field>
+              <FieldLabel htmlFor={`${id}-key`}>Field key (optional)</FieldLabel>
+              <Input id={`${id}-key`} maxLength={200} pattern="[a-z][a-z0-9_]*" placeholder={derivedFieldKey(draft.label) || "custom_field"} value={draft.key} onChange={event => setDraft({ ...draft, key: event.target.value })} />
+              <FieldDescription>Key preview: {draft.key.trim() || derivedFieldKey(draft.label) || "Enter an explicit key"}. The key cannot change after creation.</FieldDescription>
+            </Field>}
+
+            <Field>
+              <FieldLabel htmlFor={`${id}-type`}>Field type</FieldLabel>
+              <select id={`${id}-type`} className={selectClass} value={draft.type} onChange={event => { const type = event.target.value as FieldType; setDraft({ ...draft, type, showOnFilter: (type === "SELECT" || type === "USER") && draft.showOnFilter }); }}>
+                {FIELD_TYPES.map(type => <option key={type} value={type}>{FIELD_TYPE_LABELS[type]}</option>)}
+              </select>
+              {definition && <FieldDescription>A type change is allowed only when the field has no stored values.</FieldDescription>}
+            </Field>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {toggles.map(([key, label, suffix]) => <div key={key} className="flex items-center gap-2">
+                <Checkbox
+                  id={`${id}-${suffix}`}
+                  checked={draft[key]}
+                  disabled={pending || (key === "showOnFilter" && draft.type !== "SELECT" && draft.type !== "USER")}
+                  onCheckedChange={checked => setDraft({ ...draft, [key]: checked === true })}
+                />
+                <Label htmlFor={`${id}-${suffix}`}>{label}</Label>
+              </div>)}
+            </div>
+            <FieldDescription>Filters support Select and User fields. Required prevents clearing a value; existing empty records remain allowed.</FieldDescription>
+
+            {draft.type === "SELECT" && <FieldSet aria-label="Select options" className="rounded-lg border p-3">
+              <FieldLegend variant="label" className="mb-0">Select options</FieldLegend>
+              {options.map((option, index) => <div key={option.localId} className="flex flex-wrap items-center gap-1">
+                <Input className="min-w-24 flex-1" aria-label={`Option ${index + 1} label`} maxLength={1000} required value={option.label} onChange={event => setOptions(rows => rows.map(row => row.localId === option.localId ? { ...row, label: event.target.value } : row))} />
+                <Button type="button" size="sm" variant="ghost" aria-label={`Move option ${index + 1} up`} disabled={index === 0} onClick={() => move(index, -1)}>↑</Button>
+                <Button type="button" size="sm" variant="ghost" aria-label={`Move option ${index + 1} down`} disabled={index === options.length - 1} onClick={() => move(index, 1)}>↓</Button>
+                <Button type="button" size="sm" variant="ghost" aria-label={`Archive option ${index + 1}`} onClick={() => { if (option.id) setRemoved(rows => [...rows, option]); setOptions(rows => rows.filter(row => row.localId !== option.localId)); }}>Archive</Button>
+              </div>)}
+              <Button type="button" size="sm" variant="outline" className="self-start" disabled={options.length >= 100} onClick={() => setOptions(rows => [...rows, { localId: crypto.randomUUID(), label: "" }])}>Add option</Button>
+              <div className="flex items-center gap-2">
+                <Checkbox id={`${id}-archived-options`} checked={includeArchived} onCheckedChange={checked => setIncludeArchived(checked === true)} />
+                <Label htmlFor={`${id}-archived-options`}>Show archived options</Label>
+              </div>
+              {includeArchived && <div className="flex flex-col gap-2">
+                {optionsQuery.loading && <p role="status" className="text-xs">Loading archived options…</p>}
+                {optionsQuery.error
+                  ? <p role="alert" className="text-xs text-destructive">Archived options unavailable.{" "}<Button type="button" variant="link" className="h-auto px-0" onClick={optionsQuery.refresh}>Retry options</Button></p>
+                  : !optionsQuery.loading && !archived.length && <p className="text-xs text-muted-foreground">No archived options.</p>}
+                {archived.map(option => <div key={option.localId} className="flex items-center justify-between gap-2 text-xs">
+                  <span>{option.label} (retired)</span>
+                  <Button type="button" size="sm" variant="outline" aria-label={`Restore option ${option.label}`} disabled={options.length >= 100} onClick={() => { setOptions(rows => [...rows, option]); setRemoved(rows => rows.filter(row => row.localId !== option.localId)); }}>Restore</Button>
+                </div>)}
+              </div>}
+              <FieldDescription>Renaming, ordering, archiving and restoring options take effect when you save the field. Historical values retain their option IDs.</FieldDescription>
+            </FieldSet>}
+
+            {definition && <details>
+              <summary className="cursor-pointer text-xs font-medium">Stored agent metadata</summary>
+              <dl className="mt-2 text-xs">
+                <dt>Agent filled</dt><dd>{definition.agentFilled ? "Yes" : "No"}</dd>
+                <dt className="mt-2">Agent brief</dt><dd className="whitespace-pre-wrap break-words">{definition.agentBrief || "Not set"}</dd>
+              </dl>
+            </details>}
+          </FieldGroup>
+        </fieldset>
+
+        {error && <Alert variant="destructive">{error}</Alert>}
+        <div role="status" aria-live="polite" className="text-xs text-muted-foreground">{pending ? "Saving field…" : ""}</div>
+        {confirmClose && <Alert>
+          <p>Keep editing or discard your unsaved field changes.</p>
+          <div className="mt-2 flex gap-2">
+            <Button type="button" size="sm" disabled={pending} onClick={() => { next.current = null; setConfirmClose(false); }}>Keep editing</Button>
+            <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => { if (!pendingRef.current) finish(); }}>Discard changes</Button>
+          </div>
+        </Alert>}
+        <DialogFooter>
+          <Button type="button" variant="outline" disabled={pending} onClick={close}>Cancel</Button>
+          <Button type="submit" disabled={pending}>Save field</Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>;
 }

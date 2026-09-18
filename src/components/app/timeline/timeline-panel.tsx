@@ -1,7 +1,8 @@
 "use client";
 import { canPermission } from "@/lib/auth/permissions";
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { ActivityView } from "@/lib/api";
 import { activityAnchor, groupActivityDays, uniqueVisibleActivities, type TimelineActivity } from "@/lib/activity-presentation";
 import type { Page } from "@/lib/utils/validation";
@@ -70,48 +71,54 @@ function TimelineSession({ record, labels, onDirtyChange, canCreateActivity = fa
   const [view, setView] = useState<ActivityView>("all");
   const [revision, setRevision] = useState(0);
   const [result, setResult] = useState<{ message: string; error?: boolean } | null>(null);
-  const id = useId();
+  const tabs = useRef<HTMLDivElement>(null);
   const onResult = (message: string, error?: boolean) => setResult({ message, error });
   useEffect(() => {
     if (!result) return;
     const frame = requestAnimationFrame(() => {
-      if (document.activeElement === document.body) document.getElementById(`${id}-${view}`)?.focus();
+      if (document.activeElement === document.body) tabs.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [result, view, id]);
+  }, [result, view]);
   const directory = useAssigneeDirectory();
   const counts = useAppQuery("activities", { counts: true, ...activityAnchor(record) }, signal => api.activities.counts(activityAnchor(record), { signal }));
-  return <section aria-label="Activity timeline" className="space-y-4">
+  return <section aria-label="Activity timeline" className="flex flex-col gap-3">
     {canCreateActivity && canPermission(account, "activity", "create") && <ActivityComposer record={record} onDirtyChange={onDirtyChange} onCreated={() => {
       setRevision(value => value + 1);
       onResult("Activity saved. The current view has been refreshed; use All to see every activity type.");
     }} />}
-    <div className="flex items-center justify-between gap-3"><h2 className="text-base font-semibold">Timeline</h2><Button type="button" size="sm" variant="ghost" onClick={counts.refresh}>Refresh timeline</Button></div>
-    {result && <p role={result.error ? "alert" : "status"} className={`text-sm ${result.error ? "text-destructive" : "text-muted-foreground"}`}>{result.message}</p>}
-    <div role="tablist" aria-label="Activity views" className="flex gap-1 overflow-x-auto border-b pb-2" onKeyDown={event => {
-      const index = VIEWS.findIndex(([value]) => value === view);
-      let next: number;
-      if (event.key === "ArrowRight") next = (index + 1) % VIEWS.length;
-      else if (event.key === "ArrowLeft") next = (index + VIEWS.length - 1) % VIEWS.length;
-      else if (event.key === "Home") next = 0;
-      else if (event.key === "End") next = VIEWS.length - 1;
-      else return;
-      event.preventDefault();
-      setView(VIEWS[next][0]);
-      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
-    }}>
-      {VIEWS.map(([value, label]) => <button type="button" key={value} id={`${id}-${value}`} role="tab" aria-selected={view === value} aria-controls={`${id}-panel`} tabIndex={view === value ? 0 : -1} onClick={() => setView(value)} className={`whitespace-nowrap rounded-md px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === value ? "bg-muted font-medium" : "text-muted-foreground hover:bg-muted/60"}`}>{label} <span className="ml-1 text-xs tabular-nums">{counts.data?.[value] ?? (counts.error ? "—" : "…")}</span></button>)}
+    <div className="flex items-center justify-between gap-2">
+      <h2 className="text-sm font-medium">Timeline</h2>
+      <Button type="button" size="sm" variant="ghost" onClick={counts.refresh}>Refresh timeline</Button>
     </div>
-    {counts.error ? <RequestError error={counts.error} label="Activity counts could not load." retry={counts.refresh} /> : counts.refreshing && <p role="status" className="text-xs text-muted-foreground">Refreshing activity counts…</p>}
-    {!!directory.error && <RequestError error={directory.error} label="Actor directory could not load. Historical IDs remain visible." retry={directory.refresh} />}
-    <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${view}`} tabIndex={0} className="outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <TimelineView key={`${view}:${revision}`} record={record} labels={labels} view={view} onResult={onResult} directory={directory.data ?? []} />
-    </div>
+    {result && <p role={result.error ? "alert" : "status"} className={`text-xs ${result.error ? "text-destructive" : "text-muted-foreground"}`}>{result.message}</p>}
+    <Tabs value={view} onValueChange={next => setView(next as ActivityView)} className="flex-col gap-3">
+      <TabsList ref={tabs} aria-label="Activity views" variant="line" className="w-full flex-wrap justify-start gap-x-4 gap-y-1 border-b">
+        {VIEWS.map(([value, label]) => <TabsTrigger key={value} value={value} className="flex-none">
+          {label} <span className="text-muted-foreground tabular-nums">{counts.data?.[value] ?? (counts.error ? "—" : "…")}</span>
+        </TabsTrigger>)}
+      </TabsList>
+      {counts.error ? <RequestError error={counts.error} label="Activity counts could not load." retry={counts.refresh} /> : counts.refreshing && <p role="status" className="text-xs text-muted-foreground">Refreshing activity counts…</p>}
+      {!!directory.error && <RequestError error={directory.error} label="Actor directory could not load. Historical IDs remain visible." retry={directory.refresh} />}
+      <TabsContent value={view} className="rounded-md focus-visible:ring-2 focus-visible:ring-ring/50">
+        <TimelineView key={`${view}:${revision}`} record={record} labels={labels} view={view} onResult={onResult} directory={directory.data ?? []} />
+      </TabsContent>
+    </Tabs>
   </section>;
 }
 
 function RequestError({ error, label, retry }: { error: unknown; label: string; retry: () => void }) {
-  return <p role="alert" className="text-sm text-destructive">{label} {error instanceof Error ? error.message : "Request failed."} <button type="button" className="underline" onClick={retry}>Retry</button></p>;
+  return <p role="alert" className="text-xs text-destructive">{label} {error instanceof Error ? error.message : "Request failed."} <Button type="button" variant="link" className="h-auto px-0" onClick={retry}>Retry</Button></p>;
+}
+
+function TimelineDay({ date, rows, record, labels, now, directory, onResult }: {
+  date: Date | null; rows: TimelineActivity[]; record: RecordRef; labels?: Record<string, string>;
+  now: Date; directory: readonly { id: string; name: string }[]; onResult: (message: string, error?: boolean) => void;
+}) {
+  return <section className="flex flex-col">
+    <h3 className="py-2 text-xs font-medium tracking-wider text-muted-foreground uppercase">{date ? date.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : "Date unavailable"}</h3>
+    <div className="divide-y">{rows.map(activity => <TimelineEntry key={activity.id} activity={activity} record={record} labels={labels} now={now} directory={directory} onResult={onResult} />)}</div>
+  </section>;
 }
 
 function TimelineView({ record, labels, view, directory, onResult }: TimelinePanelProps & { view: ActivityView; directory: readonly { id: string; name: string }[]; onResult: (message: string, error?: boolean) => void }) {
@@ -120,24 +127,20 @@ function TimelineView({ record, labels, view, directory, onResult }: TimelinePan
   const pinned = useTimelinePages(record, view === "all" ? "upcoming" : null);
   const pinnedIds = new Set(pinned.items.map(item => item.id));
   const history = view === "all" ? uniqueVisibleActivities(main.items, pinnedIds) : main.items;
-  const renderRows = (rows: TimelineActivity[]) => groupActivityDays(rows).map(group => <div key={group.key} className="space-y-3">
-    <h3 className="text-xs font-medium text-muted-foreground">{group.date ? group.date.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : "Date unavailable"}</h3>
-    {group.items.map(activity => <TimelineEntry key={activity.id} activity={activity} record={record} labels={labels} now={now} directory={directory} onResult={onResult} />)}
-  </div>);
-  return <div className="space-y-5">
-    {view === "all" && <section aria-label="Pinned upcoming tasks" className="space-y-3 rounded-lg border bg-muted/20 p-3">
+  return <div className="flex flex-col gap-5">
+    {view === "all" && <section aria-label="Pinned upcoming tasks" className="rounded-lg border bg-muted/20 p-3">
       <h3 className="text-sm font-medium">Upcoming tasks</h3>
       {!!pinned.error && <RequestError error={pinned.error} label="Upcoming tasks could not load." retry={pinned.retry} />}
-      {pinned.loading && <p role="status" className="text-sm text-muted-foreground">{pinned.loadingMore ? "Loading more upcoming tasks…" : pinned.refreshing ? "Refreshing upcoming tasks…" : "Loading upcoming tasks…"}</p>}
-      {renderRows(pinned.items)}
-      {!pinned.loading && !pinned.error && pinned.total === 0 && <p className="text-sm text-muted-foreground">No upcoming tasks.</p>}
-      {pinned.hasMore && <Button type="button" size="sm" variant="outline" disabled={pinned.loading || !!pinned.error} onClick={pinned.loadMore}>Load more upcoming tasks</Button>}
+      {pinned.loading && <p role="status" className="text-xs text-muted-foreground">{pinned.loadingMore ? "Loading more upcoming tasks…" : pinned.refreshing ? "Refreshing upcoming tasks…" : "Loading upcoming tasks…"}</p>}
+      <div className="flex flex-col">{groupActivityDays(pinned.items).map(group => <TimelineDay key={group.key} date={group.date} rows={group.items} record={record} labels={labels} now={now} directory={directory} onResult={onResult} />)}</div>
+      {!pinned.loading && !pinned.error && pinned.total === 0 && <p className="text-xs text-muted-foreground">No upcoming tasks.</p>}
+      {pinned.hasMore && <Button type="button" size="sm" variant="outline" className="mt-2 self-start" disabled={pinned.loading || !!pinned.error} onClick={pinned.loadMore}>Load more upcoming tasks</Button>}
     </section>}
     {!!main.error && <RequestError error={main.error} label="Timeline could not load." retry={main.retry} />}
-    {main.loading && <p role="status" className="text-sm text-muted-foreground">{main.loadingMore ? "Loading more activities…" : main.refreshing ? "Refreshing timeline…" : "Loading timeline…"}</p>}
-    {renderRows(history)}
-    {!main.loading && !main.error && main.total === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No activities in this view.</p>}
-    {view === "all" && !main.loading && !main.error && !!main.total && !history.length && <p className="text-sm text-muted-foreground">The activities on these pages are shown in Upcoming tasks.</p>}
-    {main.hasMore && <Button type="button" variant="outline" disabled={main.loading || !!main.error} onClick={main.loadMore}>{view === "upcoming" ? "Load more tasks" : "Load older activities"}</Button>}
+    {main.loading && <p role="status" className="text-xs text-muted-foreground">{main.loadingMore ? "Loading more activities…" : main.refreshing ? "Refreshing timeline…" : "Loading timeline…"}</p>}
+    <div className="flex flex-col">{groupActivityDays(history).map(group => <TimelineDay key={group.key} date={group.date} rows={group.items} record={record} labels={labels} now={now} directory={directory} onResult={onResult} />)}</div>
+    {!main.loading && !main.error && main.total === 0 && <p className="py-6 text-center text-xs text-muted-foreground">No activities in this view.</p>}
+    {view === "all" && !main.loading && !main.error && !!main.total && !history.length && <p className="text-xs text-muted-foreground">The activities on these pages are shown in Upcoming tasks.</p>}
+    {main.hasMore && <Button type="button" variant="outline" className="self-start" disabled={main.loading || !!main.error} onClick={main.loadMore}>{view === "upcoming" ? "Load more tasks" : "Load older activities"}</Button>}
   </div>;
 }

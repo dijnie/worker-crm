@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type { DirtyEditor } from "../record-sheet/inline-field";
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -144,7 +145,10 @@ export function RecordForm({
     onDirtyChange?.(dirty ? { dirty: true, pending, save: () => latestSave.current(), discard: () => { setDraft(initialDraft.current); setError(null); } } : null);
     return () => onDirtyChange?.(null);
   }, [dirty, pending, onDirtyChange]);
-  if (!permitted) return <p role="alert" className="text-sm">Your role cannot create this record. Creating deals also requires Company Read.</p>;
+  const issues = error instanceof ApiError ? (error.issues ?? []) : [];
+  const unplaced = issues.filter((issue) => !(fields as readonly string[]).includes(String(issue.path[0] ?? "")));
+  const issuesFor = (key: string) => issues.filter((issue) => String(issue.path[0] ?? "") === key);
+  if (!permitted) return <p role="alert" className="text-xs">Your role cannot create this record. Creating deals also requires Company Read.</p>;
   return (
     <form ref={formRef} onSubmit={submit} className="space-y-5">
       <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">
@@ -185,20 +189,19 @@ export function RecordForm({
             );
           const required =
             key === "name" || key === "firstName" || key === "currency";
+          const fieldIssues = issuesFor(key);
           return (
-            <div
+            <Field
               key={key}
+              data-invalid={fieldIssues.length > 0 || undefined}
               className={
-                key === "description" ? "space-y-2 sm:col-span-2" : "space-y-2"
+                key === "description" ? "sm:col-span-2" : undefined
               }
             >
-              <label
-                className="text-sm font-medium"
-                htmlFor={`${prefix}-${key}`}
-              >
+              <FieldLabel htmlFor={`${prefix}-${key}`}>
                 {labels[key]}
                 {required ? " *" : ""}
-              </label>
+              </FieldLabel>
               {key === "description" ? (
                 <Textarea
                   id={`${prefix}-${key}`}
@@ -228,18 +231,19 @@ export function RecordForm({
                   onChange={(event) => change(key, event.target.value)}
                 />
               )}
-            </div>
+              <FieldError errors={fieldIssues} />
+            </Field>
           );
         })}
       </fieldset>
       {entity === "deal" && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-muted-foreground text-xs">
           New deals start at Demo booked. Amounts are stored exactly in the
           selected currency.
         </p>
       )}
       {entity === "company" && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-muted-foreground text-xs">
           Choosing a primary contact leaves their employer unchanged. Domains
           and email addresses are normalized when saved.
         </p>
@@ -247,15 +251,14 @@ export function RecordForm({
       {error && (
         <div
           role="alert"
-          className="space-y-1 rounded-md border border-destructive/30 p-3 text-sm text-destructive"
+          className="space-y-1 rounded-md border border-destructive/30 p-3 text-destructive text-xs"
         >
           <p>{error.message}</p>
-          {error instanceof ApiError &&
-            error.issues?.map((issue, index) => (
-              <p key={index}>
-                {issue.path.join(".")}: {issue.message}
-              </p>
-            ))}
+          {unplaced.map((issue, index) => (
+            <p key={index}>
+              {issue.path.join(".")}: {issue.message}
+            </p>
+          ))}
         </div>
       )}
       <div className="flex justify-end gap-2">
@@ -293,7 +296,7 @@ export function CreateRecordDialog({
         if (!pending) onOpenChange(value);
       }}
     >
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] gap-4 overflow-y-auto sm:max-w-2xl">
         <DialogTitle>New {entity}</DialogTitle>
         <DialogDescription>Add a {entity} to your workspace.</DialogDescription>
         {open && (

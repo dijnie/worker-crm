@@ -1,19 +1,50 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
+import {
+  SimpleTable,
+  SimpleTableRow,
+  type SimpleTableColumn,
+} from "@/components/ui/simple-table";
+import { TableCell } from "@/components/ui/table";
 import { useAppData, useAppQuery } from "@/components/app/app-data-provider";
+import {
+  PageShell,
+  PageShellContent,
+  PageShellDescription,
+  PageShellHeader,
+  PageShellHeading,
+  PageShellTitle,
+} from "@/components/app/page-shell";
+import { selectClass } from "@/components/app/records/record-picker";
 import { ApiError } from "@/lib/api";
 import { authClient } from "@/lib/auth/auth-client";
 import type { MemberMutationInput, MemberRecord } from "@services/member.service";
 import type { Page } from "@/lib/utils/validation";
+import { useEffect, useRef, useState } from "react";
 
 const pageSize = 20;
+
+const columns: SimpleTableColumn[] = [
+  { id: "name", header: "Name", width: "w-[34%]" },
+  { id: "email", header: "Email", width: "w-[28%]", className: "hidden md:table-cell" },
+  { id: "role", header: "Role", width: "w-[14%]" },
+  { id: "status", header: "Status", width: "w-[12%]" },
+  { id: "actions", srLabel: "Actions", align: "right", width: "w-[12%]" },
+];
 
 export function MemberManagement({ currentUserId }: { currentUserId: string }) {
   const { api, store, generation, invalidate, clear, refreshAccount } = useAppData();
@@ -27,7 +58,7 @@ export function MemberManagement({ currentUserId }: { currentUserId: string }) {
   const [revision, setRevision] = useState(0);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<MemberRecord | null>(null);
-  const errorRef = useRef<HTMLParagraphElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
 
   const roles = useAppQuery("roles", {}, signal => api.roles.list({ signal }));
   const members = useAppQuery("members", { page, status, revision }, (signal) => api.members.list({ page, limit: pageSize, ...(status === "all" ? {} : { status }) }, { signal }));
@@ -75,91 +106,151 @@ export function MemberManagement({ currentUserId }: { currentUserId: string }) {
   }
 
   const disabled = loading || pendingId !== null;
+  const refresh = () => { invalidate(["members"]); setRevision((value) => value + 1); };
   const totalPages = data ? Math.max(1, Math.ceil(data.total / pageSize)) : 1;
 
   return (
-    <div className="p-4 md:p-6">
-      <div className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-6">
-        <div className="space-y-2">
-          <Button asChild variant="link" className="min-h-11 px-0"><Link href="/settings">Back to settings</Link></Button>
-          <h1 className="text-2xl font-medium tracking-tight md:text-3xl">Members</h1>
-          <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">Everyone with active access shares the CRM workspace. System accounts manage roles and access. At least one active system account must remain.</p>
-        </div>
+    <PageShell>
+      <PageShellHeader>
+        <PageShellHeading>
+          <PageShellTitle>Members</PageShellTitle>
+          <PageShellDescription>
+            Everyone with active access shares the CRM workspace. System accounts manage roles and access. At least one active system account must remain.
+          </PageShellDescription>
+        </PageShellHeading>
+      </PageShellHeader>
+
+      <PageShellContent>
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="member-status">Access status</Label>
-            <select id="member-status" name="status" value={status} disabled={disabled} onChange={(event) => {
-              setStatus(event.target.value as typeof status);
-              setPage(1);
-              setNotice("");
-            }} className="block min-h-11 rounded-md border border-input bg-control px-3 text-base text-foreground hover:border-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 md:text-sm">
-              <option value="all">All members</option><option value="active">Active</option><option value="revoked">Revoked</option>
+          <Field className="max-w-56">
+            <FieldLabel htmlFor="member-status">Access status</FieldLabel>
+            <select
+              id="member-status"
+              name="status"
+              value={status}
+              disabled={disabled}
+              onChange={(event) => {
+                setStatus(event.target.value as typeof status);
+                setPage(1);
+                setNotice("");
+              }}
+              className={selectClass}
+            >
+              <option value="all">All members</option>
+              <option value="active">Active</option>
+              <option value="revoked">Revoked</option>
             </select>
-          </div>
-          <Button variant="outline" className="min-h-11" disabled={disabled} onClick={() => { invalidate(["members"]); setRevision((value) => value + 1); }}>Refresh members</Button>
+          </Field>
+          <Button variant="outline" disabled={disabled} onClick={refresh}>Refresh members</Button>
         </div>
-        {!!roles.error && <p role="alert" className="text-sm text-destructive">Roles could not load. <button className="underline" onClick={roles.refresh}>Retry roles</button></p>}
-        {notice && <p role="status" className="rounded-md border bg-muted p-3 text-sm">{notice}</p>}
-        {actionError && !revokeTarget && <p ref={errorRef} role="alert" tabIndex={-1} className="rounded-sm text-sm text-destructive focus:outline-none focus:ring-2 focus:ring-ring">{actionError}</p>}
-        <section aria-label="Workspace members" aria-busy={loading} className="rounded-lg border bg-card text-card-foreground">
-          {loading && <div role="status" aria-label="Loading members" className="space-y-4 p-6">
+
+        {!!roles.error && <Alert variant="destructive">
+          Roles could not load.{" "}
+          <Button variant="link" className="h-auto px-0" onClick={roles.refresh}>Retry roles</Button>
+        </Alert>}
+        {notice && <Alert role="status">{notice}</Alert>}
+        {actionError && !revokeTarget && <Alert variant="destructive" ref={errorRef} tabIndex={-1}>{actionError}</Alert>}
+
+        <section aria-label="Workspace members" aria-busy={loading} className="flex flex-col gap-3">
+          {loading && <CardContent role="status" aria-label="Loading members" className="gap-3">
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center">
-                <div className="min-w-0 flex-1 space-y-2">
+              <div key={i} className="flex min-w-0 items-center gap-4">
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                   <Skeleton className="h-4 w-32" />
                   <Skeleton className="h-3 w-48" />
                 </div>
-                <div className="flex flex-wrap items-center gap-2 lg:w-36 lg:shrink-0">
-                  <Skeleton className="h-5 w-16" />
-                  <Skeleton className="h-5 w-14" />
-                </div>
-                <div className="flex flex-wrap items-center gap-2 lg:w-64 lg:shrink-0 lg:justify-end">
-                  <Skeleton className="h-11 w-28" />
-                  <Skeleton className="h-11 w-24" />
-                </div>
+                <Skeleton className="h-5 w-16" />
+                <Skeleton className="h-8 w-28" />
+                <Skeleton className="h-8 w-24" />
               </div>
             ))}
-          </div>}
-          {loadError && <div className="space-y-3 p-6"><p role="alert" className="text-sm text-destructive">{loadError}</p><Button variant="outline" className="min-h-11" onClick={() => { invalidate(["members"]); setRevision((value) => value + 1); }}>Try again</Button></div>}
-          {!loading && data && data.items.length === 0 && <p className="p-6 text-sm text-muted-foreground">No members match this access status.</p>}
-          {!loading && data && data.items.length > 0 && <ul className="divide-y">
-            {data.items.map((member) => <li key={member.id} className="flex min-w-0 flex-col gap-4 p-4 lg:flex-row lg:items-center lg:p-6">
-              <div className="min-w-0 flex-1 space-y-1">
-                <p className="break-words text-sm font-medium">{member.name}{member.id === currentUserId && <span className="ml-2 font-normal text-muted-foreground">(you)</span>}</p>
-                <p className="break-all text-sm text-muted-foreground">{member.email}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 lg:w-36 lg:shrink-0">
-                <Badge variant="outline">{member.role?.name ?? "No role"}</Badge>
-                <Badge variant={member.status === "revoked" ? "destructive" : "secondary"}>{member.status === "active" ? "Active" : "Revoked"}</Badge>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 lg:w-64 lg:shrink-0 lg:justify-end">
-                {member.status === "active" ? <>
-                  <select aria-label={`Role for ${member.name}`} value={member.roleId ?? ""} disabled={disabled || roles.loading || !!roles.error} className="min-h-11 max-w-full rounded-md border bg-control px-3 text-sm" onChange={event => void mutate(member, { action: "change-role", roleId: event.target.value || null, expectedRevision: member.revision })}>
-                    <option value="">No role</option>{roles.data?.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
-                  </select>
-                  <Button variant="outline" className="min-h-11 text-destructive" disabled={disabled} aria-label={`Revoke access for ${member.name}`} onClick={() => { setActionError(""); setRevokeTarget(member); }}>Revoke access</Button>
-                </> : <Button variant="outline" className="min-h-11" disabled={disabled} aria-label={`Restore access for ${member.name}`} onClick={() => mutate(member, { action: "restore", expectedRevision: member.revision })}>{pendingId === member.id ? "Restoring…" : "Restore access"}</Button>}
-              </div>
-            </li>)}
-          </ul>}
+          </CardContent>}
+          {loadError && <CardContent className="items-start gap-3">
+            <Alert variant="destructive">{loadError}</Alert>
+            <Button variant="outline" onClick={refresh}>Try again</Button>
+          </CardContent>}
+          {!loading && data && data.items.length === 0 && <CardContent className="text-xs text-muted-foreground">No members match this access status.</CardContent>}
+          {!loading && data && data.items.length > 0 && <SimpleTable columns={columns}>
+            {data.items.map((member) => <SimpleTableRow key={member.id}>
+              <TableCell className="whitespace-normal">
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span className="truncate font-medium">{member.name}</span>
+                  {member.id === currentUserId && <span className="text-xs text-muted-foreground">(you)</span>}
+                </span>
+              </TableCell>
+              <TableCell className="hidden whitespace-normal break-all text-muted-foreground md:table-cell">{member.email}</TableCell>
+              <TableCell><Badge variant="outline">{member.role?.name ?? "No role"}</Badge></TableCell>
+              <TableCell><Badge variant={member.status === "revoked" ? "destructive" : "secondary"}>{member.status === "active" ? "Active" : "Revoked"}</Badge></TableCell>
+              <TableCell className="text-right">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {member.status === "active" ? <>
+                    <select
+                      aria-label={`Role for ${member.name}`}
+                      value={member.roleId ?? ""}
+                      disabled={disabled || roles.loading || !!roles.error}
+                      className={`${selectClass} w-36`}
+                      onChange={event => void mutate(member, { action: "change-role", roleId: event.target.value || null, expectedRevision: member.revision })}
+                    >
+                      <option value="">No role</option>
+                      {roles.data?.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
+                    </select>
+                    <Button
+                      variant="outline"
+                      className="text-destructive"
+                      disabled={disabled}
+                      aria-label={`Revoke access for ${member.name}`}
+                      onClick={() => { setActionError(""); setRevokeTarget(member); }}
+                    >
+                      Revoke access
+                    </Button>
+                  </> : <Button
+                    variant="outline"
+                    disabled={disabled}
+                    aria-label={`Restore access for ${member.name}`}
+                    onClick={() => mutate(member, { action: "restore", expectedRevision: member.revision })}
+                  >
+                    {pendingId === member.id ? "Restoring…" : "Restore access"}
+                  </Button>}
+                </div>
+              </TableCell>
+            </SimpleTableRow>)}
+          </SimpleTable>}
         </section>
+
         {data && <nav aria-label="Members pagination" className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm tabular-nums text-muted-foreground">Page {page} of {totalPages} · {data.total} {data.total === 1 ? "member" : "members"}</p>
-          <div className="flex gap-2"><Button variant="outline" className="min-h-11" disabled={disabled || page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</Button><Button variant="outline" className="min-h-11" disabled={disabled || page >= totalPages} onClick={() => setPage((value) => value + 1)}>Next</Button></div>
+          <p className="text-xs tabular-nums text-muted-foreground">Page {page} of {totalPages} · {data.total} {data.total === 1 ? "member" : "members"}</p>
+          <div className="flex gap-2">
+            <Button variant="outline" disabled={disabled || page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</Button>
+            <Button variant="outline" disabled={disabled || page >= totalPages} onClick={() => setPage((value) => value + 1)}>Next</Button>
+          </div>
         </nav>}
-      </div>
+      </PageShellContent>
+
       <Dialog open={revokeTarget !== null} onOpenChange={(open) => { if (!open && !pendingId) { setRevokeTarget(null); setActionError(""); } }}>
-        <DialogContent className="w-[calc(100%_-_2rem)] rounded-lg [&>button:last-child]:size-11 [&>button:last-child]:right-1 [&>button:last-child]:top-1 [&>button:last-child]:flex [&>button:last-child]:items-center [&>button:last-child]:justify-center" onEscapeKeyDown={(event) => { if (pendingId) event.preventDefault(); }} onPointerDownOutside={(event) => { if (pendingId) event.preventDefault(); }}>
-          <DialogTitle>Revoke workspace access?</DialogTitle>
-          <DialogDescription className="break-words leading-relaxed">{revokeTarget?.name} will be signed out and lose access to the shared workspace. Their CRM records and history will remain. A system account can restore access later.</DialogDescription>
-          {revokeTarget?.id === currentUserId && <p className="text-sm">You are revoking your own access. Another system account will need to restore it.</p>}
-          {actionError && <p ref={errorRef} role="alert" tabIndex={-1} className="text-sm text-destructive focus:outline-none focus:ring-2 focus:ring-ring">{actionError}</p>}
-          <DialogFooter className="gap-2">
-            <Button variant="outline" className="min-h-11" disabled={pendingId !== null} onClick={() => setRevokeTarget(null)}>Cancel</Button>
-            <Button variant="destructive" className="min-h-11" disabled={pendingId !== null} onClick={() => { if (revokeTarget) void mutate(revokeTarget, { action: "revoke", expectedRevision: revokeTarget.revision }); }}>{pendingId ? "Revoking…" : "Revoke access"}</Button>
+        <DialogContent
+          onEscapeKeyDown={(event) => { if (pendingId) event.preventDefault(); }}
+          onPointerDownOutside={(event) => { if (pendingId) event.preventDefault(); }}
+        >
+          <DialogHeader>
+            <DialogTitle>Revoke workspace access?</DialogTitle>
+            <DialogDescription className="break-words text-pretty">
+              {revokeTarget?.name} will be signed out and lose access to the shared workspace. Their CRM records and history will remain. A system account can restore access later.
+            </DialogDescription>
+          </DialogHeader>
+          {revokeTarget?.id === currentUserId && <p className="text-xs">You are revoking your own access. Another system account will need to restore it.</p>}
+          {actionError && <Alert variant="destructive" ref={errorRef} tabIndex={-1}>{actionError}</Alert>}
+          <DialogFooter>
+            <Button variant="outline" disabled={pendingId !== null} onClick={() => setRevokeTarget(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={pendingId !== null}
+              onClick={() => { if (revokeTarget) void mutate(revokeTarget, { action: "revoke", expectedRevision: revokeTarget.revision }); }}
+            >
+              {pendingId ? "Revoking…" : "Revoke access"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

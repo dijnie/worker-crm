@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { DirtyEditor } from "../record-sheet/inline-field";
 import { propertyError } from "../record-sheet/property-values";
 import { DEAL_STAGES, type DealStage } from "@/lib/db/schema/constants";
 import { Button } from "@/components/ui/button";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -38,6 +39,8 @@ export function StageChangeDialog({
   onDirtyChange?: (state: DirtyEditor | null) => void;
   initialStage?: DealStage;
 }) {
+  const stageId = useId();
+  const reasonId = useId();
   const [stage, setStage] = useState<DealStage>(initialStage);
   const [reason, setReason] = useState("");
   const [confirmClose, setConfirmClose] = useState(false);
@@ -68,7 +71,7 @@ export function StageChangeDialog({
         if (!value && dirty) setConfirmClose(true); else onOpenChange(value);
       }}
     >
-      <DialogContent>
+      <DialogContent className="gap-4 sm:max-w-md">
         <DialogTitle>Change stage</DialogTitle>
         <DialogDescription>
           Update {count} selected {count === 1 ? "deal" : "deals"}. Each
@@ -81,9 +84,10 @@ export function StageChangeDialog({
             await save();
           }}
         >
-          <label className="block space-y-2">
-            <span>Stage</span>
+          <Field>
+            <FieldLabel htmlFor={stageId}>Stage</FieldLabel>
             <select
+              id={stageId}
               aria-label="Stage"
               className={selectClass}
               value={stage}
@@ -96,18 +100,21 @@ export function StageChangeDialog({
                 </option>
               ))}
             </select>
-          </label>
-          <label className="block space-y-2">
-            <span>Reason{losing ? " *" : " (optional)"}</span>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={reasonId}>
+              Reason{losing ? " *" : " (optional)"}
+            </FieldLabel>
             <Textarea
+              id={reasonId}
               aria-label="Reason"
               required={losing}
               value={reason}
               disabled={pending}
               onChange={(event) => setReason(event.target.value)}
             />
-          </label>
-          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          </Field>
+          {error && <p role="alert" className="text-destructive text-xs">{error}</p>}
           <Button
             type="submit"
             disabled={pending || (losing && !reason.trim())}
@@ -115,7 +122,7 @@ export function StageChangeDialog({
             {pending ? "Updating…" : "Update stage"}
           </Button>
         </form>
-        {confirmClose && <div role="alert" className="space-y-3 rounded border p-3"><p>Save the stage change before closing?</p><div className="flex gap-2">
+        {confirmClose && <div role="alert" className="space-y-3 rounded-md border p-3 text-xs"><p>Save the stage change before closing?</p><div className="flex gap-2">
           <Button disabled={pending} onClick={async () => { if (await save()) onOpenChange(false); }}>Save and close</Button>
           <Button variant="outline" disabled={pending} onClick={() => { setStage(openedStage.current); setReason(""); onOpenChange(false); }}>Discard</Button>
           <Button variant="ghost" disabled={pending} onClick={() => setConfirmClose(false)}>Stay</Button>

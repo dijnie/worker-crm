@@ -3,6 +3,8 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils/cn";
+import { PROPERTY_LABEL, PROPERTY_ROW } from "../detail-sheet";
 import { useAppData } from "../app-data-provider";
 import { RecordPicker } from "../records/record-picker";
 import { propertyError } from "./property-values";
@@ -61,25 +63,28 @@ export function InlineField({ fieldKey, label, value, display, onSave, onDirtyCh
     onDirtyChange(fieldKey, dirty ? { dirty: true, pending, save: () => latest.current.save(), discard: () => latest.current.discard() } : null);
     return () => onDirtyChange(fieldKey, null);
   }, [dirty, pending, fieldKey, onDirtyChange]);
-  return <div className="space-y-1 border-b py-3" data-property={fieldKey}>
-    <label htmlFor={editing ? id : undefined} className="text-xs font-medium text-muted-foreground">{label}</label>
-    {editing ? <div data-inline-editor className="space-y-2" onKeyDown={event => {
-      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); discard(); }
-      if (event.key === "Enter" && !picker && !event.shiftKey) { event.preventDefault(); cancelBlur.current = true; void save(); }
-    }}>
-      {picker ? <RecordPicker kind={picker} label={label} value={draft} required={required} selectedLabel={selectedLabel} disabled={pending} onChange={setDraft} /> : multiline ?
-        <Textarea id={id} aria-label={label} autoFocus disabled={pending} value={draft} onChange={event => setDraft(event.target.value)} /> :
-        <Input id={id} aria-label={label} type={type} inputMode={fieldKey.endsWith(":amount") ? "decimal" : undefined} autoFocus disabled={pending} value={draft}
-          onChange={event => setDraft(event.target.value)} onBlur={event => {
-            if (cancelBlur.current) { cancelBlur.current = false; return; }
-            if (!editingRef.current || flight.current) return;
-            if (event.relatedTarget instanceof HTMLElement && event.relatedTarget.closest(`[data-property]`) === event.currentTarget.closest(`[data-property]`)) return;
-            void save();
-          }} />}
-      {error && <p role="alert" className="text-xs text-destructive">{error} Last saved: {confirmed || "Not set"}</p>}
-      <div className="flex gap-2"><Button size="sm" type="button" disabled={pending} aria-label={`Save ${label.toLowerCase()}`} onClick={() => void save()}>{pending ? "Saving…" : "Save"}</Button>
-        <Button size="sm" type="button" variant="ghost" disabled={pending} onMouseDown={() => { cancelBlur.current = true; }} onClick={discard}>Cancel</Button></div>
-    </div> : <div className="flex items-start justify-between gap-2"><div className="min-w-0 whitespace-pre-wrap break-words text-sm">{display ?? (confirmed || <span className="text-muted-foreground">Not set</span>)}</div>
-      {!readOnly && <Button type="button" variant="ghost" size="sm" aria-label={`Edit ${label.toLowerCase()}`} onClick={() => { cancelBlur.current = false; editingRef.current = true; setDraft(confirmed); setEditing(true); }}>Edit</Button>}</div>}
+  return <div className={cn(PROPERTY_ROW, "items-center border-b py-2")} data-property={fieldKey}>
+    <label htmlFor={editing ? id : undefined} className={PROPERTY_LABEL}>{label}</label>
+    <div className="min-w-0">
+      {editing ? <div data-inline-editor className="space-y-2" onKeyDown={event => {
+        if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); discard(); }
+        if (event.key === "Enter" && !picker && !event.shiftKey) { event.preventDefault(); cancelBlur.current = true; void save(); }
+      }}>
+        {picker ? <RecordPicker kind={picker} label={label} value={draft} required={required} selectedLabel={selectedLabel} disabled={pending} onChange={setDraft} /> : multiline ?
+          <Textarea id={id} aria-label={label} autoFocus disabled={pending} value={draft} onChange={event => setDraft(event.target.value)} /> :
+          <Input id={id} aria-label={label} type={type} inputMode={fieldKey.endsWith(":amount") ? "decimal" : undefined} autoFocus disabled={pending} value={draft}
+            onChange={event => setDraft(event.target.value)} onBlur={event => {
+              if (cancelBlur.current) { cancelBlur.current = false; return; }
+              if (!editingRef.current || flight.current) return;
+              if (event.relatedTarget instanceof HTMLElement && event.relatedTarget.closest(`[data-property]`) === event.currentTarget.closest(`[data-property]`)) return;
+              void save();
+            }} />}
+        {error && <p role="alert" className="text-destructive text-xs">{error} Last saved: {confirmed || "Not set"}</p>}
+        <div className="flex gap-2"><Button size="sm" type="button" disabled={pending} aria-label={`Save ${label.toLowerCase()}`} onClick={() => void save()}>{pending ? "Saving…" : "Save"}</Button>
+          <Button size="sm" type="button" variant="ghost" disabled={pending} onMouseDown={() => { cancelBlur.current = true; }} onClick={discard}>Cancel</Button></div>
+      </div> : <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 text-xs/5 whitespace-pre-wrap break-words">{display ?? (confirmed || <span className="text-muted-foreground">Not set</span>)}</div>
+        {!readOnly && <Button type="button" variant="ghost" size="sm" aria-label={`Edit ${label.toLowerCase()}`} onClick={() => { cancelBlur.current = false; editingRef.current = true; setDraft(confirmed); setEditing(true); }}>Edit</Button>}</div>}
+    </div>
   </div>;
 }

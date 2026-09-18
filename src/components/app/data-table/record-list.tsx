@@ -1,32 +1,25 @@
 "use client";
 import { canPermission } from "@/lib/auth/permissions";
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
-import {
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-  type ColumnDef,
-  type RowSelectionState,
-  type VisibilityState,
-} from "@tanstack/react-table";
-import type { RecordEntity, RecordSummary, RecordFields } from "@/lib/record-list-contracts";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import type {
+  RecordEntity,
+  RecordSummary,
+  RecordFields,
+} from "@/lib/record-list-contracts";
 import type { Page } from "@/lib/utils/validation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import type { TableQueryState } from "@/lib/ui/table-query";
+import { useTableSelection } from "@/hooks/use-table-selection";
 import { useAppData, useAppQuery } from "../app-data-provider";
-import { Skeleton } from "@/components/ui/skeleton";
 import { CreateRecordDialog } from "../records/record-form";
-import { BulkActions } from "../records/bulk-actions";
+import {
+  BulkActions,
+  BulkReportView,
+  type BulkReport,
+} from "../records/bulk-actions";
 import { stageLabel } from "../records/stage-change";
-import { selectClass } from "../records/record-picker";
 import {
   buildRecordUrl,
   openRecord,
@@ -34,19 +27,23 @@ import {
   writeRecordStack,
   type RecordRef,
 } from "../record-sheet/record-navigation";
+import { PageShellLoading } from "../page-shell";
 import Search from "@carbon/icons-react/es/Search";
 import Renew from "@carbon/icons-react/es/Renew";
-import Column from "@carbon/icons-react/es/Column";
 import Close from "@carbon/icons-react/es/Close";
-import { ToolbarMenu } from "./toolbar-menu";
-import { FacetFilters, facetLabels } from "./facet-filters";
+import { facetLabels, useListFacets } from "./facet-filters";
 import { SavedViews } from "./saved-views";
 import { useTableQuery } from "./use-table-query";
-import { tableQueryToApi } from "./table-query";
+import { tableQueryToApi, type TableQuery } from "./table-query";
 import { useFieldDefinitions } from "../fields/use-field-definitions";
 import { fieldColumns } from "../fields/field-columns";
-import { fieldFilterLabel, fieldFilterValues, supportedFieldFilter } from "../fields/field-facets";
+import {
+  fieldFilterLabel,
+  fieldFilterValues,
+  supportedFieldFilter,
+} from "../fields/field-facets";
 import { useAssigneeDirectory } from "../records/use-assignee-directory";
+
 export interface RecordListRow extends RecordSummary, RecordFields {
   id: string;
   name?: string;
@@ -67,14 +64,23 @@ export interface RecordListRow extends RecordSummary, RecordFields {
   archivedAt?: string | null;
   enrichmentStatus?: string | null;
 }
-/** Field projections supply typed, display-only columns through this boundary. */
-export interface RecordColumnExtension {
-  id: `field:${string}`;
-  label: string;
-  render: (row: RecordListRow) => React.ReactNode;
+/** The URL-backed table controller this surface drives. */
+export interface RecordListQueryState {
+  query: TableQuery;
+  error: Error | null;
+  ready: boolean;
+  update: (patch: Partial<TableQuery>, resetPage?: boolean) => void;
+  write: (next: TableQuery, replace?: boolean) => void;
+  clear: () => void;
 }
 const emptyRows: RecordListRow[] = [];
 const labels = { company: "Companies", contact: "Contacts", deal: "Deals" };
+const pageSizes = [25, 50, 100];
+/** `hideable: false` pins a column: the ported table omits it from its column menu. */
+type ListColumn = DataTableColumn<RecordListRow>;
+/** A click that lands on a control inside a row belongs to that control. */
+const rowControlSelector =
+  "a,button,input,select,textarea,summary,[role='checkbox'],[role='menuitem']";
 export function recordName(row: RecordListRow) {
   return row.name ?? [row.firstName, row.lastName].filter(Boolean).join(" ");
 }
@@ -86,6 +92,20 @@ function date(value: string | null | undefined, dayOnly = false) {
     : dayOnly
       ? parsed.toLocaleDateString(undefined, { timeZone: "UTC" })
       : parsed.toLocaleString();
+}
+function relatedCompanyCell(row: RecordListRow) {
+  if (!row.companyId) return "—";
+  return (
+    <RecordLink reference={{ kind: "company", id: row.companyId }}>
+      {row.company?.name ?? `Unknown company (${row.companyId})`}
+      {row.company?.archivedAt ? " (archived)" : ""}
+    </RecordLink>
+  );
+}
+function ownerCell(row: RecordListRow) {
+  if (row.owner?.name) return row.owner.name;
+  if (row.ownerId) return `Unavailable / historical (${row.ownerId})`;
+  return "Unassigned";
 }
 function RecordLink({
   reference,
@@ -123,49 +143,81 @@ function RecordLink({
     </a>
   );
 }
+/** The page header owns "New <entity>"; an empty list reuses the same control. */
+export function CreateRecordButton({ entity }: { entity: RecordEntity }) {
+  const { account } = useAppData();
+  const [creating, setCreating] = useState(false);
+  const canCreate =
+    canPermission(account, entity, "create") &&
+    (entity !== "deal" || canPermission(account, "company", "read"));
+  if (!canCreate) return null;
+  return (
+    <>
+      <Button onClick={() => setCreating(true)}>New {entity}</Button>
+      <CreateRecordDialog
+        entity={entity}
+        open={creating}
+        onOpenChange={setCreating}
+      />
+    </>
+  );
+}
 function ListContent({
   entity,
   state,
-  extraColumns = [],
 }: {
   entity: RecordEntity;
-  state: ReturnType<typeof useTableQuery>;
-  extraColumns?: RecordColumnExtension[];
+  state: RecordListQueryState;
 }) {
-  const { api, account, generation } = useAppData();
+  const { api, account } = useAppData();
   const { query, update, clear, write } = state;
-  const canCreate = canPermission(account, entity, "create") && (entity !== "deal" || canPermission(account, "company", "read"));
   const canUpdate = canPermission(account, entity, "update");
-  const canSelect = canUpdate || canPermission(account, entity, query.archived ? "restore" : "archive");
-  const canActivitySummary = (["company", "contact", "deal", "activity"] as const).every(kind => canPermission(account, kind, "read"));
+  const canSelect =
+    canUpdate ||
+    canPermission(account, entity, query.archived ? "restore" : "archive");
+  const canActivitySummary = (
+    ["company", "contact", "deal", "activity"] as const
+  ).every((kind) => canPermission(account, kind, "read"));
   const fieldQuery = useFieldDefinitions(entity);
   const directory = useAssigneeDirectory();
-  const directoryStatus = directory.error ? "User directory unavailable" : directory.loading ? "Loading user…" : undefined;
-  const customColumns = useMemo(() => fieldColumns(fieldQuery.data ?? [], directory.data ?? [], directoryStatus), [fieldQuery.data, directory.data, directoryStatus]);
-  const displayColumns = useMemo(() => [...customColumns, ...extraColumns.filter(column => !customColumns.some(field => field.id === column.id))], [customColumns, extraColumns]);
-  const unavailableFilters = fieldQuery.data ? Object.keys(query.filters).filter(key => !supportedFieldFilter(entity, key, fieldQuery.data!)) : [];
+  const directoryStatus = directory.error
+    ? "User directory unavailable"
+    : directory.loading
+      ? "Loading user…"
+      : undefined;
+  const customColumns = useMemo(
+    () =>
+      fieldColumns(fieldQuery.data ?? [], directory.data ?? [], directoryStatus),
+    [fieldQuery.data, directory.data, directoryStatus],
+  );
+  const unavailableFilters = fieldQuery.data
+    ? Object.keys(query.filters).filter(
+        (key) => !supportedFieldFilter(entity, key, fieldQuery.data!),
+      )
+    : [];
   const resource =
-    entity === "company"
-      ? "companies"
-      : entity === "contact"
-        ? "contacts"
-        : "deals";
-  const apiQuery = { ...tableQueryToApi(query), includeFields: customColumns.length > 0 };
+    entity === "company" ? "companies" : entity === "contact" ? "contacts" : "deals";
+  const apiQuery = {
+    ...tableQueryToApi(query),
+    includeFields: customColumns.length > 0,
+  };
+  const {
+    facets,
+    error: facetError,
+    refresh: refreshFacets,
+  } = useListFacets({
+    entity,
+    query: apiQuery,
+    fieldDefinitions: fieldQuery.data,
+  });
   const result = useAppQuery<Page<RecordListRow>>(
     resource,
     apiQuery,
     (signal) => api[resource].list(apiQuery, { signal }),
   );
   const [search, setSearch] = useState(query.q);
-  const [creating, setCreating] = useState(false);
-  const [selection, setSelection] = useState<RowSelectionState>({});
-  const [selectionKey, setSelectionKey] = useState("");
-  const [visibility, setVisibility] = useState<VisibilityState>({
-    createdAt: false,
-    enrichment: false,
-  });
-  const queryKey = JSON.stringify(apiQuery);
-  const preferenceKey = `crm:columns:${account.id}:${entity}`;
+  const [report, setReport] = useState<BulkReport | null>(null);
+  const skipRowOpen = useRef(false);
   useEffect(() => {
     setSearch(query.q);
   }, [query.q]);
@@ -174,209 +226,244 @@ function ListContent({
     const timer = setTimeout(() => update({ q: search }), 350);
     return () => clearTimeout(timer);
   }, [search, query]);
-  useEffect(() => {
-    setSelection({});
-    setSelectionKey(queryKey);
-  }, [queryKey, generation]);
-  useEffect(() => {
-    setCreating(false);
-  }, [generation]);
-  useEffect(() => {
-    try {
-      const saved: unknown = JSON.parse(
-        localStorage.getItem(preferenceKey) ?? "null",
-      );
-      if (saved && typeof saved === "object" && !Array.isArray(saved))
-        setVisibility(
-          Object.fromEntries(
-            Object.entries(saved).filter(
-              ([key, value]) => key !== "name" && typeof value === "boolean",
-            ),
-          ),
-        );
-      else setVisibility({ createdAt: false, enrichment: false });
-    } catch {
-      setVisibility({ createdAt: false, enrichment: false });
-    }
-  }, [preferenceKey]);
   const rows = result.data?.items ?? emptyRows;
   const total = result.data?.total ?? 0;
+  const loading = result.loading || result.refreshing;
   const settled =
-    !result.loading &&
-    !result.refreshing &&
-    !result.error &&
-    !!result.data &&
-    !state.error;
+    !loading && !result.error && !!result.data && !state.error;
   const maxPage = Math.max(1, Math.ceil(total / query.limit));
   useEffect(() => {
-    if (settled && query.page > maxPage)
-      write({ ...query, page: maxPage }, true);
+    if (settled && query.page > maxPage) write({ ...query, page: maxPage }, true);
   }, [settled, query.page, maxPage]);
-  const safeSelection =
-    selectionKey === queryKey
-      ? Object.fromEntries(
-          Object.entries(selection).filter(
-            ([id, checked]) => checked && rows.some((row) => row.id === id),
-          ),
-        )
-      : {};
-  const columns = useMemo<ColumnDef<RecordListRow>[]>(() => {
-    const column = (
-      id: string,
-      header: string,
-      cell: (row: RecordListRow) => React.ReactNode,
-      sortable = true,
-    ): ColumnDef<RecordListRow> => ({
-      id,
-      header,
-      accessorFn: (row) => row.id,
-      enableSorting: sortable,
-      cell: (context) => cell(context.row.original),
-    });
-    const company = (row: RecordListRow) =>
-      row.companyId ? (
-        <RecordLink reference={{ kind: "company", id: row.companyId }}>
-          {row.company?.name ?? `Unknown company (${row.companyId})`}
-          {row.company?.archivedAt ? " (archived)" : ""}
-        </RecordLink>
-      ) : (
-        "—"
-      );
-    const owner = (row: RecordListRow) =>
-      row.owner?.name ??
-      (row.ownerId
-        ? `Unavailable / historical (${row.ownerId})`
-        : "Unassigned");
-    const base: ColumnDef<RecordListRow>[] = [
+  const selection = useTableSelection(rows.map((row) => row.id));
+  const selectedTargets = rows
+    .filter((row) => selection.has(row.id))
+    .map((row) => ({ id: row.id, name: recordName(row) }));
+  const columns = useMemo<ListColumn[]>(() => {
+    const base: ListColumn[] = [
       {
-        ...column(
-          "name",
-          entity === "contact"
-            ? "Name"
-            : entity === "company"
-              ? "Company"
-              : "Deal",
-          (row) => (
-            <RecordLink reference={{ kind: entity, id: row.id }}>
-              {recordName(row)}
-            </RecordLink>
-          ),
+        id: "name",
+        header:
+          entity === "contact" ? "Name" : entity === "company" ? "Company" : "Deal",
+        sortable: true,
+        hideable: false,
+        width: "w-[24%]",
+        cellClassName: "truncate",
+        cell: (row) => (
+          <RecordLink reference={{ kind: entity, id: row.id }}>
+            {recordName(row)}
+          </RecordLink>
         ),
-        enableHiding: false,
       },
     ];
     if (entity === "company")
       base.push(
-        column("domain", "Domain", (row) => row.domain ?? "—"),
-        column("industry", "Industry", (row) => row.industry ?? "—"),
-        column("owner", "Owner", owner),
-        column("contacts", "Contacts", (row) => row.contactCount ?? "—"),
-        column("deals", "Open deals", (row) => row.openDealCount ?? "—"),
+        {
+          id: "domain",
+          header: "Domain",
+          sortable: true,
+          width: "w-[16%]",
+          cellClassName: "truncate",
+          cell: (row) => row.domain ?? "—",
+        },
+        {
+          id: "industry",
+          header: "Industry",
+          sortable: true,
+          width: "w-[14%]",
+          cellClassName: "truncate",
+          cell: (row) => row.industry ?? "—",
+        },
+        {
+          id: "owner",
+          header: "Owner",
+          sortable: true,
+          width: "w-[16%]",
+          cellClassName: "truncate",
+          cell: ownerCell,
+        },
+        {
+          id: "contacts",
+          header: "Contacts",
+          sortable: true,
+          align: "right",
+          width: "w-[9%]",
+          cellClassName: "tabular-nums",
+          cell: (row) => row.contactCount ?? "—",
+        },
+        {
+          id: "deals",
+          header: "Open deals",
+          sortable: true,
+          align: "right",
+          width: "w-[9%]",
+          cellClassName: "tabular-nums",
+          cell: (row) => row.openDealCount ?? "—",
+        },
       );
     if (entity === "contact")
       base.push(
-        column("title", "Title", (row) => row.title ?? "—"),
-        column("email", "Email", (row) => row.email ?? "—"),
-        column("company", "Company", company),
-        column("owner", "Owner", owner),
+        {
+          id: "title",
+          header: "Title",
+          sortable: true,
+          width: "w-[16%]",
+          cellClassName: "truncate",
+          cell: (row) => row.title ?? "—",
+        },
+        {
+          id: "email",
+          header: "Email",
+          sortable: true,
+          width: "w-[18%]",
+          cellClassName: "truncate",
+          cell: (row) => row.email ?? "—",
+        },
+        {
+          id: "company",
+          header: "Company",
+          sortable: true,
+          width: "w-[18%]",
+          cellClassName: "truncate",
+          cell: relatedCompanyCell,
+        },
+        {
+          id: "owner",
+          header: "Owner",
+          sortable: true,
+          width: "w-[16%]",
+          cellClassName: "truncate",
+          cell: ownerCell,
+        },
       );
     if (entity === "deal")
       base.push(
-        column("company", "Company", company),
-        column("stage", "Stage", (row) =>
-          stageLabel(row.stage ?? "DEMO_BOOKED"),
-        ),
-        column("amount", "Amount (grouped by currency)", (row) =>
-          row.amount == null ? "—" : `${row.currency} ${row.amount}`,
-        ),
-        column("owner", "Owner", owner),
-        column("expectedCloseDate", "Close date", (row) =>
-          date(row.expectedCloseDate, true),
-        ),
+        {
+          id: "company",
+          header: "Company",
+          sortable: true,
+          width: "w-[12%]",
+          cellClassName: "truncate",
+          cell: relatedCompanyCell,
+        },
+        {
+          id: "stage",
+          header: "Stage",
+          sortable: true,
+          width: "w-[8%]",
+          cell: (row) => stageLabel(row.stage ?? "DEMO_BOOKED"),
+        },
+        {
+          id: "amount",
+          header: "Amount (grouped by currency)",
+          sortable: true,
+          align: "right",
+          width: "w-[9%]",
+          cellClassName: "tabular-nums",
+          cell: (row) => (row.amount == null ? "—" : `${row.currency} ${row.amount}`),
+        },
+        {
+          id: "owner",
+          header: "Owner",
+          sortable: true,
+          width: "w-[9%]",
+          cellClassName: "truncate",
+          cell: ownerCell,
+        },
+        {
+          id: "expectedCloseDate",
+          header: "Close date",
+          sortable: true,
+          align: "right",
+          width: "w-[7%]",
+          cell: (row) => date(row.expectedCloseDate, true),
+        },
       );
     base.push(
-      column("createdAt", "Created", (row) => date(row.createdAt)),
-      column("lastActivity", "Last activity", (row) =>
-        date(row.lastActivityAt),
-      ),
+      {
+        id: "createdAt",
+        header: "Created",
+        sortable: true,
+        align: "right",
+        width: "w-[12%]",
+        defaultHidden: true,
+        cell: (row) => date(row.createdAt),
+      },
+      {
+        id: "lastActivity",
+        header: "Last activity",
+        sortable: true,
+        align: "right",
+        width: "w-[12%]",
+        cell: (row) => date(row.lastActivityAt),
+      },
     );
     if (entity === "company")
-      base.push(
-        column(
-          "enrichment",
-          "Enrichment",
-          (row) =>
-            row.enrichmentStatus ? stageLabel(row.enrichmentStatus) : "—",
-          false,
-        ),
-      );
-    if (query.archived)
-      base.push(
-        column("archivedAt", "Archived", (row) => date(row.archivedAt)),
-      );
-    base.push(
-      ...displayColumns.map((extension) =>
-        column(extension.id, extension.label, extension.render, false),
-      ),
-    );
-    return base.filter(column => column.id !== "company" || canPermission(account, "company", "read"))
-      .filter(column => column.id !== "contacts" || canPermission(account, "contact", "read"))
-      .filter(column => column.id !== "deals" || canPermission(account, "deal", "read"))
-      .filter(column => column.id !== "lastActivity" || canActivitySummary);
-  }, [entity, query.archived, displayColumns, account, canActivitySummary]);
-  const table = useReactTable({
-    data: rows,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getRowId: (row) => row.id,
-    manualSorting: true,
-    manualFiltering: true,
-    manualPagination: true,
-    pageCount: maxPage,
-    state: {
-      sorting: [{ id: query.sort, desc: query.dir === "desc" }],
-      pagination: { pageIndex: query.page - 1, pageSize: query.limit },
-      columnVisibility: { ...visibility, name: true },
-      rowSelection: safeSelection,
-    },
-    enableRowSelection: settled && canSelect,
-    onRowSelectionChange: (change) => {
-      if (settled) {
-        setSelection(
-          typeof change === "function" ? change(safeSelection) : change,
-        );
-        setSelectionKey(queryKey);
-      }
-    },
-    onColumnVisibilityChange: (change) => {
-      const next = typeof change === "function" ? change(visibility) : change;
-      next.name = true;
-      setVisibility(next);
-      try {
-        localStorage.setItem(preferenceKey, JSON.stringify(next));
-      } catch {
-        /* Column preferences remain usable without local storage. */
-      }
-    },
-    onSortingChange: (change) => {
-      const sorting =
-        typeof change === "function"
-          ? change(table.getState().sorting)
-          : change;
-      const sort = sorting[0];
-      update({
-        sort: sort?.id ?? "createdAt",
-        dir: sort?.desc === false ? "asc" : "desc",
+      base.push({
+        id: "enrichment",
+        header: "Enrichment",
+        width: "w-[12%]",
+        defaultHidden: true,
+        cell: (row) =>
+          row.enrichmentStatus ? stageLabel(row.enrichmentStatus) : "—",
       });
-    },
-    enableSortingRemoval: false,
-  });
+    if (query.archived)
+      base.push({
+        id: "archivedAt",
+        header: "Archived",
+        sortable: true,
+        align: "right",
+        width: "w-[12%]",
+        cell: (row) => date(row.archivedAt),
+      });
+    base.push(
+      ...customColumns.map((extension) => ({
+        id: extension.id,
+        header: extension.header,
+        width: "w-[12%]",
+        cellClassName: "truncate",
+        cell: extension.cell,
+      })),
+    );
+    if (entity === "deal" && canUpdate)
+      base.push({
+        id: "actions",
+        header: "Actions",
+        hideable: false,
+        align: "right",
+        width: "w-[132px]",
+        cell: (row) => (
+          <BulkActions
+            stageOnly
+            entity="deal"
+            targets={[{ id: row.id, name: recordName(row) }]}
+            archived={query.archived}
+            disabled={!settled}
+            retainFailures={() => {}}
+          />
+        ),
+      });
+    return base.filter((entry) => {
+      if (entry.id === "company") return canPermission(account, "company", "read");
+      if (entry.id === "contacts") return canPermission(account, "contact", "read");
+      if (entry.id === "deals") return canPermission(account, "deal", "read");
+      if (entry.id === "lastActivity") return canActivitySummary;
+      return true;
+    });
+  }, [
+    entity,
+    query.archived,
+    customColumns,
+    account,
+    canActivitySummary,
+    canUpdate,
+    settled,
+  ]);
   let recordError = "";
   try {
     parseRecordStack(window.location.search);
   } catch (error) {
-    recordError =
-      error instanceof Error ? error.message : "Invalid record link";
+    recordError = error instanceof Error ? error.message : "Invalid record link";
   }
   const filtered =
     !!query.q ||
@@ -385,493 +472,344 @@ function ListContent({
     !!query.companyId ||
     !!query.stage ||
     !!query.currency;
+  const tableQuery: TableQueryState & {
+    setPageSize: (pageSize: number) => void;
+  } = {
+    sort: query.sort,
+    dir: query.dir,
+    page: query.page,
+    pageSize: query.limit,
+    tab: "all",
+    filters: query.filters,
+    toggleSort: (id) =>
+      update(
+        query.sort === id
+          ? { dir: query.dir === "asc" ? "desc" : "asc" }
+          : { sort: id, dir: "asc" },
+      ),
+    setSort: (id) => update({ sort: id }),
+    setDir: (nextDir) => update({ dir: nextDir }),
+    setPage: async (page) => {
+      update({ page }, false);
+    },
+    /* Worker CRM lists have no tab strip; the state still carries htcrm's shape. */
+    setTab: () => {},
+    setFilter: (id, values) => {
+      const filters = { ...query.filters };
+      if (values.length) filters[id] = values;
+      else delete filters[id];
+      update({ filters });
+    },
+    setPageSize: (pageSize) => update({ limit: pageSize }),
+  };
   return (
-    <div className="space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {labels[entity]}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {query.archived
-              ? "Archived records"
-              : "Manage your workspace records"}
-          </p>
-        </div>
-        {canCreate && <Button onClick={() => setCreating(true)}>New {entity}</Button>}
-      </header>
+    <div
+      className="flex min-h-0 flex-1 flex-col gap-3"
+      onClickCapture={(event) => {
+        const target = event.target as HTMLElement;
+        skipRowOpen.current =
+          !!target.closest(rowControlSelector) ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey ||
+          !!recordError;
+      }}
+    >
       {recordError && (
         <div
           role="alert"
-          className="rounded-md border border-destructive/30 p-3 text-sm"
+          className="flex flex-wrap items-center gap-3 rounded-md border border-destructive/30 p-3 text-xs"
         >
-          {recordError}{" "}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => writeRecordStack([])}
-          >
+          {recordError}
+          <Button size="sm" variant="outline" onClick={() => writeRecordStack([])}>
             Close invalid record link
           </Button>
         </div>
       )}
-      {fieldQuery.error ? <p role="alert" className="text-sm text-destructive">Custom field definitions could not load. {fieldQuery.error instanceof Error ? fieldQuery.error.message : "Request failed."} <button type="button" className="underline" onClick={fieldQuery.refresh}>Retry custom fields</button></p> : fieldQuery.loading && <Skeleton className="h-4 w-40" />}
-      {!!directory.error && fieldQuery.data?.some(field => field.type === "USER" && (field.showOnTable || field.showOnFilter) && !field.archivedAt) && <p role="alert" className="text-sm text-destructive">User directory unavailable. <button type="button" className="underline" onClick={directory.refresh}>Retry user directory</button></p>}
-      {unavailableFilters.length > 0 && <div role="alert" className="space-y-2 rounded border border-destructive/30 p-3 text-sm"><p>A selected custom field is retired or no longer supports filtering. Repair the filters to continue.</p><Button variant="outline" onClick={() => update({ filters: Object.fromEntries(Object.entries(query.filters).filter(([key]) => !unavailableFilters.includes(key))) })}>Remove unavailable field filters</Button></div>}
-      <section
-        aria-label={`${labels[entity]} records`}
-        className="rounded-lg border bg-card"
-      >
-        <div className="flex flex-wrap items-center gap-2 border-b p-3">
-          <div className="relative w-full md:w-auto md:min-w-48 md:max-w-sm md:flex-1">
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              className="h-11 pl-9 shadow-none md:h-9"
-              aria-label={`Search ${labels[entity].toLowerCase()}`}
-              placeholder={`Search ${labels[entity].toLowerCase()}…`}
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </div>
-          <FacetFilters
-            entity={entity}
-            query={apiQuery}
-            fieldDefinitions={fieldQuery.data}
-            onChange={(filters) => update({ filters })}
-          />
-          <SavedViews
-            entity={entity}
-            query={query}
-            apply={(next) => write(next)}
-            clear={clear}
-            fieldDefinitions={fieldQuery.data}
-        definitionsReady={!fieldQuery.loading && !fieldQuery.refreshing && !fieldQuery.error}
-          />
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <label className="flex min-h-11 cursor-pointer items-center gap-2 px-2 text-sm text-muted-foreground md:min-h-9">
-              <input
-                type="checkbox"
-                className="size-4 accent-primary"
-                checked={query.archived}
-                onChange={(event) => update({ archived: event.target.checked })}
-              />
-              Archived
-            </label>
-            <ToolbarMenu label="Columns" icon={<Column aria-hidden="true" />}>
-              <p className="mb-3 text-xs text-muted-foreground">
-                Visible columns
-              </p>
-              <div className="space-y-1">
-                {table.getAllLeafColumns().map((column) => (
-                  <label
-                    key={column.id}
-                    className="flex min-h-9 cursor-pointer items-center gap-3 rounded px-2 text-sm hover:bg-accent"
-                  >
-                    <input
-                      type="checkbox"
-                      className="size-4 accent-primary"
-                      checked={column.getIsVisible()}
-                      disabled={!column.getCanHide()}
-                      onChange={column.getToggleVisibilityHandler()}
-                    />
-                    {String(column.columnDef.header)}
-                  </label>
-                ))}
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="mt-3 w-full border-t"
-                onClick={() => {
-                  setVisibility({ createdAt: false, enrichment: false });
-                  try {
-                    localStorage.removeItem(preferenceKey);
-                  } catch {}
-                }}
-              >
-                Reset columns
-              </Button>
-            </ToolbarMenu>
-            <Button
-              variant="outline"
-              size="icon"
-              className="size-11 shadow-none md:size-9"
-              aria-label="Refresh"
-              title="Refresh records"
-              onClick={result.refresh}
-              disabled={result.loading || result.refreshing}
-            >
-              <Renew
-                aria-hidden="true"
-                className={
-                  result.refreshing ? "motion-safe:animate-spin" : undefined
-                }
-              />
-            </Button>
-          </div>
-        </div>
-        {Object.keys(query.filters ?? {}).length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-            <span className="text-xs text-muted-foreground">Filtered by</span>
-            {Object.entries(query.filters ?? {}).map(([facet, values]) => (
-              <button
-                key={facet}
-                type="button"
-                aria-label={`Remove ${facetLabels[facet] ?? fieldFilterLabel(facet, fieldQuery.data ?? [])} filter`}
-                className="inline-flex max-w-full items-center gap-2 rounded border border-primary/20 bg-primary/5 px-2 py-1 text-xs text-link hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => {
-                  const filters = { ...query.filters };
-                  delete filters[facet];
-                  update({ filters });
-                }}
-              >
-                <span className="truncate">
-                  {facetLabels[facet] ?? fieldFilterLabel(facet, fieldQuery.data ?? [])}:{" "}
-                  {facet === "owner" || facet === "company"
-                    ? `${values.length} selected`
-                    : facet.startsWith("field:") ? fieldFilterValues(facet, values, fieldQuery.data ?? [], directory.data ?? [], directoryStatus) : values.join(", ")}
-                </span>
-                <Close aria-hidden="true" className="size-3 shrink-0" />
-              </button>
-            ))}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-xs"
-              onClick={clear}
-            >
-              Clear filters
-            </Button>
-          </div>
-        )}
-        {query.sort === "amount" && (
-          <p className="border-b px-4 py-2 text-xs text-muted-foreground">
-            Amounts are grouped by currency and sorted exactly within each
-            currency. No exchange-rate conversion is applied.
-          </p>
-        )}
-        <BulkActions
-          entity={entity}
-          targets={rows
-            .filter((row) => safeSelection[row.id])
-            .map((row) => ({ id: row.id, name: recordName(row) }))}
-          archived={query.archived}
-          disabled={!settled}
-          retainFailures={(ids) => {
-            setSelection(Object.fromEntries(ids.map((id) => [id, true])));
-            setSelectionKey(queryKey);
-          }}
-        />
-        {result.error ? (
-          <div
-            role="alert"
-            className="rounded-md border border-destructive/30 p-6"
+      {fieldQuery.error ? (
+        <p role="alert" className="text-xs text-destructive">
+          Custom field definitions could not load.{" "}
+          {fieldQuery.error instanceof Error
+            ? fieldQuery.error.message
+            : "Request failed."}{" "}
+          <button
+            type="button"
+            className="underline"
+            onClick={fieldQuery.refresh}
           >
-            <p>
-              {result.error instanceof Error
-                ? result.error.message
-                : "Could not load records."}
-            </p>
-            <Button variant="outline" className="mt-3" onClick={result.refresh}>
-              Retry records
-            </Button>
-          </div>
-        ) : (
-          <div>
-            <div
-              role="status"
-              aria-live="polite"
-              className="border-b px-4 py-2 text-xs text-muted-foreground"
+            Retry custom fields
+          </button>
+        </p>
+      ) : null}
+      {!!directory.error &&
+        fieldQuery.data?.some(
+          (field) =>
+            field.type === "USER" &&
+            (field.showOnTable || field.showOnFilter) &&
+            !field.archivedAt,
+        ) && (
+          <p role="alert" className="text-xs text-destructive">
+            User directory unavailable.{" "}
+            <button
+              type="button"
+              className="underline"
+              onClick={directory.refresh}
             >
-              {result.loading
-                ? <Skeleton className="h-3 w-24" />
-                : result.refreshing
-                  ? "Refreshing records…"
-                  : `${total} ${total === 1 ? "record" : "records"}`}
-            </div>
-            <Table
-              aria-label={`${labels[entity]} list`}
-              aria-busy={result.loading || result.refreshing}
-            >
-              <TableHeader>
-                {table.getHeaderGroups().map((group) => (
-                  <TableRow key={group.id}>
-                    <TableHead className="w-10">
-                      <input
-                        type="checkbox"
-                        aria-label="Select page"
-                        disabled={!settled || !rows.length || !canSelect}
-                        checked={
-                          rows.length > 0 &&
-                          rows.every((row) => safeSelection[row.id])
-                        }
-                        onChange={table.getToggleAllPageRowsSelectedHandler()}
-                      />
-                    </TableHead>
-                    {group.headers.map((header) => (
-                      <TableHead
-                        key={header.id}
-                        className="whitespace-nowrap"
-                        aria-sort={
-                          header.column.getIsSorted() === "asc"
-                            ? "ascending"
-                            : header.column.getIsSorted() === "desc"
-                              ? "descending"
-                              : undefined
-                        }
-                      >
-                        {header.column.getCanSort() ? (
-                          <button
-                            className="rounded py-2 text-left focus-visible:ring-2 focus-visible:ring-ring"
-                            onClick={header.column.getToggleSortingHandler()}
-                          >
-                            {flexRender(
-                              header.column.columnDef.header,
-                              header.getContext(),
-                            )}
-                            {header.column.getIsSorted() === "asc"
-                              ? " ↑"
-                              : header.column.getIsSorted() === "desc"
-                                ? " ↓"
-                                : ""}
-                          </button>
-                        ) : (
-                          flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )
-                        )}
-                      </TableHead>
-                    ))}
-                    {entity === "deal" && canUpdate && <TableHead>Actions</TableHead>}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                {table.getRowModel().rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    tabIndex={0}
-                    aria-label={`Open ${recordName(row.original)}`}
-                    onKeyDown={(event) => {
-                      if (
-                        event.target === event.currentTarget &&
-                        (event.key === "Enter" || event.key === " ") &&
-                        !recordError
-                      ) {
-                        event.preventDefault();
-                        openRecord({ kind: entity, id: row.id });
-                      }
-                    }}
-                    onClick={(event) => {
-                      if (
-                        (event.target as HTMLElement).closest(
-                          "a,button,input,select,textarea,summary",
-                        ) ||
-                        recordError
-                      )
-                        return;
-                      if (
-                        event.metaKey ||
-                        event.ctrlKey ||
-                        event.shiftKey ||
-                        event.altKey
-                      )
-                        return;
-                      openRecord({ kind: entity, id: row.id });
-                    }}
-                    data-state={row.getIsSelected() ? "selected" : undefined}
-                  >
-                    <TableCell>
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${recordName(row.original)}`}
-                        checked={row.getIsSelected()}
-                        disabled={!settled || !canSelect}
-                        onChange={row.getToggleSelectedHandler()}
-                      />
-                    </TableCell>
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell
-                        key={cell.id}
-                        className="max-w-80 whitespace-nowrap"
-                        data-label={String(cell.column.columnDef.header)}
-                      >
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </TableCell>
-                    ))}
-                    {entity === "deal" && canUpdate && (
-                      <TableCell>
-                        <BulkActions
-                          stageOnly
-                          entity="deal"
-                          targets={[
-                            { id: row.id, name: recordName(row.original) },
-                          ]}
-                          archived={query.archived}
-                          disabled={!settled}
-                          retainFailures={() => {}}
-                        />
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-                {result.loading && Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={`skeleton-${i}`}>
-                    <TableCell><Skeleton className="h-4 w-4" /></TableCell>
-                    <TableCell
-                      colSpan={
-                        table.getVisibleLeafColumns().length +
-                        (entity === "deal" ? 2 : 1)
-                      }
-                    >
-                      <Skeleton className="h-4 w-full max-w-md" />
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {settled && !rows.length && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={
-                        table.getVisibleLeafColumns().length +
-                        (entity === "deal" ? 2 : 1)
-                      }
-                      className="h-40 text-center"
-                    >
-                      <p className="font-medium">
-                        {filtered
-                          ? "No matching records"
-                          : `No ${labels[entity].toLowerCase()} yet`}
-                      </p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {filtered
-                          ? "Adjust your search or filters to find records."
-                          : `Create your first ${entity} to get started.`}
-                      </p>
-                      {filtered ? (
-                        <Button
-                          className="mt-3"
-                          variant="outline"
-                          onClick={clear}
-                        >
-                          Clear filters
-                        </Button>
-                      ) : (
-                        <Button
-                          className="mt-3"
-                          onClick={() => setCreating(true)}
-                        >
-                          New {entity}
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t p-3 text-sm">
-          <label className="flex items-center gap-2">
-            Page size
-            <select
-              aria-label="Page size"
-              className={`${selectClass} w-24`}
-              value={query.limit}
-              onChange={(event) =>
-                update({ limit: Number(event.target.value) })
-              }
-            >
-              {[25, 50, 100].map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="flex items-center gap-3">
-            <Button
-              size="sm"
-              variant="outline"
-              aria-label="Previous page"
-              disabled={query.page <= 1 || !settled}
-              onClick={() => update({ page: query.page - 1 }, false)}
-            >
-              Previous
-            </Button>
-            <span>
-              Page {query.page} of {maxPage}
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              aria-label="Next page"
-              disabled={query.page >= maxPage || !settled}
-              onClick={() => update({ page: query.page + 1 }, false)}
-            >
-              Next
-            </Button>
-          </div>
-        </footer>
-      </section>
-      <CreateRecordDialog
-        entity={entity}
-        open={creating}
-        onOpenChange={setCreating}
-      />
-    </div>
-  );
-}
-export function RecordList({
-  entity,
-  extraColumns,
-}: {
-  entity: RecordEntity;
-  extraColumns?: RecordColumnExtension[];
-}) {
-  const state = useTableQuery(entity);
-  return (
-    <main className="mx-auto w-full max-w-screen-2xl p-4 sm:p-6 lg:p-8">
-      {!state.ready ? (
-        <div role="status" aria-busy="true" aria-label={`Loading ${labels[entity].toLowerCase()}`} className="space-y-4">
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-4 w-full max-w-md" />
-          <div className="rounded-lg border bg-card">
-            <div className="border-b p-3">
-              <Skeleton className="h-9 w-full max-w-sm" />
-            </div>
-            <div className="space-y-3 p-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-4 w-full" />
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : state.error ? (
-        <div role="alert" className="space-y-3">
-          <h1 className="text-2xl font-semibold">{labels[entity]}</h1>
-          <p>
-            This table link contains an unsupported or invalid query. Your
-            filters have not been applied.
+              Retry user directory
+            </button>
           </p>
-          <p className="text-sm text-destructive">{state.error.message}</p>
-          <Button variant="outline" onClick={state.clear}>
-            Clear invalid filters
+        )}
+      {unavailableFilters.length > 0 && (
+        <div
+          role="alert"
+          className="space-y-2 rounded-md border border-destructive/30 p-3 text-xs"
+        >
+          <p>
+            A selected custom field is retired or no longer supports filtering.
+            Repair the filters to continue.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              update({
+                filters: Object.fromEntries(
+                  Object.entries(query.filters).filter(
+                    ([key]) => !unavailableFilters.includes(key),
+                  ),
+                ),
+              })
+            }
+          >
+            Remove unavailable field filters
+          </Button>
+        </div>
+      )}
+      {report && <BulkReportView report={report} />}
+      {/* The ported table hides its own controls row while rows are selected,
+          so the list search stays in its own row above the table. */}
+      <div className="relative w-full sm:max-w-sm">
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+        />
+        <Input
+          className="pl-8"
+          aria-label={`Search ${labels[entity].toLowerCase()}`}
+          placeholder={`Search ${labels[entity].toLowerCase()}…`}
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+      </div>
+      {!!facetError && (
+        <p role="alert" className="text-xs text-destructive">
+          Filter options could not load.{" "}
+          {facetError instanceof Error ? facetError.message : "Request failed."}{" "}
+          <button type="button" className="underline" onClick={refreshFacets}>
+            Retry filters
+          </button>
+        </p>
+      )}
+      {Object.keys(query.filters).length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Filtered by</span>
+          {Object.entries(query.filters).map(([facet, values]) => (
+            <button
+              key={facet}
+              type="button"
+              aria-label={`Remove ${facetLabels[facet] ?? fieldFilterLabel(facet, fieldQuery.data ?? [])} filter`}
+              className="inline-flex max-w-full items-center gap-1.5 rounded-sm border bg-card px-2 py-1 text-xs text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                const filters = { ...query.filters };
+                delete filters[facet];
+                update({ filters });
+              }}
+            >
+              <span className="truncate">
+                {facetLabels[facet] ?? fieldFilterLabel(facet, fieldQuery.data ?? [])}
+                :{" "}
+                {facet === "owner" || facet === "company"
+                  ? `${values.length} selected`
+                  : facet.startsWith("field:")
+                    ? fieldFilterValues(
+                        facet,
+                        values,
+                        fieldQuery.data ?? [],
+                        directory.data ?? [],
+                        directoryStatus,
+                      )
+                    : values.join(", ")}
+              </span>
+              <Close aria-hidden="true" className="size-3 shrink-0" />
+            </button>
+          ))}
+          <Button size="sm" variant="ghost" onClick={clear}>
+            Clear filters
+          </Button>
+        </div>
+      )}
+      {query.sort === "amount" && (
+        <p className="text-xs text-muted-foreground">
+          Amounts are grouped by currency and sorted exactly within each
+          currency. No exchange-rate conversion is applied.
+        </p>
+      )}
+      {result.error ? (
+        <div role="alert" className="rounded-md border border-destructive/30 p-6">
+          <p className="text-xs">
+            {result.error instanceof Error
+              ? result.error.message
+              : "Could not load records."}
+          </p>
+          <Button variant="outline" className="mt-3" onClick={result.refresh}>
+            Retry records
           </Button>
         </div>
       ) : (
-        <ListContent
-          entity={entity}
-          state={state}
-          extraColumns={extraColumns}
+        <DataTable
+          query={tableQuery}
+          columns={columns}
+          rows={rows}
+          total={total}
+          getRowId={(row) => row.id}
+          loading={loading}
+          facets={facets}
+          storageKey={`record-list:${entity}:columns`}
+          actions={
+            <>
+              <SavedViews
+                entity={entity}
+                query={query}
+                apply={(next) => write(next)}
+                clear={clear}
+                fieldDefinitions={fieldQuery.data}
+                definitionsReady={
+                  !fieldQuery.loading &&
+                  !fieldQuery.refreshing &&
+                  !fieldQuery.error
+                }
+              />
+              <label className="flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted">
+                <input
+                  type="checkbox"
+                  className="size-3.5 accent-primary"
+                  checked={query.archived}
+                  onChange={(event) => update({ archived: event.target.checked })}
+                />
+                Archived
+              </label>
+              <Button
+                variant="outline"
+                size="sm"
+                className="justify-start sm:justify-center"
+                aria-label="Refresh"
+                title="Refresh records"
+                onClick={result.refresh}
+                disabled={loading}
+              >
+                <Renew
+                  data-icon="inline-start"
+                  className={
+                    result.refreshing ? "motion-safe:animate-spin" : undefined
+                  }
+                />
+              </Button>
+            </>
+          }
+          selection={
+            canSelect
+              ? {
+                  state: selection,
+                  rowLabel: (row) => recordName(row),
+                  actions: (
+                    <BulkActions
+                      entity={entity}
+                      targets={selectedTargets}
+                      archived={query.archived}
+                      disabled={!settled}
+                      retainFailures={(ids) => {
+                        selection.clear();
+                        for (const id of ids) selection.toggle(id, true);
+                      }}
+                      onReport={setReport}
+                    />
+                  ),
+                }
+              : undefined
+          }
+          onRowClick={(row) => {
+            if (skipRowOpen.current) return;
+            openRecord({ kind: entity, id: row.id });
+          }}
+          tableClassName="table-fixed min-w-[52rem]"
+          empty={
+            <div className="flex flex-col items-center gap-2">
+              <p className="font-medium text-foreground">
+                {filtered
+                  ? "No matching records"
+                  : `No ${labels[entity].toLowerCase()} yet`}
+              </p>
+              <p className="text-xs">
+                {filtered
+                  ? "Adjust your search or filters to find records."
+                  : `Create your first ${entity} to get started.`}
+              </p>
+              {filtered && (
+                <Button variant="outline" size="sm" onClick={clear}>
+                  Clear filters
+                </Button>
+              )}
+            </div>
+          }
+          meta={
+            <span className="flex flex-wrap items-center gap-3">
+              <span role="status">
+                {result.loading
+                  ? "Loading records…"
+                  : result.refreshing
+                    ? "Refreshing records…"
+                    : `${total} ${total === 1 ? "record" : "records"}`}
+              </span>
+              <label className="flex items-center gap-1.5">
+                Page size
+                <select
+                  aria-label="Page size"
+                  className="h-7 rounded-sm border border-input bg-background px-1.5 text-xs text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+                  value={query.limit}
+                  onChange={(event) =>
+                    tableQuery.setPageSize(Number(event.target.value))
+                  }
+                >
+                  {pageSizes.map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </span>
+          }
         />
       )}
-    </main>
+    </div>
   );
+}
+export function RecordList({ entity }: { entity: RecordEntity }) {
+  const state = useTableQuery(entity);
+  if (!state.ready) return <PageShellLoading />;
+  if (state.error)
+    return (
+      <div role="alert" className="space-y-3">
+        <p className="text-xs">
+          This table link contains an unsupported or invalid query. Your filters
+          have not been applied.
+        </p>
+        <p className="text-xs text-destructive">{state.error.message}</p>
+        <Button variant="outline" onClick={state.clear}>
+          Clear invalid filters
+        </Button>
+      </div>
+    );
+  return <ListContent entity={entity} state={state} />;
 }

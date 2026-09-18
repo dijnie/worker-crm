@@ -1,10 +1,12 @@
 "use client";
 import { canPermission } from "@/lib/auth/permissions";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useAppData } from "../app-data-provider";
+import { DetailSheetSection } from "../detail-sheet";
 import { RecordForm } from "../records/record-form";
 import { RecordPicker } from "../records/record-picker";
 import { RECORD_INVALIDATIONS, type RecordDraft, type RecordEntity } from "../records/form-values";
@@ -15,7 +17,7 @@ function RelatedLink({ record, onOpen, children }: { record: RecordRef; onOpen: 
   const fallback = `/${record.kind === "company" ? "companies" : record.kind === "contact" ? "contacts" : "deals"}?${new URLSearchParams({ record: `${record.kind}:${record.id}` })}`;
   let href = fallback;
   try { href = buildRecordUrl(typeof window === "undefined" ? fallback : window.location.href, record); } catch { /* An overfull stack still exposes a usable direct record link. */ }
-  return <a href={href} className="text-left text-sm underline underline-offset-4" onClick={event => {
+  return <a href={href} className="min-w-0 truncate text-left text-xs underline-offset-2 hover:underline" onClick={event => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault(); onOpen(record);
   }}>{children}</a>;
@@ -27,13 +29,15 @@ export function RelatedRecords({ title, kind, records, onOpen, children }: {
 }) {
   const { account } = useAppData();
   if (!canPermission(account, kind, "read")) return null;
-  return <section className="space-y-3" aria-label={title}><h3 className="text-sm font-semibold">{title} <span className="text-muted-foreground">({records.length})</span></h3>
-    {records.length ? <ul className="divide-y rounded-md border">{records.map(record => <li key={record.id} className="p-3 text-sm">
-      <RelatedLink record={{ kind, id: record.id }} onOpen={onOpen}>{record.name}</RelatedLink>
-      {record.archivedAt && <span className="ml-2 rounded bg-muted px-1 text-xs">Archived</span>}
-      {"role" in record && <p className="mt-1 text-xs text-muted-foreground">Role: {record.role || "Not set"}</p>}
-    </li>)}</ul> : <p className="text-sm text-muted-foreground">No {title.toLowerCase()}.</p>}{children}
-  </section>;
+  return <DetailSheetSection aria-label={title} title={title} action={<span className="text-muted-foreground text-xs tabular-nums">{records.length}</span>}>
+    {records.length ? <ul className="divide-y">
+      {records.map(record => <li key={record.id} className="flex min-w-0 flex-col gap-1 py-1.5">
+        <div className="flex min-w-0 items-center gap-2"><RelatedLink record={{ kind, id: record.id }} onOpen={onOpen}>{record.name}</RelatedLink>{record.archivedAt && <span className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-muted-foreground text-xs">Archived</span>}</div>
+        {"role" in record && <p className="text-muted-foreground text-xs">Role: {record.role || "Not set"}</p>}
+      </li>)}
+    </ul> : <p className="text-muted-foreground text-xs">No {title.toLowerCase()}.</p>}
+    {children}
+  </DetailSheetSection>;
 }
 
 export function SheetFormDialog({ open, onOpenChange, title, description, editorKey, onDirtyChange, children }: {
@@ -51,9 +55,9 @@ export function SheetFormDialog({ open, onOpenChange, title, description, editor
   return <Dialog open={open} onOpenChange={next => {
     if (saving || editor.current?.pending) return;
     if (!next && editor.current?.dirty) setConfirm(true); else onOpenChange(next);
-  }}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl"><DialogTitle>{title}</DialogTitle><DialogDescription>{description}</DialogDescription>
+  }}><DialogContent className="max-h-[90dvh] gap-4 overflow-y-auto sm:max-w-lg"><DialogTitle>{title}</DialogTitle><DialogDescription>{description}</DialogDescription>
     {open && children(register, requestClose)}
-    {confirm && <div role="alert" className="space-y-3 rounded border p-3"><p>Save your changes before closing?</p><div className="flex flex-wrap gap-2">
+    {confirm && <div role="alert" className="space-y-3 rounded-md border p-3 text-xs"><p>Save your changes before closing?</p><div className="flex flex-wrap gap-2">
       <Button disabled={saving || editorPending} onClick={async () => { setSaving(true); const ok = await editor.current?.save(); setSaving(false); if (ok) { setConfirm(false); onOpenChange(false); } }}>Save and close</Button>
       <Button disabled={saving || editorPending} variant="outline" onClick={() => { editor.current?.discard(); register(null); setConfirm(false); onOpenChange(false); }}>Discard</Button>
       <Button disabled={saving || editorPending} variant="ghost" onClick={() => setConfirm(false)}>Stay</Button>
@@ -66,7 +70,7 @@ export function ContextualCreate({ entity, defaults, onDirtyChange, recordKey }:
   const [open, setOpen] = useState(false);
   const { account } = useAppData();
   if (!canPermission(account, entity, "create") || entity === "deal" && !canPermission(account, "company", "read")) return null;
-  return <><Button size="sm" variant="outline" onClick={() => setOpen(true)}>Add {entity}</Button>
+  return <><Button size="sm" variant="outline-ghost" onClick={() => setOpen(true)}>Add {entity}</Button>
     <SheetFormDialog open={open} onOpenChange={setOpen} title={`New ${entity}`} description={`Add a ${entity} with this company's defaults.`} editorKey={`${recordKey}:create-${entity}`} onDirtyChange={onDirtyChange}>
       {(register, requestClose) => <RecordForm entity={entity} defaults={defaults} onDirtyChange={register} onCreated={() => setOpen(false)} onCancel={requestClose} />}
     </SheetFormDialog>
@@ -75,6 +79,7 @@ export function ContextualCreate({ entity, defaults, onDirtyChange, recordKey }:
 
 function AttachContactForm({ dealId, attachedIds, onSaved, onDirtyChange }: { dealId: string; attachedIds: readonly string[]; onSaved: () => void; onDirtyChange: (state: DirtyEditor | null) => void }) {
   const { api, invalidate, generation, store } = useAppData();
+  const roleId = useId();
   const [contactId, setContactId] = useState(""); const [role, setRole] = useState("");
   const [error, setError] = useState(""); const [pending, setPending] = useState(false);
   const flight = useRef<Promise<boolean> | null>(null); const mounted = useRef(true);
@@ -97,9 +102,12 @@ function AttachContactForm({ dealId, attachedIds, onSaved, onDirtyChange }: { de
   useEffect(() => { onDirtyChange(dirty ? { dirty, pending, save: () => latest.current(), discard: () => { setContactId(""); setRole(""); setError(""); } } : null); return () => onDirtyChange(null); }, [dirty, pending, onDirtyChange]);
   return <form className="space-y-4" onSubmit={event => { event.preventDefault(); void save(); }}>
     <RecordPicker kind="contact" label="Participant" value={contactId} onChange={setContactId} required disabled={pending} excludeIds={attachedIds} />
-    <p className="text-xs text-muted-foreground">Search all active contacts, including people at other companies.</p>
-    <label className="block space-y-2"><span className="text-sm">Role (optional)</span><Input aria-label="Participant role" value={role} disabled={pending} maxLength={80} onChange={event => setRole(event.target.value)} /></label>
-    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}<Button type="submit" disabled={pending}>{pending ? "Attaching…" : "Attach contact"}</Button>
+    <p className="text-muted-foreground text-xs">Search all active contacts, including people at other companies.</p>
+    <Field>
+      <FieldLabel htmlFor={roleId}>Role (optional)</FieldLabel>
+      <Input id={roleId} aria-label="Participant role" value={role} disabled={pending} maxLength={80} onChange={event => setRole(event.target.value)} />
+    </Field>
+    {error && <p role="alert" className="text-destructive text-xs">{error}</p>}<Button type="submit" disabled={pending}>{pending ? "Attaching…" : "Attach contact"}</Button>
   </form>;
 }
 export function DealContacts({ dealId, contacts, onOpen, onDirtyChange }: {
@@ -112,26 +120,29 @@ export function DealContacts({ dealId, contacts, onOpen, onDirtyChange }: {
   const mounted = useRef(true); useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   if (!canPermission(account, "contact", "read")) return null;
   const editable = canPermission(account, "deal", "update");
-  return <section aria-label="Deal contacts" className="space-y-3"><h3 className="text-sm font-semibold">Contacts ({contacts.length})</h3>
-    {contacts.length ? contacts.map(contact => <div key={contact.id} className="rounded border p-3">
-      <RelatedLink record={{ kind: "contact", id: contact.id }} onOpen={onOpen}>{contactName(contact)}</RelatedLink>{contact.archivedAt && <span className="ml-2 text-xs">Archived</span>}
+  return <DetailSheetSection aria-label="Deal contacts" title="Contacts" action={<span className="text-muted-foreground text-xs tabular-nums">{contacts.length}</span>}>
+    {contacts.length ? contacts.map(contact => <div key={contact.id} className="space-y-1 pb-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <RelatedLink record={{ kind: "contact", id: contact.id }} onOpen={onOpen}>{contactName(contact)}</RelatedLink>
+        {contact.archivedAt && <span className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-muted-foreground text-xs">Archived</span>}
+        {editable && <Button size="sm" variant="ghost" onClick={() => { setError(""); setDetach(contact.id); }}>Detach {contactName(contact)}</Button>}
+      </div>
       <InlineField readOnly={!editable} fieldKey={`deal:${dealId}:role:${contact.id}`} label={`Role for ${contactName(contact)}`} value={contact.role ?? ""} onDirtyChange={onDirtyChange} onSave={async input => {
         const role = input.trim(); if (role.length > 80) throw new Error("Role must be at most 80 characters.");
         const saved = await api.deals.updateContactRole(dealId, contact.id, { role: role || null }); invalidate(RECORD_INVALIDATIONS); return saved.role ?? "";
       }} />
-      {editable && <Button size="sm" variant="ghost" className="mt-2" onClick={() => { setError(""); setDetach(contact.id); }}>Detach {contactName(contact)}</Button>}
-    </div>) : <p className="text-sm text-muted-foreground">No contacts attached.</p>}
-    {editable && <Button size="sm" variant="outline" onClick={() => setAttach(true)}>Attach existing contact</Button>}
+    </div>) : <p className="text-muted-foreground text-xs">No contacts attached.</p>}
+    {editable && <Button size="sm" variant="outline-ghost" onClick={() => setAttach(true)}>Attach existing contact</Button>}
     <SheetFormDialog open={attach} onOpenChange={setAttach} title="Attach contact" description="Add a participant independently of their employer." editorKey={`deal:${dealId}:attach`} onDirtyChange={onDirtyChange}>
       {register => <AttachContactForm dealId={dealId} attachedIds={contacts.map(contact => contact.id)} onSaved={() => setAttach(false)} onDirtyChange={register} />}
     </SheetFormDialog>
-    <Dialog open={!!detach} onOpenChange={open => { if (!pending && !open) setDetach(null); }}><DialogContent><DialogTitle>Detach contact?</DialogTitle><DialogDescription>This removes their participation in this deal. Their employer and other records stay unchanged.</DialogDescription>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}<div className="flex justify-end gap-2"><Button variant="outline" disabled={pending} onClick={() => setDetach(null)}>Cancel</Button><Button disabled={pending} onClick={async () => {
+    <Dialog open={!!detach} onOpenChange={open => { if (!pending && !open) setDetach(null); }}><DialogContent className="gap-3 sm:max-w-md"><DialogTitle>Detach contact?</DialogTitle><DialogDescription>This removes their participation in this deal. Their employer and other records stay unchanged.</DialogDescription>
+      {error && <p role="alert" className="text-destructive text-xs">{error}</p>}<div className="flex justify-end gap-2"><Button data-dialog-close variant="outline" disabled={pending} onClick={() => setDetach(null)}>Cancel</Button><Button disabled={pending} onClick={async () => {
         if (!detach || busy.current) return; busy.current = true; setPending(true); setError("");
         try { await api.deals.detachContact(dealId, detach); if (store.isCurrent(generation)) { invalidate(RECORD_INVALIDATIONS); if (mounted.current) setDetach(null); } }
         catch (failure) { if (mounted.current && store.isCurrent(generation)) setError(propertyError(failure)); }
         finally { busy.current = false; if (mounted.current && store.isCurrent(generation)) setPending(false); }
       }}>{pending ? "Detaching…" : "Detach contact"}</Button></div>
     </DialogContent></Dialog>
-  </section>;
+  </DetailSheetSection>;
 }

@@ -32,7 +32,7 @@
 }
 
 .api-docs .swagger-ui :is(.info a, .opblock a, .renderedMarkdown a, .response-col_links a) {
-  color: var(--link);
+  color: var(--primary);
 }
 
 .api-docs .swagger-ui :is(.scheme-container, .opblock, .opblock-section-header, section.models, .model-container, .dialog-ux .modal-ux) {
@@ -111,7 +111,7 @@
   min-height: 2.75rem;
   border-color: var(--input);
   border-radius: var(--radius);
-  background-color: var(--control);
+  background-color: var(--background);
   color: var(--foreground);
   font-size: 1rem;
   box-shadow: none;
@@ -126,7 +126,7 @@
   min-height: 2.75rem;
   border-color: var(--input);
   border-radius: var(--radius);
-  background: var(--control);
+  background: var(--background);
   color: var(--foreground);
   box-shadow: none;
 }
@@ -150,12 +150,12 @@
 }
 
 .api-docs .swagger-ui :is(.btn.authorize, .btn.execute):hover {
-  border-color: var(--primary-hover);
-  background: var(--primary-hover);
+  border-color: color-mix(in oklch, var(--primary), black 12%);
+  background: color-mix(in oklch, var(--primary), black 12%);
 }
 
 .api-docs .swagger-ui :is(.btn.authorize, .btn.execute):active {
-  background: var(--primary-active);
+  background: color-mix(in oklch, var(--primary), black 22%);
 }
 
 .api-docs .swagger-ui .btn:not(.authorize):not(.execute):hover {

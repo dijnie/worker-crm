@@ -4,9 +4,10 @@ import { useEffect, useId, useState } from "react";
 import { useAppData, useAppQuery } from "../app-data-provider";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { FieldLabel } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
 export const selectClass =
-  "h-9 w-full rounded-md border border-input bg-control px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
+  "h-8 w-full min-w-0 rounded-md border border-input bg-background px-2 text-xs outline-none transition-colors hover:border-ring/40 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/25 dark:bg-muted";
 interface PickerProps {
   kind: "company" | "contact" | "owner";
   label: string;
@@ -79,13 +80,13 @@ export function RecordPicker({
   );
   const items = (result.data?.items ?? []).filter(item => !excludeIds.includes(item.id));
   const missingSelected = value && !items.some((item) => item.id === value);
-  if (!allowed) return <p className="text-xs text-muted-foreground">Your role cannot select this linked record.</p>;
+  if (!allowed) return <p className="text-muted-foreground text-xs">Your role cannot select this linked record.</p>;
   return (
     <div className="space-y-2">
-      <label htmlFor={id} className="text-sm font-medium">
+      <FieldLabel htmlFor={id}>
         {label}
         {required ? " *" : ""}
-      </label>
+      </FieldLabel>
       <Input
         aria-label={`Search ${label.toLowerCase()}`}
         placeholder={`Search ${label.toLowerCase()}…`}
@@ -129,7 +130,7 @@ export function RecordPicker({
         ))}
       </select>
       {result.error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-destructive text-xs">
           {result.error instanceof Error
             ? result.error.message
             : "Request failed"}{" "}
@@ -144,12 +145,12 @@ export function RecordPicker({
           ))}
         </div>
       ) : result.refreshing ? (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="text-muted-foreground text-xs">
           Refreshing options…
         </p>
       ) : (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>{result.data?.total ?? 0} available</span>
+        <div className="flex items-center gap-2 text-muted-foreground text-xs">
+          <span className="tabular-nums">{result.data?.total ?? 0} available</span>
           <Button
             type="button"
             size="sm"

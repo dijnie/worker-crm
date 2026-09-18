@@ -1,9 +1,10 @@
 "use client";
 
-import { Component, useEffect, useState, type ComponentProps, type ComponentType, type ReactNode } from "react";
-import type SwaggerUIComponent from "swagger-ui-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Component, useEffect, useState, type ComponentProps, type ComponentType, type ReactNode } from "react";
+import type SwaggerUIComponent from "swagger-ui-react";
 import "swagger-ui-react/swagger-ui.css";
 import "@/styles/api-docs.css";
 
@@ -70,22 +71,28 @@ export function ApiDocumentation() {
   }, [attempt]);
 
   const error = (
-    <div role="alert" className="space-y-3 rounded-lg border bg-card p-6">
-      <p className="font-medium">API documentation could not load.</p>
-      <p className="text-sm text-muted-foreground">Retry the interactive viewer, or open the OpenAPI JSON above.</p>
-      <Button variant="outline" onClick={() => setAttempt(value => value + 1)}>Retry</Button>
-    </div>
+    <Card role="alert">
+      <CardContent className="gap-3">
+        <p className="text-sm font-medium">API documentation could not load.</p>
+        <p className="text-xs/relaxed text-muted-foreground">Retry the interactive viewer, or open the OpenAPI JSON above.</p>
+        <Button variant="outline" className="self-start" onClick={() => setAttempt(value => value + 1)}>Retry</Button>
+      </CardContent>
+    </Card>
   );
 
   if (failed) return error;
   if (!SwaggerUI) {
-    return <div role="status" aria-busy="true" aria-label="Loading API documentation" className="space-y-4 rounded-lg border bg-card p-6">
-      <Skeleton className="h-6 w-48" />
-      <Skeleton className="h-4 w-full" />
-      <Skeleton className="h-4 w-3/4" />
-      <Skeleton className="h-32 w-full" />
-      <Skeleton className="h-4 w-1/2" />
-    </div>;
+    return (
+      <Card role="status" aria-busy="true" aria-label="Loading API documentation">
+        <CardContent className="gap-4">
+          <Skeleton className="h-5 w-48 max-w-full" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-3/4" />
+          <Skeleton className="h-32 w-full rounded-lg" />
+          <Skeleton className="h-3 w-1/2" />
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
