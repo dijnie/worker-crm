@@ -60,6 +60,15 @@ query hooks, so column visibility persists in `localStorage` under
 `recharts` dependency is carried over, because the statistics API exposes counts
 and per-stage totals rather than a time series.
 
+One gap remains against htcrm: enumerated and date inputs in the record forms,
+the stage-change dialog, the activity composer, the participant picker and the
+custom-field editors are still native `<select>` and `<input type="date">`
+elements. htcrm renders those with its own `Select`, `Combobox` and `DatePicker`,
+which are Radix listboxes and calendar popovers; converting them changes both the
+interaction the browser suites drive and, for currency, the set of values the
+form accepts. The ported primitives were therefore not carried over, and the
+conversion belongs with the behaviour change it implies.
+
 ## Routes
 
 | Route | Screen |
