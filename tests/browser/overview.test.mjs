@@ -292,6 +292,33 @@ export async function runSuite(h, { mode, owner }) {
       } finally { release(); await context.close(); }
     });
 
+    await scenario(`${mode}: the stored reporting currency is the overview default and the URL still overrides it`, async () => {
+      const stored = await h.api(owner.context, '/api/settings');
+      const settingsPage = await owner.context.newPage();
+      try {
+        await settingsPage.goto('/settings');
+        const field = settingsPage.locator('#reporting-currency');
+        await field.waitFor();
+        assert.equal(await field.inputValue(), stored.reportingCurrency, 'Settings shows the stored reporting currency');
+        await field.fill('jpy');
+        await settingsPage.getByRole('button', { name: 'Save currency', exact: true }).click();
+        await eventually(async () => (await h.api(owner.context, '/api/settings')).reportingCurrency === 'JPY', 'The settings form stores a normalised three-letter code');
+      } finally { await settingsPage.close(); }
+      try {
+        await page.goto('/');
+        await statsMatch(page, api, 'JPY');
+        assert.equal(new URL(page.url()).searchParams.get('currency'), null, 'The default view carries no currency parameter');
+        await page.goto('/?currency=GBP');
+        await statsMatch(page, api, 'GBP');
+        await page.goto('/?currency=invalid');
+        await page.getByRole('alert').filter({ hasText: `This link has an invalid currency. Showing JPY` }).waitFor();
+        await statsMatch(page, api, 'JPY');
+      } finally {
+        const current = await h.api(owner.context, '/api/settings');
+        await h.api(owner.context, '/api/settings', { method: 'PATCH', body: { reportingCurrency: stored.reportingCurrency, expectedRevision: current.revision } });
+        assert.equal((await h.api(owner.context, '/api/settings')).reportingCurrency, stored.reportingCurrency, 'The suite restores the workspace reporting currency');
+      }
+    });
     await scenario(`${mode}: confirmed membership revocation clears overview cards links and open record`, async () => {
       await page.goto(`/?currency=USD&record=company:${company.id}`);
       await sheet(page).getByRole('button', { name: 'Edit name', exact: true }).waitFor();

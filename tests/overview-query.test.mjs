@@ -6,12 +6,13 @@ const bundle = await build({ entryPoints: ["src/lib/overview-query.ts"], bundle:
 assert.ok(!Object.keys(bundle.metafile.inputs).some(path => /(?:^|\/)(?:services|server)\/|cloudflare:workers|drizzle-orm/.test(path)), "overview URL parsing stays browser safe");
 const { overviewCurrencyUrl, parseOverviewCurrency } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
 
-test("overview currency defaults only when absent and normalizes three-letter codes", () => {
-  assert.equal(parseOverviewCurrency("?record=company:one&q=deal"), "USD");
-  assert.equal(parseOverviewCurrency("?currency=eur"), "EUR");
-  assert.equal(parseOverviewCurrency("?currency=%20vnd%20"), "VND");
+test("overview currency uses the stored reporting currency only when absent and normalizes three-letter codes", () => {
+  assert.equal(parseOverviewCurrency("?record=company:one&q=deal", "EUR"), "EUR");
+  assert.equal(parseOverviewCurrency("", "VND"), "VND");
+  assert.equal(parseOverviewCurrency("?currency=eur", "VND"), "EUR");
+  assert.equal(parseOverviewCurrency("?currency=%20vnd%20", "USD"), "VND");
   for (const search of ["?currency=", "?currency=EU", "?currency=USDD", "?currency=123", "?currency=USD&currency=EUR", "?currency=USD&currency=USD"]) {
-    assert.throws(() => parseOverviewCurrency(search));
+    assert.throws(() => parseOverviewCurrency(search, "USD"));
   }
 });
 
@@ -30,6 +31,6 @@ test("currency navigation preserves the complete record stack, list state, unrel
 test("valid selection repairs duplicate currency parameters but rejects invalid draft values", () => {
   const next = overviewCurrencyUrl("/?currency=USD&currency=EUR&record=deal:one", "GBP");
   assert.deepEqual(new URL(next, "https://crm.example").searchParams.getAll("currency"), ["GBP"]);
-  assert.equal(parseOverviewCurrency(next.slice(next.indexOf("?"))), "GBP");
+  assert.equal(parseOverviewCurrency(next.slice(next.indexOf("?")), "USD"), "GBP");
   for (const draft of ["", "US", "EURO", "1$2"]) assert.throws(() => overviewCurrencyUrl("/?currency=USD", draft));
 });

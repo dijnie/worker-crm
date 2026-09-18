@@ -54,6 +54,11 @@ colours come from the dashboard's own chart palette and brand orange, and every
 radius step resolves through `--radius` so a badge is 8px, as the dashboard's badge
 was.
 
+The workspace's reporting currency is the one stored preference the interface
+edits: `singleton_workspace.reporting_currency`, seeded as `USD` by migration
+`0001`, written only by a system account under an `expectedRevision`
+precondition, and read by every member for the overview default.
+
 The [workspace layout](src/app/(workspace)/layout.tsx) applies this shell to
 business screens. `/docs` is a standalone page with no application header or rail.
 It uses locally bundled `swagger-ui-react` themed through the same tokens.
@@ -131,8 +136,10 @@ map keyed by field key. The [OpenAPI contract](src/lib/openapi/document.ts)
 documents projections, `field:<key>` filters, reorder and optional `expectedType`
 write preconditions. The [overview](src/components/app/overview/overview-dashboard.tsx)
 shows active company/contact totals and a global open-deal count. Its exact open
-value and all seven pipeline stage counts/values use the selected currency only;
-the validated `currency` URL parameter defaults to USD. Stage links open matching
+value and all seven pipeline stage counts/values use the selected currency only.
+The validated `currency` URL parameter wins; without one the overview uses the
+workspace's stored reporting currency, which a system account sets in
+Settings → General through `GET`/`PATCH /api/settings`. Stage links open matching
 deal lists. The ten latest activities open record sheets, and record edits refresh
 their linked names and archive state. Statistics and activity have separate retry
 states, so a failed request does not appear as zero data.
@@ -470,7 +477,8 @@ List bodies are arrays, with pagination metadata in response headers; the typed
 client reconstructs the page result. Monetary API values are decimal strings to
 preserve exact cents. [Stats](services/stats.service.ts) keeps active record and
 open-deal counts global; `openDealValue` and the seven ordered `pipeline` buckets
-use the requested currency, default USD, without FX conversion. The weekly activity
+use the requested currency, defaulting to the workspace's stored reporting
+currency, without FX conversion. The weekly activity
 window starts Monday UTC. Exact sums use one consistent batch and a scan of the
 selected currency's active deal amounts; time and memory grow with that dataset.
 `GET /api/activities?limit=10&includeLinks=true` adds bounded company/contact/deal
