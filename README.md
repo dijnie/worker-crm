@@ -15,59 +15,64 @@ and endpoints are retired. Interactive API documentation is public at `/docs`.
 
 ## Design intent
 
-The interface is htcrm's design system. The
-[theme stylesheet](src/styles/globals.css) is htcrm's
-`packages/ui/src/styles/globals.css` carried over verbatim: flat white and
-untinted neutral greys, one brand green (`#006B4F`), `--primary` and
-`--destructive` identical in both themes, a 4/5/8/12px radius scale driven by
-`--radius: 5px`, a single `--border` token applied to every element by
-`* { @apply border-border }`, htcrm's shadow scale, its page spacing and container
-tokens, and its view-transition and icon-motion utilities. The former programmatic
-token module was removed with it, because a second copy of the values could drift.
+Two layers, deliberately split.
 
-Radius is a rule, not a preference: `rounded-sm` (4px) for the smallest controls,
-`rounded-md` (5px) for buttons, inputs and segments, `rounded-lg` (8px) for
-surfaces that contain controls — popovers, dialogs, menus, table shells — and
-`rounded-none` only where an element must join its neighbour edge to edge. A
-literal radius never appears at a call site. Borders are 1px hairlines from the
-one token; only `primary` and `destructive` are ever filled.
+**The theme is the captured Cloudflare dashboard, unchanged.** The
+[theme stylesheet](src/styles/globals.css) keeps its palette, typography, radii
+and shadows: untinted neutral oklch greys, one blue primary
+(`oklch(57.72% 0.2324 260)`, `#0051c3` for the ring and links), the orange brand
+`#f6821f`, Inter through `@fontsource-variable/inter`, `--radius: 0.5rem` with the
+`rounded-sm` 6px / `rounded-md` 8px / `rounded-lg` 8px scale, the
+`--control-shadow` and `--popover-shadow` pair, and borders from the single
+`--border` token applied by `* { border-color: var(--border) }`. Both themes keep
+the dashboard's own light and dark values, including `--control`, `--link` and the
+hover and active steps of the primary and destructive fills.
 
-The [component library](src/components/ui) is htcrm's `packages/ui` sources,
-carried over with rewritten import specifiers; every screen composes it rather
-than restyling it. The [application shell](src/components/app/app-shell.tsx)
-composes htcrm's chrome: a 48px bordered
-[header](src/components/app/app-header.tsx) over a 56px left
-[icon rail](src/components/app/app-icon-rail.tsx) that never expands, with a
+**The UX is htcrm's.** The [component library](src/components/ui) is htcrm's
+`packages/ui` sources with rewritten import specifiers, and every screen composes
+it rather than restyling it: htcrm's button variants and sizes, its table, sheet,
+dialog, menu, field and empty-state structure, and the interaction each one
+carries. The [application shell](src/components/app/app-shell.tsx) composes htcrm's
+chrome — a 48px bordered [header](src/components/app/app-header.tsx) over a 56px
+left [icon rail](src/components/app/app-icon-rail.tsx) that never expands, with a
 mobile navigation [sheet](src/components/app/app-icon-rail.tsx) below the `md`
 breakpoint. Screens compose through the
 [page shell](src/components/app/page-shell.tsx) contract — `PageShell`,
 `PageShellHeader`, `PageShellTitle`, `PageShellActions`, `PageShellContent` — so
-every page shares one content width, padding and gap.
+every page shares one content width, padding and gap. Lists run on htcrm's
+[data table](src/components/ui/data-table.tsx), record sheets on its
+[detail sheet](src/components/app/detail-sheet.tsx).
 [Account](src/components/app/account-menu.tsx) is htcrm's avatar dropdown: the
 signed-in identity and role, a light/dark toggle, member management for system
 accounts, and sign-out.
+
+The stylesheet carries the token names htcrm's components read that the dashboard
+theme never needed — `success`, `warning`, `info`, the `--shadow-2xs`…`--shadow-2xl`
+scale, the spinner, bloom, icon-motion and alert-attention utilities, and the view
+transitions — each mapped onto Cloudflare values rather than htcrm's: the status
+colours come from the dashboard's own chart palette and brand orange, and every
+radius step resolves through `--radius` so a badge is 8px, as the dashboard's badge
+was.
+
 The [workspace layout](src/app/(workspace)/layout.tsx) applies this shell to
 business screens. `/docs` is a standalone page with no application header or rail.
 It uses locally bundled `swagger-ui-react` themed through the same tokens.
 
-Four adaptations are deliberate and are the only places the port departs from
-htcrm: Geist is self-hosted through `@fontsource-variable/geist` instead of
-`next/font`, so `--font-geist-sans` and `--font-geist-mono` are bound in the
-stylesheet; `@import "shadcn/tailwind.css"` is dropped because it ships with the
-`shadcn` CLI package; htcrm's `nuqs` URL state is replaced by the application's own
-query hooks, so column visibility persists in `localStorage` under
-`record-list:<entity>:columns` rather than in the URL; and no chart component or
-`recharts` dependency is carried over, because the statistics API exposes counts
-and per-stage totals rather than a time series.
+Three adaptations are deliberate: `@import "shadcn/tailwind.css"` is dropped
+because it ships with the `shadcn` CLI package; htcrm's `nuqs` URL state is
+replaced by the application's own query hooks, so column visibility persists in
+`localStorage` under `record-list:<entity>:columns` rather than in the URL; and no
+chart component or `recharts` dependency is carried over, because the statistics
+API exposes counts and per-stage totals rather than a time series.
 
-One gap remains against htcrm: enumerated and date inputs in the record forms,
-the stage-change dialog, the activity composer, the participant picker and the
-custom-field editors are still native `<select>` and `<input type="date">`
+One gap remains against htcrm's UX: enumerated and date inputs in the record
+forms, the stage-change dialog, the activity composer, the participant picker and
+the custom-field editors are still native `<select>` and `<input type="date">`
 elements. htcrm renders those with its own `Select`, `Combobox` and `DatePicker`,
 which are Radix listboxes and calendar popovers; converting them changes both the
-interaction the browser suites drive and, for currency, the set of values the
-form accepts. The ported primitives were therefore not carried over, and the
-conversion belongs with the behaviour change it implies.
+interaction the browser suites drive and, for currency, the set of values the form
+accepts. The ported primitives were therefore not carried over, and the conversion
+belongs with the behaviour change it implies.
 
 ## Routes
 
