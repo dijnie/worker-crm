@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/ui/stat-card";
 import { overviewCurrencyUrl, parseOverviewCurrency } from "@/lib/overview-query";
+import { currencyCode } from "@/lib/utils/validation";
 import { useAppData, useAppQuery } from "../app-data-provider";
 import {
   PageShell, PageShellActions, PageShellContent, PageShellDescription, PageShellHeader, PageShellHeading, PageShellTitle,
@@ -23,27 +24,32 @@ export function OverviewDashboard() {
 }
 
 function OverviewSession() {
-  const { account } = useAppData();
+  const { api, account } = useAppData();
   const canStats = (["company", "contact", "deal"] as const).some(entity => canPermission(account, entity, "read"));
   const canPipeline = canPermission(account, "deal", "read");
   const canActivity = canPermission(account, "activity", "read");
+  // The workspace's stored reporting currency is the fallback for every view that
+  // does not name one, so the first paint waits for it rather than assuming USD.
+  const settings = useAppQuery("settings", {}, signal => api.settings.get({ signal }));
+  const stored = settings.data?.reportingCurrency;
   const [currency, setCurrency] = useState<string | null>(null);
-  const [draft, setDraft] = useState("USD");
+  const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
+    if (!stored) return;
     const read = () => {
       try {
-        const next = parseOverviewCurrency(window.location.search);
+        const next = parseOverviewCurrency(window.location.search, stored);
         setCurrency(next); setDraft(next); setError("");
       } catch {
-        setCurrency("USD"); setDraft("USD");
-        setError("This link has an invalid currency. Showing USD; enter a three-letter code to update it.");
+        setCurrency(stored); setDraft(stored);
+        setError(`This link has an invalid currency. Showing ${stored}; enter a three-letter code to update it.`);
       }
     };
     read();
     window.addEventListener("popstate", read);
     return () => window.removeEventListener("popstate", read);
-  }, []);
+  }, [stored]);
   return <PageShell>
     <PageShellHeader>
       <PageShellHeading>
@@ -54,7 +60,7 @@ function OverviewSession() {
         {canPipeline && <form className="flex flex-col gap-1.5 md:items-end" noValidate onSubmit={event => {
           event.preventDefault();
           try {
-            const selectedCurrency = parseOverviewCurrency(new URLSearchParams({ currency: draft }).toString());
+            const selectedCurrency = currencyCode.parse(draft);
             const navigate = () => {
               const next = overviewCurrencyUrl(window.location.href, selectedCurrency);
               window.history.pushState({}, "", next);

@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FieldDefinitionList } from "@/components/app/fields/field-definition-list";
+import { ReportingCurrencyForm } from "@/components/app/settings/reporting-currency-form";
 import { PermissionGate } from "@/components/app/permission-gate";
 import {
   PageShell,
@@ -26,12 +27,13 @@ export default function SettingsPage() {
           <PageShellHeading>
             <PageShellTitle>Settings</PageShellTitle>
             <PageShellDescription>
-              Workspace access and the custom properties records carry.
+              The reporting currency, workspace access, and the custom properties records carry.
             </PageShellDescription>
           </PageShellHeading>
         </PageShellHeader>
 
         <PageShellContent>
+          <ReportingCurrencyForm />
           <Card role="region" aria-label="Roles and members">
             <CardHeader>
               <CardTitle>Roles and members</CardTitle>
