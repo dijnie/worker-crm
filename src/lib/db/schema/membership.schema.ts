@@ -6,9 +6,15 @@ import { roles } from "./role.schema";
 export const singletonWorkspace = sqliteTable("singleton_workspace", {
   id: text("id").primaryKey(),
   ownerUserId: text("owner_user_id").references(() => user.id, { onDelete: "restrict" }),
+  reportingCurrency: text("reporting_currency").default("USD").notNull(),
+  revision: integer("revision").default(0).notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
-}, (table) => [check("singleton_workspace_id_check", sql`${table.id} = 'shared'`)]);
+}, (table) => [
+  check("singleton_workspace_id_check", sql`${table.id} = 'shared'`),
+  check("singleton_workspace_currency_check", sql`length(${table.reportingCurrency}) = 3 and ${table.reportingCurrency} = upper(${table.reportingCurrency})`),
+  check("singleton_workspace_revision_check", sql`${table.revision} >= 0`),
+]);
 
 export const singletonMembership = sqliteTable("singleton_membership", {
   userId: text("user_id").primaryKey().references(() => user.id, { onDelete: "restrict" }),
