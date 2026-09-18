@@ -270,9 +270,14 @@ export async function runSuite(h, { mode, owner }) {
       await fieldDialog(page).getByText(definition.key, { exact: true }).waitFor();
       await fieldDialog(page).getByLabel('Option 1 label', { exact: true }).fill('Renamed option');
       await fieldDialog(page).getByRole('button', { name: 'Move option 1 down', exact: true }).click();
+      // The editor reads the option order from the list row, so the list must
+      // have absorbed the save before it is reopened.
+      const refreshed = page.waitForResponse(response => response.request().method() === 'GET' && new URL(response.url()).pathname === '/api/fields');
       let saved = await saveDefinition(page);
+      await refreshed;
       assert.equal(saved.options[1].id, optionId); assert.equal(saved.options[1].label, 'Renamed option');
       await edit();
+      await eventually(async () => (await fieldDialog(page).getByLabel('Option 2 label', { exact: true }).inputValue()) === 'Renamed option', 'Reopened editor shows the saved option order');
       await fieldDialog(page).getByRole('button', { name: 'Archive option 2', exact: true }).click();
       await saveDefinition(page);
       const archived = await api(`/api/fields/${definition.id}/options?includeArchived=true`);
@@ -366,16 +371,17 @@ export async function runSuite(h, { mode, owner }) {
         assert.ok(requests.length < 4, 'Values requests belong to the opened sheet, not every list row');
         page.off('request', watch);
         for (const [definition, optionLabel] of [[field, field.options[1].label], [user, member.user.name]]) {
-          await page.locator('summary').filter({ hasText: /^Filters/ }).click();
-          const facet = page.locator('details').filter({ has: page.locator('summary').filter({ hasText: new RegExp(`^${definition.label}`) }) }).last();
-          await facet.locator('summary').click();
-          await facet.getByRole('checkbox', { name: `${optionLabel} 1`, exact: true }).check();
+          await page.getByRole('button', { name: /^Filters/ }).click();
+          await page.getByRole('menuitem', { name: new RegExp(`^${definition.label}`) }).click();
+          await page.getByRole('menuitemcheckbox', { name: optionLabel, exact: true }).click();
           await page.keyboard.press('Escape');
+          await page.keyboard.press('Escape');
+          await page.getByRole('menu').waitFor({ state: 'hidden' });
           await page.getByRole('button', { name: `Remove ${definition.label} filter`, exact: true }).waitFor();
         }
         await page.waitForLoadState('networkidle');
         await eventually(async () => !(await page.getByText(/^(Loading|Refreshing) records…$/).count()), 'Filtered list finishes its current URL and data update');
-        await page.locator('summary').filter({ hasText: /^Saved views/ }).click();
+        await page.getByRole('button', { name: /^Saved views/ }).click();
         await page.getByRole('textbox', { name: 'View name', exact: true }).fill(`${mode} ${kind} custom view`);
         await page.getByRole('button', { name: 'Save as new view', exact: true }).click().catch(async error => {
           const state = await page.evaluate(() => ({ pathname: location.pathname, search: location.search, title: document.title, readyState: document.readyState, openRecord: document.querySelector('[data-record-sheet]')?.getAttribute('aria-label'), viewName: document.querySelector('[aria-label="View name"]')?.value }));
@@ -562,7 +568,7 @@ export async function runSuite(h, { mode, owner }) {
       assert.ok(view);
       await api(`/api/fields/${field.id}`, { method: 'DELETE', status: 200 });
       await page.goto('/companies');
-      await page.locator('summary').filter({ hasText: /^Saved views/ }).click();
+      await page.getByRole('button', { name: /^Saved views/ }).click();
       await page.getByRole('combobox', { name: 'Apply saved view', exact: true }).selectOption(view.id);
       await page.getByText(/unsupported filters|retired or unsupported field/).first().waitFor();
       assert.equal(new URL(page.url()).searchParams.get('view'), null, 'An unsupported view is not silently applied');

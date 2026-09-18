@@ -85,7 +85,7 @@ export async function runSuite(h, { mode, owner }) {
       await page.getByRole('heading', { name: 'Contacts', exact: true }).waitFor();
       await page.waitForLoadState('networkidle');
       assert.equal(await page.evaluate(() => window.__httpNavigationMarker), true, 'RSC navigation retains the browser document');
-      assert.ok(await page.evaluate(async () => { await document.fonts.ready; return [...document.fonts].some(font => font.family.includes('Inter') && font.status === 'loaded'); }), 'Local Inter font loads under CSP');
+      assert.ok(await page.evaluate(async () => { await document.fonts.ready; return [...document.fonts].some(font => font.family.includes('Geist') && font.status === 'loaded'); }), 'Local Geist font loads under CSP');
       // React's development RSC client probes eval for reconstructed debug stacks
       // and catches failures with an ordinary function fallback. Keep eval blocked;
       // only these verified dev diagnostics are expected. Production allows none.

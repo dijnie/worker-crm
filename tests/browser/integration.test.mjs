@@ -162,8 +162,8 @@ async function authAndDocs(h, { mode, owner }) {
       await sheet(page).getByRole('button', { name: 'Edit name', exact: true }).waitFor();
       await sheet(page).getByRole('button', { name: 'Close record sheet', exact: true }).click();
       await page.getByRole('button', { name: 'Account', exact: true }).click();
-      await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-      await page.waitForURL('**/sign-in');
+      await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
+      await page.waitForURL(url => url.pathname === '/sign-in');
       await login(page, actor.email, nextPassword, '//example.test/escape');
       await page.waitForURL(url => url.origin === origin && url.pathname === '/');
     } finally { await publicContext.close(); await oldContext.close(); await actor.context.close(); }
@@ -219,18 +219,18 @@ async function memberLifecycle(h, { mode, owner }) {
       // Account-private saved views provide a meaningful privacy boundary in a shared CRM.
       await page.getByRole('textbox', { name: 'Search companies', exact: true }).fill(company.name);
       await page.waitForLoadState('networkidle');
-      await page.locator('summary').filter({ hasText: /^Saved views/ }).click();
+      await page.getByRole('button', { name: /^Saved views/ }).click();
       const privateName = `${mode} Private lifecycle view`;
       await page.getByRole('textbox', { name: 'View name', exact: true }).fill(privateName);
       await page.getByRole('button', { name: 'Save as new view', exact: true }).click();
       await eventually(() => !!new URL(page.url()).searchParams.get('view'), 'Private view saved');
       await page.keyboard.press('Escape');
       await page.getByRole('button', { name: 'Account', exact: true }).click();
-      await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-      await page.waitForURL('**/sign-in');
+      await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
+      await page.waitForURL(url => url.pathname === '/sign-in');
       await login(page, other.email);
       await page.waitForURL('**/companies');
-      await page.locator('summary').filter({ hasText: /^Saved views/ }).click();
+      await page.getByRole('button', { name: /^Saved views/ }).click();
       await eventually(() => page.getByRole('combobox', { name: 'Apply saved view', exact: true }).isEnabled(), 'New identity views load');
       assert.ok(!(await page.getByRole('combobox', { name: 'Apply saved view', exact: true }).locator('option').allTextContents()).some(label => label.includes(privateName)));
       assert.equal(await page.getByRole('textbox', { name: 'View name', exact: true }).inputValue(), '');
@@ -393,38 +393,29 @@ export async function crossScreenJourney(h, { mode, owner }) {
 }
 
 async function shellInteraction(h, { mode, owner }) {
-  await scenario(mode, 'sidebar hover pin and Escape preserve layout with reduced motion and mobile themes', async () => {
+  await scenario(mode, 'chrome geometry, reduced motion and mobile navigation preserve layout', async () => {
     const page = await owner.context.newPage();
     try {
       await page.setViewportSize({ width: 1280, height: 800 });
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.goto('/companies');
       await page.getByRole('table').waitFor();
-      const sidebar = page.locator('aside');
+      const header = page.getByRole('banner');
+      const rail = page.getByRole('navigation', { name: 'Primary', exact: true });
       const main = page.locator('#main-content');
-      const expanded = (await main.boundingBox()).x;
-      await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click();
-      await page.mouse.move(900, 300);
-      await eventually(async () => Math.round((await sidebar.boundingBox()).width) === 57, 'Collapsed sidebar has its compact width');
-      const collapsed = (await main.boundingBox()).x;
-      assert.ok(expanded - collapsed >= 200);
-      await sidebar.hover();
-      await page.getByRole('button', { name: 'Pin sidebar', exact: true }).waitFor();
-      assert.equal(Math.round((await sidebar.boundingBox()).width), 260);
-      assert.equal((await main.boundingBox()).x, collapsed, 'Hover preview overlays without shifting records');
-      await page.keyboard.press('Escape');
-      await page.getByRole('button', { name: 'Expand sidebar', exact: true }).waitFor();
-      await page.mouse.move(900, 300);
-      await sidebar.hover();
-      await page.getByRole('button', { name: 'Pin sidebar', exact: true }).click();
-      assert.equal((await main.boundingBox()).x, expanded);
-      await page.getByRole('link', { name: 'Contacts', exact: true }).click();
+      const railBox = await rail.boundingBox();
+      assert.equal(Math.round((await header.boundingBox()).height), 48, 'The header keeps its 48px band');
+      assert.equal(Math.round(railBox.width), 56, 'The rail keeps its 56px band');
+      assert.ok(Math.abs((await main.boundingBox()).x - (railBox.x + railBox.width)) <= 1, 'Content starts at the rail edge');
+      assert.equal(await rail.evaluate(node => getComputedStyle(node).transitionDuration), '0s', 'Reduced motion leaves the rail without transitions');
+      await rail.getByRole('link', { name: 'Contacts', exact: true }).click();
+      await page.waitForURL('**/contacts');
       await page.getByRole('table').waitFor();
-      assert.equal((await main.boundingBox()).x, expanded, 'Pin state survives client navigation');
-      assert.equal(await sidebar.evaluate(node => getComputedStyle(node).transitionProperty), 'none');
+      assert.equal(await rail.getByRole('link', { name: 'Contacts', exact: true }).getAttribute('aria-current'), 'page');
       for (const theme of ['light', 'dark']) {
         await page.setViewportSize({ width: 390, height: 844 });
         await page.evaluate(theme => document.documentElement.classList.toggle('dark', theme === 'dark'), theme);
+        assert.equal(await rail.isVisible(), false, 'The rail hides below the md breakpoint');
         const opener = page.getByRole('button', { name: 'Open navigation', exact: true });
         await opener.click();
         const navigation = page.getByRole('dialog', { name: 'Navigation', exact: true });
@@ -433,8 +424,6 @@ async function shellInteraction(h, { mode, owner }) {
         await navigation.waitFor({ state: 'hidden' });
         await eventually(() => opener.evaluate(node => node === document.activeElement), 'Closing mobile navigation restores focus to its opener');
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-        assert.equal(await page.getByRole('button', { name: 'Ask AI — coming soon', exact: true }).isDisabled(), true);
-        assert.equal(await page.getByRole('button', { name: 'Support — coming soon', exact: true }).isDisabled(), true);
       }
     } finally { await page.close(); }
   });

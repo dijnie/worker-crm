@@ -70,7 +70,7 @@ export async function runSuite(h, { mode, owner }) {
     await scenario(`${mode}: server pagination, search, sorting, reload, history and page selection`, async () => {
       await page.goto('/companies');
       await search(page, 'companies', prefix);
-      assert.equal(await page.getByRole('checkbox', { name: /^Select / }).count(), 26);
+      await eventually(async () => (await page.getByRole('checkbox', { name: /^Select / }).count()) === 26, 'Every matching company arrives on the first page');
       await page.getByRole('checkbox', { name: 'Select page', exact: true }).check();
       await page.getByRole('button', { name: 'Next page', exact: true }).click();
       await settled(page);
@@ -143,21 +143,22 @@ export async function runSuite(h, { mode, owner }) {
       await eventually(() => Promise.resolve(new URL(page.url()).searchParams.get('q') === prefix), 'Pending search is applied');
       assert.equal(new URL(page.url()).searchParams.get('archived'), 'true', 'Debounced search preserves the newer archive choice');
       await page.getByRole('checkbox', { name: 'Archived', exact: true }).uncheck(); await settled(page);
-      const columns = page.locator('summary').filter({ hasText: /^Columns$/ });
+      const columns = page.getByRole('button', { name: /^Columns/ });
       await columns.focus(); await page.keyboard.press('Enter');
-      await page.getByText('Visible columns', { exact: true }).waitFor();
-      await page.keyboard.press('Tab');
-      assert.equal(await page.getByRole('checkbox', { name: 'Domain', exact: true }).evaluate(el => el === document.activeElement), true);
+      await page.getByText('Toggle columns', { exact: true }).waitFor();
+      assert.equal(await page.getByRole('menuitemcheckbox', { name: 'Domain', exact: true }).evaluate(el => el === document.activeElement), true);
       await page.keyboard.press('Escape');
-      await page.getByText('Visible columns', { exact: true }).waitFor({ state: 'hidden' });
+      await page.getByText('Toggle columns', { exact: true }).waitFor({ state: 'hidden' });
       assert.equal(await columns.evaluate(el => el === document.activeElement), true);
       await columns.click();
-      await page.getByRole('textbox', { name: 'Search companies', exact: true }).click();
-      await page.getByText('Visible columns', { exact: true }).waitFor({ state: 'hidden' });
+      // Radix menus are modal: outside pointer events land on the document root.
+      await page.mouse.click(5, 5);
+      await page.getByText('Toggle columns', { exact: true }).waitFor({ state: 'hidden' });
       await page.setViewportSize({ width: 390, height: 844 });
-      for (const name of [/^Filters/, /^Saved views/, /^Columns$/]) {
-        await page.locator('summary').filter({ hasText: name }).click();
-        const panel = page.locator('[popover]:popover-open');
+      await page.getByRole('button', { name: /^Filters/ }).first().click();
+      for (const name of [/^Filters/, /^Saved views/, /^Columns/]) {
+        await page.getByRole('button', { name }).last().click();
+        const panel = page.getByRole('menu');
         await panel.waitFor();
         const bounds = await panel.boundingBox();
         assert.ok(bounds.x >= 15 && bounds.x + bounds.width <= 375, 'Dropdown fits mobile width');
@@ -175,12 +176,15 @@ export async function runSuite(h, { mode, owner }) {
     await scenario(`${mode}: facet filtering, saved view apply/update/share/private/delete and column preferences`, async () => {
       await page.goto('/companies');
       await search(page, 'companies', `${prefix} Company`);
-      await page.locator('summary').filter({ hasText: /^Filters/ }).click();
-      const industry = page.locator('details').filter({ has: page.locator('summary').filter({ hasText: /^Industry/ }) }).last();
-      await industry.locator('summary').click();
-      await industry.getByRole('checkbox', { name: /Software/ }).check();
+      await page.getByRole('button', { name: /^Filters/ }).click();
+      await page.getByRole('menuitem', { name: /^Industry/ }).click();
+      await page.getByRole('menuitemcheckbox', { name: 'Software', exact: true }).click();
+      // Radix menus are modal: the page is hidden from the accessibility tree until the menu closes.
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+      await page.getByRole('menu').waitFor({ state: 'hidden' });
       await eventually(async () => (await page.getByRole('status').filter({ hasText: /^30 records$/ }).count()) === 1, 'Industry facet filters all three record pages');
-      await page.locator('summary').filter({ hasText: /^Saved views/ }).click();
+      await page.getByRole('button', { name: /^Saved views/ }).click();
       await page.getByRole('textbox', { name: 'View name', exact: true }).fill(`${prefix} View`);
       await page.getByRole('button', { name: 'Save as new view', exact: true }).click();
       await eventually(() => Promise.resolve(new URL(page.url()).searchParams.has('view')), 'Created saved view becomes active');
@@ -208,27 +212,38 @@ export async function runSuite(h, { mode, owner }) {
       } finally { releaseShared(); await page.unroute('**/api/saved-views?*'); }
       await page.getByRole('button', { name: 'Rename view', exact: true }).click();
       await eventually(async () => (await h.api(member.context, '/api/saved-views?entity=COMPANY')).some(view => view.id === viewId && view.name === `${prefix} Renamed`), 'View rename persisted');
+      await page.keyboard.press('Escape');
+      await page.getByRole('menu').waitFor({ state: 'hidden' });
       await search(page, 'companies', `${prefix} Company 01`);
-      await page.locator('summary').filter({ hasText: /^Saved views/ }).click();
+      await page.getByRole('button', { name: /^Saved views/ }).click();
       await page.getByRole('button', { name: 'Update view configuration', exact: true }).click();
       await eventually(async () => (await h.api(member.context, '/api/saved-views?entity=COMPANY')).find(view => view.id === viewId)?.filters.q === `${prefix} Company 01`, 'Modified view configuration persisted');
-      await page.locator('[popover]').getByRole('button', { name: 'Clear filters', exact: true }).click();
+      await page.getByRole('menu').getByRole('button', { name: 'Clear filters', exact: true }).click();
       await eventually(async () => (await page.getByRole('textbox', { name: 'View name', exact: true }).inputValue()) === '', 'Clearing the active view resets its name draft');
       assert.equal(await page.getByRole('checkbox', { name: 'Shared view', exact: true }).isChecked(), false, 'Clearing the active view resets sharing');
       await selectOption(page.getByRole('combobox', { name: 'Apply saved view', exact: true }), viewId);
+      // Radix menus are modal: the page is hidden from the accessibility tree until the menu closes.
+      await page.keyboard.press('Escape');
+      await page.getByRole('menu').waitFor({ state: 'hidden' });
       await eventually(async () => (await page.getByRole('textbox', { name: 'Search companies', exact: true }).inputValue()) === `${prefix} Company 01`, 'Applying view replaces search and filters');
+      await page.getByRole('button', { name: /^Saved views/ }).click();
       await page.getByRole('button', { name: 'Make private', exact: true }).click();
       await eventually(async () => !(await h.api(owner.context, '/api/saved-views?entity=COMPANY')).some(view => view.id === viewId), 'Unshared view becomes private');
       await page.getByRole('button', { name: 'Delete view', exact: true }).click();
       await eventually(async () => !(await h.api(member.context, '/api/saved-views?entity=COMPANY')).some(view => view.id === viewId), 'View deleted');
-      await page.locator('summary').filter({ hasText: /^Columns$/ }).click();
-      const columns = page.locator('details').filter({ has: page.locator('summary').filter({ hasText: /^Columns$/ }) });
-      assert.equal(await columns.getByRole('checkbox', { name: 'Company', exact: true }).isDisabled(), true);
-      await columns.getByRole('checkbox', { name: 'Domain', exact: true }).uncheck();
+      await page.keyboard.press('Escape');
+      await page.getByRole('menu').waitFor({ state: 'hidden' });
+      const columnMenu = page.getByRole('button', { name: /^Columns/ });
+      await columnMenu.click();
+      assert.equal(await page.getByRole('menuitemcheckbox', { name: 'Company', exact: true }).count(), 0, 'The pinned name column is not offered for hiding');
+      await page.getByRole('menuitemcheckbox', { name: 'Domain', exact: true }).click();
+      await page.keyboard.press('Escape');
+      await page.getByRole('menu').waitFor({ state: 'hidden' });
+      await page.getByRole('columnheader', { name: 'Domain', exact: true }).waitFor({ state: 'hidden' });
       await page.reload(); await settled(page);
-      assert.equal(await page.getByRole('columnheader', { name: 'Domain', exact: true }).count(), 0);
-      await page.locator('summary').filter({ hasText: /^Columns$/ }).click();
-      await page.getByRole('button', { name: 'Reset columns', exact: true }).click();
+      assert.equal(await page.getByRole('columnheader', { name: 'Domain', exact: true }).count(), 0, 'A hidden column stays hidden after a reload');
+      await columnMenu.click();
+      await page.getByRole('menuitem', { name: 'Reset columns', exact: true }).click();
       await page.getByRole('columnheader', { name: 'Domain', exact: true }).waitFor();
     });
 
@@ -285,7 +300,7 @@ export async function runSuite(h, { mode, owner }) {
       for (const entity of ['contacts', 'deals']) {
         await page.goto(`/${entity}`);
         await search(page, entity, `${prefix} Paging ${entity === 'contacts' ? 'contact' : 'deal'}`);
-        assert.equal(await page.getByRole('checkbox', { name: /^Select / }).count(), 26);
+        await eventually(async () => (await page.getByRole('checkbox', { name: /^Select / }).count()) === 26, 'Every matching record arrives on the first page');
         await page.getByRole('checkbox', { name: 'Select page', exact: true }).check();
         await page.getByRole('button', { name: 'Next page', exact: true }).click(); await settled(page);
         await eventually(async () => (await page.getByRole('checkbox', { name: /^Select / }).count()) === 2, 'Second page has one real record');
@@ -298,11 +313,13 @@ export async function runSuite(h, { mode, owner }) {
           await page.getByText('Amounts are grouped by currency and sorted exactly within each currency. No exchange-rate conversion is applied.', { exact: true }).waitFor();
         }
         await settled(page);
-        await page.locator('summary').filter({ hasText: /^Filters/ }).click();
+        await page.getByRole('button', { name: /^Filters/ }).click();
         const label = entity === 'contacts' ? 'Title' : 'Currency';
-        const facet = page.locator('details').filter({ has: page.locator('summary').filter({ hasText: new RegExp(`^${label}`) }) }).last();
-        await facet.locator('summary').click();
-        await facet.getByRole('checkbox', { name: entity === 'contacts' ? /Engineer/ : /EUR/ }).check();
+        await page.getByRole('menuitem', { name: new RegExp(`^${label}`) }).click();
+        await page.getByRole('menuitemcheckbox', { name: entity === 'contacts' ? /Engineer/ : /EUR/ }).click();
+        await page.keyboard.press('Escape');
+        await page.keyboard.press('Escape');
+        await page.getByRole('menu').waitFor({ state: 'hidden' });
         await page.getByRole('status').filter({ hasText: /^13 records$/ }).waitFor();
         await page.reload(); await page.waitForLoadState('networkidle'); await settled(page);
         assert.equal(await page.getByRole('status').filter({ hasText: /^13 records$/ }).count(), 1);
@@ -428,7 +445,7 @@ export async function runSuite(h, { mode, owner }) {
         assert.ok((await form.picker.locator('option').evaluateAll(options => options.map(option => option.value))).includes(member.user.id));
         await form.dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
         await ownerPage.getByRole('button', { name: 'Account', exact: true }).click();
-        await ownerPage.getByRole('link', { name: 'Manage members', exact: true }).click();
+        await ownerPage.getByRole('menuitem', { name: 'Manage members', exact: true }).click();
         await ownerPage.getByRole('button', { name: `Revoke access for ${member.user.name}`, exact: true }).click();
         await ownerPage.getByRole('dialog').getByRole('button', { name: 'Revoke access', exact: true }).click();
         await ownerPage.getByText('Access revoked. This account has been signed out.', { exact: true }).waitFor();
@@ -436,7 +453,7 @@ export async function runSuite(h, { mode, owner }) {
         assert.ok(!(await form.picker.locator('option').evaluateAll(options => options.map(option => option.value))).includes(member.user.id));
         await form.dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
         await ownerPage.getByRole('button', { name: 'Account', exact: true }).click();
-        await ownerPage.getByRole('link', { name: 'Manage members', exact: true }).click();
+        await ownerPage.getByRole('menuitem', { name: 'Manage members', exact: true }).click();
         await ownerPage.getByRole('button', { name: `Restore access for ${member.user.name}`, exact: true }).click();
         await ownerPage.getByText('Access restored with no role. This account must sign in again and be assigned a role.', { exact: true }).waitFor();
         const role = ownerPage.getByRole('combobox', { name: `Role for ${member.user.name}`, exact: true });
@@ -462,8 +479,8 @@ export async function runSuite(h, { mode, owner }) {
         await memberPage.getByRole('button', { name: 'Refresh members', exact: true }).click();
         await captured;
         await memberPage.getByRole('button', { name: 'Account', exact: true }).click();
-        await memberPage.getByRole('button', { name: 'Sign out', exact: true }).click();
-        await memberPage.waitForURL('**/sign-in');
+        await memberPage.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
+        await memberPage.waitForURL(url => url.pathname === '/sign-in');
         release();
         await memberPage.getByRole('heading', { name: 'Sign in', exact: true }).waitFor();
         assert.equal(await memberPage.getByRole('region', { name: 'Workspace members', exact: true }).count(), 0);

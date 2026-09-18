@@ -104,7 +104,7 @@ export async function runSuite(h, { mode, owner }) {
       try {
         await draft(page, 'NOTE', ' ', ' ');
         await composer(page).getByRole('button', { name: 'Add activity', exact: true }).click();
-        await composer(page).getByRole('alert').waitFor();
+        await composer(page).getByRole('alert').first().waitFor();
         assert.equal(await composer(page).getByLabel('Body', { exact: true }).getAttribute('aria-invalid'), 'true');
         await draft(page, 'TASK', ' ', 'Task body alone');
         await composer(page).getByRole('button', { name: 'Add activity', exact: true }).click();
@@ -208,7 +208,7 @@ export async function runSuite(h, { mode, owner }) {
         for (const reason of ['validation', 'transport']) {
           failure = reason;
           await composer(page).getByRole('button', { name: 'Add activity', exact: true }).click();
-          await composer(page).getByRole('alert').waitFor();
+          await composer(page).getByRole('alert').first().waitFor();
           await eventually(() => composer(page).getByRole('button', { name: 'Add activity', exact: true }).isEnabled(), 'Failed request permits explicit recovery');
           if (reason === 'validation') assert.equal(await composer(page).getByLabel('Subject', { exact: true }).getAttribute('aria-invalid'), 'true', 'Server field issues reach their accessible control');
           assert.equal(await composer(page).getByLabel('Subject', { exact: true }).inputValue(), `${mode} retained email`);
