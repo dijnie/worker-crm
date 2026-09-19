@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test as nodeTest } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
+import { shownCount, shownDecimal } from './browser-harness.mjs';
 import { execFileSync } from 'node:child_process';
 import { chmod, realpath, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
@@ -25,12 +26,12 @@ export const stages = ['DEMO_BOOKED', 'QUALIFIED_TO_BUY', 'UNQUALIFIED_TO_BUY', 
 export async function statsMatch(page, api, currency = 'USD') {
   const stats = await api(`/api/stats?currency=${currency}`);
   for (const key of ['totalCompanies', 'totalContacts', 'openDeals', 'openDealValue']) {
-    const expected = key === 'openDealValue' ? `${currency} ${stats[key]}` : String(stats[key]);
+    const expected = key === 'openDealValue' ? `${currency} ${shownDecimal(stats[key])}` : shownCount(stats[key]);
     await eventually(async () => await statsRegion(page).locator(`[data-stat="${key}"] dd`).first().innerText() === expected, `${key} reflects authoritative ${currency} statistics`);
   }
   for (const bucket of stats.pipeline) {
     const cells = page.getByRole('table', { name: 'Deal pipeline', exact: true }).locator(`[data-stage="${bucket.stage}"] td`);
-    await eventually(async () => (await cells.allTextContents()).join('|') === `${bucket.count}|${bucket.value}`, `${bucket.stage} count and exact value match`);
+    await eventually(async () => (await cells.allTextContents()).join('|') === `${shownCount(bucket.count)}|${shownDecimal(bucket.value)}`, `${bucket.stage} count and exact value match`);
   }
   return stats;
 }

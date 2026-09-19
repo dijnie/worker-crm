@@ -8,6 +8,7 @@ async function bundled(options) {
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 }
 const presentation = await bundled({ entryPoints: ["src/lib/activity-presentation.ts"] });
+const { crm } = await bundled({ entryPoints: ["src/lib/i18n/dictionaries/crm.ts"] });
 const row = (id, occurredAt, overrides = {}) => ({
   id, type: "NOTE", subject: null, body: null, occurredAt,
   createdAt: "2026-09-13T10:00:00Z", updatedAt: "2026-09-13T10:00:00Z",
@@ -74,10 +75,11 @@ test("timeline entry renders safe historical content with deletion for every typ
     import { renderToStaticMarkup } from "react-dom/server";
     import { TimelineEntry } from "./src/components/app/timeline/timeline-entry";
     import { AppDataProvider } from "./src/components/app/app-data-provider";
-    export function render(activity) { return renderToStaticMarkup(createElement(AppDataProvider, {account:{id:"viewer",name:"Viewer",role:{id:"system",name:"System",isSystem:true,revision:0},roleId:"system",permissions:[],membershipRevision:0}}, createElement(TimelineEntry, {activity, now:new Date("2026-09-13T12:00:00Z"), directory:[], record:{kind:"company",id:"company"}, onResult:()=>{}}))); }`, resolveDir: process.cwd(), loader: "tsx" }, plugins: [{ name: "native-react-renderer", setup(build) { build.onResolve({ filter: /^react(?:\/.*)?$|^react-dom(?:\/.*)?$/ }, args => ({ path: import.meta.resolve(args.path), external: true })); } }] });
-  for (const [type, value] of Object.entries(presentation.ACTIVITY_PRESENTATION)) {
+    import { I18nProvider } from "./src/components/app/i18n-provider";
+    export function render(activity) { return renderToStaticMarkup(createElement(I18nProvider, {locale:"en"}, createElement(AppDataProvider, {account:{id:"viewer",name:"Viewer",role:{id:"system",name:"System",isSystem:true,revision:0},roleId:"system",permissions:[],membershipRevision:0}}, createElement(TimelineEntry, {activity, now:new Date("2026-09-13T12:00:00Z"), directory:[], record:{kind:"company",id:"company"}, onResult:()=>{}})))); }`, resolveDir: process.cwd(), loader: "tsx" }, plugins: [{ name: "native-react-renderer", setup(build) { build.onResolve({ filter: /^react(?:\/.*)?$|^react-dom(?:\/.*)?$/ }, args => ({ path: import.meta.resolve(args.path), external: true })); } }] });
+  for (const type of Object.keys(presentation.ACTIVITY_PRESENTATION)) {
     const html = renderer.render(row(type, null, { type, body: "<img src=x onerror=alert(1)>", meta: { from: "DEMO_BOOKED", to: "CLOSED_WON" }, emailThreadId: "javascript:alert(1)", contactId: "external-contact" }));
-    assert.ok(html.includes(value.label));
+    assert.ok(html.includes(crm.en.activityTypes[type]));
     assert.ok(html.includes("&lt;img"));
     assert.ok(!html.includes("<img src=x"));
     assert.ok(html.includes("Unavailable / historical actor (former-member)"));

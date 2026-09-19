@@ -12,6 +12,13 @@ import { chromium } from 'playwright';
 import { fullCrmPermissions } from '../auth-harness.mjs';
 
 export const origin = 'http://localhost:3100';
+// The interface groups digits for its language; suites run in English. Formatting
+// the API's exact decimal string keeps every digit, so equality still proves the value.
+export const shownCount = value => new Intl.NumberFormat('en-US').format(value);
+export function shownDecimal(value) {
+  const digits = value.includes('.') ? value.length - value.indexOf('.') - 1 : 0;
+  return new Intl.NumberFormat('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
+}
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const password = 'Browser-test-password-42!';
 const sourceEntries = new Set(['src', 'services', 'migrations', 'public', 'scripts', 'tests', 'package.json', 'package-lock.json', 'next-env.d.ts', 'next.config.ts', 'postcss.config.mjs', 'tsconfig.json', 'vite.config.ts', 'wrangler.jsonc', 'worker-configuration.d.ts']);

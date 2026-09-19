@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test as nodeTest } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
+import { shownCount, shownDecimal } from './browser-harness.mjs';
 
 async function eventually(check, message) {
   const deadline = Date.now() + 15000;
@@ -23,12 +24,12 @@ async function edit(page, label, value) {
 async function statsMatch(page, api, currency) {
   const stats = await api(`/api/stats?currency=${currency}`);
   for (const field of ['totalCompanies', 'totalContacts', 'openDeals', 'openDealValue']) {
-    const expected = field === 'openDealValue' ? `${currency} ${stats[field]}` : String(stats[field]);
+    const expected = field === 'openDealValue' ? `${currency} ${shownDecimal(stats[field])}` : shownCount(stats[field]);
     await eventually(async () => await page.locator(`[data-stat="${field}"] dd`).first().textContent() === expected, `${field} refreshes to ${expected}`);
   }
   for (const bucket of stats.pipeline) {
     const cells = page.locator(`tr[data-stage="${bucket.stage}"] td`);
-    await eventually(async () => (await cells.allTextContents()).join('|') === `${bucket.count}|${bucket.value}`, `${bucket.stage} refreshes`);
+    await eventually(async () => (await cells.allTextContents()).join('|') === `${shownCount(bucket.count)}|${shownDecimal(bucket.value)}`, `${bucket.stage} refreshes`);
   }
 }
 

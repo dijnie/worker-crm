@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createBrowserHarness } from '../tests/browser/browser-harness.mjs';
 
-const knownSuites = ['lists', 'record-sheets', 'activities', 'fields', 'overview', 'integration', 'rbac', 'http', 'all'];
+const knownSuites = ['lists', 'record-sheets', 'activities', 'fields', 'overview', 'integration', 'rbac', 'http', 'i18n', 'all'];
 const registry = { integration: () => import('../tests/browser/integration.test.mjs'), lists: () => import('../tests/browser/lists.test.mjs'), activities: () => import('../tests/browser/activities.test.mjs'), fields: () => import('../tests/browser/fields.test.mjs'), overview: () => import('../tests/browser/overview.test.mjs'), 'record-sheets': async () => { const core = await import('../tests/browser/record-sheets.test.mjs'); const relations = await import('../tests/browser/record-sheet-relations.test.mjs'); return { runSuite: async (h, context) => { await core.runSuite(h, context); await relations.runSuite(h, context); } }; } };
 let mode = 'dev', suite = 'lists';
 for (const argument of process.argv.slice(2)) {
@@ -11,10 +11,11 @@ for (const argument of process.argv.slice(2)) {
 }
 registry.rbac = () => import('../tests/browser/rbac.test.mjs');
 registry.http = () => import('../tests/browser/http.test.mjs');
+registry.i18n = () => import('../tests/browser/i18n.test.mjs');
 assert.ok(['dev', 'built', 'both'].includes(mode), 'Expected --mode=dev|built|both');
 assert.ok(knownSuites.includes(suite), `Unknown suite: ${suite}`);
 assert.ok(suite === 'all' || registry[suite], `Suite ${suite} has not been implemented yet`);
-const suites = suite === 'all' ? ['integration', 'rbac', 'http'] : [suite];
+const suites = suite === 'all' ? ['integration', 'rbac', 'http', 'i18n'] : [suite];
 let harness, cleanup;
 const onSignal = signal => { void (async () => { try { await cleanup?.(); } finally { process.exit(signal === 'SIGINT' ? 130 : 143); } })(); };
 process.once('SIGINT', onSignal);
