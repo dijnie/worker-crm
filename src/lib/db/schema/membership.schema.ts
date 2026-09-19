@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { APP_LOCALES, DEFAULT_LOCALE } from "../../i18n/config";
 import { user } from "./auth.schema";
 import { roles } from "./role.schema";
 
@@ -7,12 +8,14 @@ export const singletonWorkspace = sqliteTable("singleton_workspace", {
   id: text("id").primaryKey(),
   ownerUserId: text("owner_user_id").references(() => user.id, { onDelete: "restrict" }),
   reportingCurrency: text("reporting_currency").default("USD").notNull(),
+  locale: text("locale", { enum: APP_LOCALES }).default(DEFAULT_LOCALE).notNull(),
   revision: integer("revision").default(0).notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, (table) => [
   check("singleton_workspace_id_check", sql`${table.id} = 'shared'`),
   check("singleton_workspace_currency_check", sql`length(${table.reportingCurrency}) = 3 and ${table.reportingCurrency} = upper(${table.reportingCurrency})`),
+  check("singleton_workspace_locale_check", sql`${table.locale} in ('en', 'vi')`),
   check("singleton_workspace_revision_check", sql`${table.revision} >= 0`),
 ]);
 

@@ -29,6 +29,13 @@
       "when": 1789707107871,
       "tag": "0003_workspace_reporting_currency",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1789805831421,
+      "tag": "0004_workspace_locale",
+      "breakpoints": true
     }
   ]
 }
