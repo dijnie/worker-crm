@@ -54,10 +54,12 @@ colours come from the dashboard's own chart palette and brand orange, and every
 radius step resolves through `--radius` so a badge is 8px, as the dashboard's badge
 was.
 
-The workspace's reporting currency is the one stored preference the interface
-edits: `singleton_workspace.reporting_currency`, seeded as `USD` by migration
-`0001`, written only by a system account under an `expectedRevision`
-precondition, and read by every member for the overview default.
+The interface edits two stored workspace preferences, both written only by a
+system account under an `expectedRevision` precondition. The reporting currency,
+`singleton_workspace.reporting_currency`, is seeded as `USD` by migration `0001`
+and read by every member for the overview default. The
+[interface language](#interface-language), `singleton_workspace.locale`, starts
+as `en` and applies to everyone.
 
 The [workspace layout](src/app/(workspace)/layout.tsx) applies this shell to
 business screens. `/docs` is a standalone page with no application header or rail.
@@ -392,6 +394,40 @@ For Cloudflare Workers Builds, set the production **Deploy command** to
 Cloudflare token must have access to both the Worker and its D1 database.
 Wrangler skips migration confirmation in CI; see
 [D1 migration behavior](https://developers.cloudflare.com/workers/wrangler/commands/d1/#d1-migrations-apply).
+
+## Interface language
+
+The interface is available in English (`en`) and Vietnamese (`vi`). The language
+is a workspace setting, not a personal one: a system account chooses it in
+Settings → Language, it is stored in `singleton_workspace.locale`
+([migration 0004](migrations/0004_workspace_locale.sql)), and everyone follows
+it, including the signed-out auth pages and the verification and password-reset
+emails. There is no locale segment in the URL and no language cookie. A new or
+upgraded workspace starts in English.
+
+`GET /api/settings` returns `locale`; `PATCH /api/settings` accepts `locale`,
+`reportingCurrency`, or both, with the same `expectedRevision` precondition.
+
+Copy lives in typed dictionaries under [src/lib/i18n](src/lib/i18n), with no i18n
+library. Each file in [dictionaries](src/lib/i18n/dictionaries) holds one area of
+the interface in both languages against a single interface, so a key missing
+from either language fails `tsc`. Text with a value in it is a function, for
+example `saved: (currency: string) => string`. Server components read
+`getWorkspaceDictionary()`; client components read `useDictionary()` and format
+dates, numbers and amounts with `useFormat()`, which follows the same language
+(`en-US` or `vi-VN`). Amounts are formatted from their exact decimal strings, so
+no digits are lost.
+
+To add copy, add the key to the area's interface and to both languages, then
+read it in the component. To add a language, extend `APP_LOCALES` in
+[config.ts](src/lib/i18n/config.ts), the `locale` check constraint, and every
+dictionary file; the compiler lists what is missing.
+
+API error text stays English. Every error the API raises carries a stable `code`
+([error-codes.ts](src/lib/utils/error-codes.ts)), and each validation issue
+carries the code of the rule it broke. The interface translates by code and
+falls back to the server's message, so English shows the server's wording
+unchanged. Integrations should branch on `code`, never on `message`.
 
 ## API integration
 
