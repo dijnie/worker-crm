@@ -3,15 +3,16 @@ import type { ActivitySelect } from "./db/schema/activity.schema";
 import type { RecordRef } from "../components/app/record-sheet/record-navigation";
 
 export type TimelineActivity = ActivitySelect;
+// How each type is drawn. Its name is copy and comes from `dictionary.crm.activityTypes`.
 export const ACTIVITY_PRESENTATION = {
-  NOTE: { label: "Note", icon: "note" },
-  CALL: { label: "Call", icon: "phone" },
-  EMAIL: { label: "Email", icon: "mail" },
-  MEETING: { label: "Meeting", icon: "calendar" },
-  TASK: { label: "Task", icon: "task" },
-  STAGE_CHANGE: { label: "Stage change", icon: "stage" },
-  ENRICHMENT: { label: "Enrichment", icon: "enrichment" },
-} as const satisfies Record<ActivityType, { label: string; icon: string }>;
+  NOTE: { icon: "note" },
+  CALL: { icon: "phone" },
+  EMAIL: { icon: "mail" },
+  MEETING: { icon: "calendar" },
+  TASK: { icon: "task" },
+  STAGE_CHANGE: { icon: "stage" },
+  ENRICHMENT: { icon: "enrichment" },
+} as const satisfies Record<ActivityType, { icon: string }>;
 
 /** SQLite's unzoned timestamps are UTC, just like the API's ISO timestamps. */
 export function activityDate(value: string | null | undefined): Date | null {
@@ -59,16 +60,23 @@ export function activityStageTransition(meta: unknown): { from: DealStage; to: D
   return isStage(from) && isStage(to) ? { from, to } : null;
 }
 
-export function activityActorLabel(id: string, directory: readonly { id: string; name: string }[]): string {
-  return directory.find(actor => actor.id === id)?.name || `Unavailable / historical actor (${id || "unknown"})`;
+/** Labels an unresolved actor. Callers pass the interface language's phrase; English is the default. */
+export function activityActorLabel(id: string, directory: readonly { id: string; name: string }[], unavailableLabel = "Unavailable / historical actor"): string {
+  return directory.find(actor => actor.id === id)?.name || `${unavailableLabel} (${id || "unknown"})`;
 }
 
-export function activityTaskState(activity: Pick<TimelineActivity, "completedAt" | "dueAt">, now: Date) {
-  if (activity.completedAt) return { label: "Completed", date: activityDate(activity.completedAt), overdue: false };
+export interface TaskStateLabels { completed: string; dueDateUnavailable: string; noDueDate: string; overdue: string; due: string }
+const DEFAULT_TASK_STATE_LABELS: TaskStateLabels = {
+  completed: "Completed", dueDateUnavailable: "Due date unavailable", noDueDate: "No due date", overdue: "Overdue", due: "Due",
+};
+
+/** Callers pass the interface language's labels; English is the default. */
+export function activityTaskState(activity: Pick<TimelineActivity, "completedAt" | "dueAt">, now: Date, labels: TaskStateLabels = DEFAULT_TASK_STATE_LABELS) {
+  if (activity.completedAt) return { label: labels.completed, date: activityDate(activity.completedAt), overdue: false };
   const date = activityDate(activity.dueAt);
-  if (!date) return { label: activity.dueAt ? "Due date unavailable" : "No due date", date: null, overdue: false };
+  if (!date) return { label: activity.dueAt ? labels.dueDateUnavailable : labels.noDueDate, date: null, overdue: false };
   const overdue = date.getTime() < now.getTime();
-  return { label: overdue ? "Overdue" : "Due", date, overdue };
+  return { label: overdue ? labels.overdue : labels.due, date, overdue };
 }
 
 export function activityRecordLinks(activity: Pick<TimelineActivity, "companyId" | "contactId" | "dealId">): RecordRef[] {
@@ -84,8 +92,9 @@ export function activityAnchor(record: RecordRef) {
   }
 }
 
-export function activityMetadataText(meta: unknown): string | null {
+/** The caller passes the interface language's fallback; English is the default. */
+export function activityMetadataText(meta: unknown, unavailable = "Stored metadata is unavailable."): string | null {
   if (meta === undefined || meta === null) return null;
   try { return typeof meta === "string" ? meta : JSON.stringify(meta, null, 2); }
-  catch { return "Stored metadata is unavailable."; }
+  catch { return unavailable; }
 }

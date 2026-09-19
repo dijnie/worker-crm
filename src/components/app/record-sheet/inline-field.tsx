@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
 import { PROPERTY_LABEL, PROPERTY_ROW } from "../detail-sheet";
 import { useAppData } from "../app-data-provider";
+import { useDictionary } from "../i18n-provider";
 import { RecordPicker } from "../records/record-picker";
-import { propertyError } from "./property-values";
+import { propertyFailureMessage } from "./property-values";
 export type DirtyEditor = { dirty: boolean; pending?: boolean; save: () => Promise<boolean>; discard: () => void };
 export type DirtyChange = (key: string, state: DirtyEditor | null) => void;
 export function InlineField({ fieldKey, label, value, display, onSave, onDirtyChange, multiline, type = "text", picker, required, selectedLabel, readOnly = false }: {
@@ -15,6 +16,8 @@ export function InlineField({ fieldKey, label, value, display, onSave, onDirtyCh
   onDirtyChange: DirtyChange; multiline?: boolean; type?: string; picker?: "owner" | "company" | "contact"; required?: boolean; selectedLabel?: string; readOnly?: boolean;
 }) {
   const { store, generation } = useAppData();
+  const dictionary = useDictionary();
+  const { common, inlineField: copy } = dictionary.recordSheet;
   const id = useId();
   const [editing, setEditing] = useState(false);
   const editingRef = useRef(false);
@@ -48,7 +51,7 @@ export function InlineField({ fieldKey, label, value, display, onSave, onDirtyCh
         confirmedRef.current = saved; draftRef.current = saved; editingRef.current = false;
         setConfirmed(saved); setDraft(saved); setEditing(false); return true;
       } catch (failure) {
-        if (mounted.current && store.isCurrent(generation)) setError(propertyError(failure));
+        if (mounted.current && store.isCurrent(generation)) setError(propertyFailureMessage(failure, dictionary));
         return false;
       } finally {
         flight.current = null;
@@ -79,12 +82,12 @@ export function InlineField({ fieldKey, label, value, display, onSave, onDirtyCh
               if (event.relatedTarget instanceof HTMLElement && event.relatedTarget.closest(`[data-property]`) === event.currentTarget.closest(`[data-property]`)) return;
               void save();
             }} />}
-        {error && <p role="alert" className="text-destructive text-xs">{error} Last saved: {confirmed || "Not set"}</p>}
-        <div className="flex gap-2"><Button size="sm" type="button" disabled={pending} aria-label={`Save ${label.toLowerCase()}`} onClick={() => void save()}>{pending ? "Saving…" : "Save"}</Button>
-          <Button size="sm" type="button" variant="ghost" disabled={pending} onMouseDown={() => { cancelBlur.current = true; }} onClick={discard}>Cancel</Button></div>
+        {error && <p role="alert" className="text-destructive text-xs">{error} {copy.lastSaved(confirmed || common.notSet)}</p>}
+        <div className="flex gap-2"><Button size="sm" type="button" disabled={pending} aria-label={copy.saveAria(label.toLowerCase())} onClick={() => void save()}>{pending ? dictionary.common.saving : dictionary.common.save}</Button>
+          <Button size="sm" type="button" variant="ghost" disabled={pending} onMouseDown={() => { cancelBlur.current = true; }} onClick={discard}>{dictionary.common.cancel}</Button></div>
       </div> : <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 text-xs/5 whitespace-pre-wrap break-words">{display ?? (confirmed || <span className="text-muted-foreground">Not set</span>)}</div>
-        {!readOnly && <Button type="button" variant="ghost" size="sm" aria-label={`Edit ${label.toLowerCase()}`} onClick={() => { cancelBlur.current = false; editingRef.current = true; setDraft(confirmed); setEditing(true); }}>Edit</Button>}</div>}
+        <div className="min-w-0 text-xs/5 whitespace-pre-wrap break-words">{display ?? (confirmed || <span className="text-muted-foreground">{common.notSet}</span>)}</div>
+        {!readOnly && <Button type="button" variant="ghost" size="sm" aria-label={copy.editAria(label.toLowerCase())} onClick={() => { cancelBlur.current = false; editingRef.current = true; setDraft(confirmed); setEditing(true); }}>{common.edit}</Button>}</div>}
     </div>
   </div>;
 }

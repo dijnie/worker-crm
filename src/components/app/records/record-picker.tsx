@@ -2,6 +2,8 @@
 import { canPermission } from "@/lib/auth/permissions";
 import { useEffect, useId, useState } from "react";
 import { useAppData, useAppQuery } from "../app-data-provider";
+import { useDictionary, useFormat } from "../i18n-provider";
+import { errorMessage } from "@/lib/i18n/error-message";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field";
@@ -29,6 +31,9 @@ export function RecordPicker({
   excludeIds = [],
 }: PickerProps) {
   const { api, generation, account } = useAppData();
+  const dictionary = useDictionary();
+  const format = useFormat();
+  const { picker: copy } = dictionary.recordSheet;
   const allowed = kind === "owner" || canPermission(account, kind, "read");
   const id = useId();
   const [search, setSearch] = useState("");
@@ -80,7 +85,8 @@ export function RecordPicker({
   );
   const items = (result.data?.items ?? []).filter(item => !excludeIds.includes(item.id));
   const missingSelected = value && !items.some((item) => item.id === value);
-  if (!allowed) return <p className="text-muted-foreground text-xs">Your role cannot select this linked record.</p>;
+  const labelLower = label.toLowerCase();
+  if (!allowed) return <p className="text-muted-foreground text-xs">{copy.permissionDenied}</p>;
   return (
     <div className="space-y-2">
       <FieldLabel htmlFor={id}>
@@ -88,8 +94,8 @@ export function RecordPicker({
         {required ? " *" : ""}
       </FieldLabel>
       <Input
-        aria-label={`Search ${label.toLowerCase()}`}
-        placeholder={`Search ${label.toLowerCase()}…`}
+        aria-label={copy.searchAria(labelLower)}
+        placeholder={copy.searchPlaceholder(labelLower)}
         value={search}
         onChange={(event) => setSearch(event.target.value)}
         disabled={disabled}
@@ -111,16 +117,16 @@ export function RecordPicker({
       >
         <option value="">
           {required
-            ? `Choose ${label.toLowerCase()}`
+            ? copy.chooseOption(labelLower)
             : kind === "owner"
-              ? "Unassigned"
-              : "None"}
+              ? dictionary.recordSheet.common.unassigned
+              : dictionary.recordSheet.common.none}
         </option>
         {missingSelected && (
           <option value={value}>
             {chosen?.id === value
               ? chosen.name
-              : (selectedLabel ?? `Unavailable / historical (${value})`)}
+              : (selectedLabel ?? dictionary.recordSheet.common.unavailableHistorical(value))}
           </option>
         )}
         {items.map((item) => (
@@ -131,47 +137,45 @@ export function RecordPicker({
       </select>
       {result.error ? (
         <p role="alert" className="text-destructive text-xs">
-          {result.error instanceof Error
-            ? result.error.message
-            : "Request failed"}{" "}
+          {errorMessage(result.error, dictionary)}{" "}
           <button type="button" className="underline" onClick={result.refresh}>
-            Retry directory
+            {copy.retryDirectory}
           </button>
         </p>
       ) : result.loading ? (
-        <div role="status" aria-busy="true" aria-label="Loading options" className="space-y-2 py-2">
+        <div role="status" aria-busy="true" aria-label={copy.loadingOptions} className="space-y-2 py-2">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-3 w-3/4" />
           ))}
         </div>
       ) : result.refreshing ? (
         <p role="status" className="text-muted-foreground text-xs">
-          Refreshing options…
+          {copy.refreshingOptions}
         </p>
       ) : (
         <div className="flex items-center gap-2 text-muted-foreground text-xs">
-          <span className="tabular-nums">{result.data?.total ?? 0} available</span>
+          <span className="tabular-nums">{copy.available(format.number(result.data?.total ?? 0))}</span>
           <Button
             type="button"
             size="sm"
             variant="ghost"
-            aria-label={`Previous ${label.toLowerCase()} options`}
+            aria-label={copy.previousAria(labelLower)}
             disabled={page <= 1 || disabled}
             onClick={() => setPage(page - 1)}
           >
-            Previous
+            {copy.previous}
           </Button>
           <Button
             type="button"
             size="sm"
             variant="ghost"
-            aria-label={`Next ${label.toLowerCase()} options`}
+            aria-label={copy.nextAria(labelLower)}
             disabled={
               !result.data || page * 25 >= result.data.total || disabled
             }
             onClick={() => setPage(page + 1)}
           >
-            Next
+            {copy.next}
           </Button>
         </div>
       )}

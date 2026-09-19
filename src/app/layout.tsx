@@ -4,24 +4,29 @@ import "@/styles/globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/app/theme-provider";
+import { I18nProvider } from "@/components/app/i18n-provider";
+import { getWorkspaceDictionary, getWorkspaceLocale } from "@/lib/i18n/workspace-locale";
 
-export const metadata: Metadata = {
-  title: "Vinext",
-  description: "A unified workspace for your team.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { common } = await getWorkspaceDictionary();
+  return { title: common.appName, description: common.appDescription };
+}
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const locale = await getWorkspaceLocale();
   return (
-    <html lang="en" suppressHydrationWarning className="h-full antialiased">
+    <html lang={locale} suppressHydrationWarning className="h-full antialiased">
       <head>
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
       </head>
       <body className="flex min-h-full flex-col font-sans">
         <ThemeProvider>
-          <TooltipProvider>{children}</TooltipProvider>
-          <Toaster richColors />
+          <I18nProvider locale={locale}>
+            <TooltipProvider>{children}</TooltipProvider>
+            <Toaster richColors />
+          </I18nProvider>
         </ThemeProvider>
       </body>
     </html>

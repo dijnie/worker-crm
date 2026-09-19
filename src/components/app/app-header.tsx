@@ -6,10 +6,12 @@ import Logo from "@/components/ui/logo";
 import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
 import { AccountMenu } from "@/components/app/account-menu";
+import { useDictionary } from "@/components/app/i18n-provider";
 import { useMobileNav } from "@/components/app/mobile-nav";
 import type { AccountIdentity } from "@/lib/auth/request-context";
 
 export function AppHeader({ account }: { account: AccountIdentity }) {
+  const { shell: copy } = useDictionary();
   const { setOpen: setMobileNavOpen, opener } = useMobileNav();
 
   return (
@@ -20,14 +22,14 @@ export function AppHeader({ account }: { account: AccountIdentity }) {
           variant="ghost"
           size="icon"
           className="md:hidden"
-          aria-label="Open navigation"
+          aria-label={copy.appHeader.openNavigation}
           onClick={() => setMobileNavOpen(true)}
         >
           <Menu />
         </Button>
         <Link
           href="/"
-          aria-label="Homepage"
+          aria-label={copy.appHeader.homepageLabel}
           className="hidden size-8 items-center justify-center text-foreground md:flex"
         >
           <Logo className="size-5" />
@@ -44,6 +46,7 @@ export function AppHeader({ account }: { account: AccountIdentity }) {
 }
 
 export function AppHeaderFallback() {
+  const { shell: copy } = useDictionary();
   return (
     <header
       className="flex h-12 shrink-0 items-center gap-2 border-b px-3 [view-transition-name:app-header]"
@@ -57,7 +60,7 @@ export function AppHeaderFallback() {
         <span className="min-w-0 truncate font-medium text-sm">Vinext</span>
       </div>
       <span role="status" className="sr-only">
-        Loading workspace header…
+        {copy.appHeader.loadingHeader}
       </span>
     </header>
   );

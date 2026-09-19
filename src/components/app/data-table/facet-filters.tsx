@@ -9,24 +9,10 @@ import {
   type RecordListQuery,
 } from "@/lib/record-list-contracts";
 import { useAppData, useAppQuery } from "../app-data-provider";
+import { useDictionary } from "../i18n-provider";
 import type { FieldDefinition } from "@/lib/field-form-values";
-import { fieldFacetDefinitions, fieldFilterLabel } from "../fields/field-facets";
+import { fieldFacetCopy, fieldFacetDefinitions, fieldFilterLabel } from "../fields/field-facets";
 
-export const facetLabels: Record<string, string> = {
-  owner: "Owner",
-  industry: "Industry",
-  source: "Source",
-  enrichment: "Enrichment",
-  activity: "Activity",
-  company: "Company",
-  title: "Title",
-  seniority: "Seniority",
-  persona: "Persona",
-  stage: "Stage",
-  status: "Status",
-  closing: "Closing",
-  currency: "Currency",
-};
 /** The API caps `facetLimit` at one hundred options per facet. */
 const facetOptionLimit = 100;
 /** Past this many options a facet submenu gains its search box. */
@@ -44,6 +30,7 @@ export function useListFacets({
   fieldDefinitions?: readonly FieldDefinition[];
 }) {
   const { api, account } = useAppData();
+  const dictionary = useDictionary();
   const resource =
     entity === "company" ? "companies" : entity === "contact" ? "contacts" : "deals";
   const options = { ...query, page: 1, facetLimit: facetOptionLimit };
@@ -67,7 +54,7 @@ export function useListFacets({
       const counted = result.data?.facetCounts[id] ?? [];
       return {
         id,
-        label: facetLabels[id] ?? fieldFilterLabel(id, fieldDefinitions),
+        label: dictionary.recordList.facets[id] ?? fieldFilterLabel(id, fieldDefinitions, fieldFacetCopy(dictionary.fields)),
         options: counted.map((option) => ({
           value: option.value,
           label: option.label,
@@ -75,7 +62,7 @@ export function useListFacets({
         searchable: counted.length > facetSearchThreshold,
       };
     });
-  }, [entity, account, fieldDefinitions, result.data]);
+  }, [entity, account, fieldDefinitions, result.data, dictionary]);
   return {
     facets,
     error: result.error,

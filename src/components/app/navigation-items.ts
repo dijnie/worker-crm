@@ -8,19 +8,22 @@ import Settings from "@carbon/icons-react/es/Settings";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
 import type { CarbonIcon } from "@/components/ui/icon";
 
+/** Key into `dictionary.shell.navigation` for this item's label. */
+export type NavigationKey = "overview" | "companies" | "contacts" | "deals" | "settings" | "docs";
+
 export interface NavigationItem {
-  label: string;
+  labelKey: NavigationKey;
   href: string;
   icon: CarbonIcon;
 }
 
 export const navigationItems: readonly NavigationItem[] = [
-  { label: "Overview", href: "/", icon: Dashboard },
-  { label: "Companies", href: "/companies", icon: Building },
-  { label: "Contacts", href: "/contacts", icon: UserMultiple },
-  { label: "Deals", href: "/deals", icon: Partnership },
-  { label: "Settings", href: "/settings", icon: Settings },
-  { label: "API docs", href: "/docs", icon: Api },
+  { labelKey: "overview", href: "/", icon: Dashboard },
+  { labelKey: "companies", href: "/companies", icon: Building },
+  { labelKey: "contacts", href: "/contacts", icon: UserMultiple },
+  { labelKey: "deals", href: "/deals", icon: Partnership },
+  { labelKey: "settings", href: "/settings", icon: Settings },
+  { labelKey: "docs", href: "/docs", icon: Api },
 ];
 
 export function matchesNavigationPath(href: string, pathname: string) {

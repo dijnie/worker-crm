@@ -2,13 +2,13 @@ import { ServiceError } from "./service-error";
 
 export function decimalToCents(value: string): number {
   if (!/^-?\d+(?:\.\d{1,2})?$/.test(value)) {
-    throw new ServiceError(400, "Amount must be a decimal string with at most two fractional digits");
+    throw new ServiceError(400, "Amount must be a decimal string with at most two fractional digits", "AMOUNT_INVALID");
   }
   const negative = value.startsWith("-");
   const [whole, fraction = ""] = value.replace(/^-/, "").split(".");
   const cents = (BigInt(whole) * BigInt(100) + BigInt(fraction.padEnd(2, "0"))) * BigInt(negative ? -1 : 1);
   if (cents > BigInt(Number.MAX_SAFE_INTEGER) || cents < BigInt(Number.MIN_SAFE_INTEGER)) {
-    throw new ServiceError(400, "Amount exceeds the supported range");
+    throw new ServiceError(400, "Amount exceeds the supported range", "AMOUNT_OUT_OF_RANGE");
   }
   return Number(cents);
 }

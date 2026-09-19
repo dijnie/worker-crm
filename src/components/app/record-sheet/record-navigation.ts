@@ -1,3 +1,4 @@
+import type { RecordLinkErrorReason } from "@/lib/i18n/dictionaries/record-sheet";
 export const RECORD_KINDS = ["company", "contact", "deal"] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 export interface RecordRef {
@@ -7,6 +8,7 @@ export interface RecordRef {
 export class RecordLinkError extends Error {
   constructor(
     message = "This record link is invalid. Close it and open the record again.",
+    public readonly reason: RecordLinkErrorReason = "invalid",
   ) {
     super(message);
     this.name = "RecordLinkError";
@@ -27,7 +29,7 @@ function validate(ref: RecordRef): RecordRef {
 }
 export function normalizeRecordStack(refs: readonly RecordRef[]): RecordRef[] {
   if (refs.length > 10)
-    throw new RecordLinkError("A record link can contain at most ten records.");
+    throw new RecordLinkError("A record link can contain at most ten records.", "tooDeep");
   const seen = new Set<string>();
   return [...refs]
     .reverse()
@@ -93,7 +95,7 @@ export function buildRecordUrl(
     origin ??
     (typeof window === "undefined" ? base.origin : window.location.origin);
   if (base.origin !== expectedOrigin)
-    throw new RecordLinkError("Record links must stay in this workspace.");
+    throw new RecordLinkError("Record links must stay in this workspace.", "crossOrigin");
   const stack = parseRecordStack(base.searchParams).filter(
     (item) => item.kind !== ref.kind || item.id !== ref.id,
   );

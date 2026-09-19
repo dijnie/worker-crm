@@ -9,16 +9,18 @@ import {
   PageShellHeading,
   PageShellTitle,
 } from "@/components/app/page-shell";
+import { getWorkspaceDictionary } from "@/lib/i18n/workspace-locale";
 
-export default function DealsPage() {
+export default async function DealsPage() {
+  const dictionary = await getWorkspaceDictionary();
   return (
     <PermissionGate entity="deal">
       <PageShell className="min-h-0">
         <PageShellHeader>
           <PageShellHeading>
-            <PageShellTitle>Deals</PageShellTitle>
+            <PageShellTitle>{dictionary.crm.entities.DEAL.plural}</PageShellTitle>
             <PageShellDescription>
-              Manage your workspace records
+              {dictionary.recordList.pageDescription}
             </PageShellDescription>
           </PageShellHeading>
           <PageShellActions>

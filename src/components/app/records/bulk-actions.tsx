@@ -10,10 +10,13 @@ import {
 } from "@/components/ui/dialog";
 import type { DealStage } from "@/lib/db/schema/constants";
 import { useAppData } from "../app-data-provider";
+import { ApiError } from "@/lib/api";
+import { errorMessage } from "@/lib/i18n/error-message";
+import { useDictionary } from "../i18n-provider";
 import { RecordPicker } from "./record-picker";
 import { StageChangeDialog } from "./stage-change";
 import { runBulkOperation, type BulkOutcome } from "./bulk-operations";
-import { RECORD_INVALIDATIONS, type RecordEntity } from "./form-values";
+import { RECORD_INVALIDATIONS, recordEntityKey, type RecordEntity } from "./form-values";
 export interface BulkTarget {
   id: string;
   name: string;
@@ -24,12 +27,12 @@ export interface BulkReport {
 }
 /** Bulk results report their own outcome; the selection bar is too short to hold them. */
 export function BulkReportView({ report }: { report: BulkReport }) {
+  const { recordSheet: dictionary } = useDictionary();
   const failed = report.outcomes.filter((item) => !item.ok);
   return (
     <div role="status" className="rounded-md border bg-card p-3 text-xs">
       <p>
-        {report.outcomes.length - failed.length} succeeded; {failed.length}{" "}
-        failed.
+        {dictionary.bulk.reportSummary(report.outcomes.length - failed.length, failed.length)}
       </p>
       {failed.map((item) => (
         <p key={item.id} className="text-destructive">
@@ -39,7 +42,7 @@ export function BulkReportView({ report }: { report: BulkReport }) {
         </p>
       ))}
       {failed.length > 0 && (
-        <p>Failed records remain selected. Choose the action again to retry.</p>
+        <p>{dictionary.bulk.failedRetryHint}</p>
       )}
     </div>
   );
@@ -63,6 +66,9 @@ export function BulkActions({
   onReport?: (report: BulkReport | null) => void;
 }) {
   const { api, generation, store, invalidate, account } = useAppData();
+  const dictionary = useDictionary();
+  const { bulk: copy } = dictionary.recordSheet;
+  const entityLower = dictionary.crm.entities[recordEntityKey(entity)].lower;
   const [action, setAction] = useState<
     "owner" | "company" | "stage" | "archive" | "restore" | null
   >(null);
@@ -102,7 +108,11 @@ export function BulkActions({
       const results = await runBulkOperation(
         targets.map((target) => target.id),
         operation,
-        { isCurrent: () => store.isCurrent(generation) },
+        {
+          isCurrent: () => store.isCurrent(generation),
+          strings: { stopped: copy.stoppedAccessChanged, accessChanged: copy.accessChangedRetry, operationFailed: copy.operationFailed },
+          describe: failure => failure instanceof ApiError ? errorMessage(failure, dictionary) : copy.operationFailed,
+        },
       );
       if (mounted.current && store.isCurrent(generation)) {
         if (results.some((result) => result.ok)) invalidate(RECORD_INVALIDATIONS);
@@ -157,7 +167,7 @@ export function BulkActions({
           disabled={blocked}
           onClick={() => setAction("stage")}
         >
-          Change stage
+          {dictionary.recordSheet.common.changeStage}
         </Button>
       ) : targets.length > 0 ? (
         <>
@@ -172,7 +182,7 @@ export function BulkActions({
                 setAction("owner");
               }}
             >
-              Assign owner
+              {copy.assignOwner}
             </Button>
           )}
           {canUpdate &&
@@ -188,7 +198,7 @@ export function BulkActions({
                   setAction("company");
                 }}
               >
-                Assign company
+                {copy.assignCompany}
               </Button>
             )}
           {canUpdate && entity === "deal" && (
@@ -199,7 +209,7 @@ export function BulkActions({
               disabled={blocked}
               onClick={() => setAction("stage")}
             >
-              Change stage
+              {dictionary.recordSheet.common.changeStage}
             </Button>
           )}
           {canArchive && (
@@ -210,7 +220,7 @@ export function BulkActions({
               disabled={blocked}
               onClick={() => setAction(archived ? "restore" : "archive")}
             >
-              {archived ? "Restore selected" : "Archive selected"}
+              {archived ? copy.restoreSelected : copy.archiveSelected}
             </Button>
           )}
         </>
@@ -235,26 +245,25 @@ export function BulkActions({
         <DialogContent>
           <DialogTitle>
             {action === "owner"
-              ? "Assign owner"
+              ? copy.dialogTitle.owner
               : action === "company"
-                ? "Assign company"
+                ? copy.dialogTitle.company
                 : action === "restore"
-                  ? "Restore records"
-                  : "Archive records"}
+                  ? copy.dialogTitle.restore
+                  : copy.dialogTitle.archive}
           </DialogTitle>
           <DialogDescription>
-            Apply to {targets.length} selected {entity}
-            {targets.length === 1 ? "" : "s"}:{" "}
-            {targets
-              .slice(0, 5)
-              .map((target) => target.name)
-              .join(", ")}
-            {targets.length > 5 ? "…" : ""}.
+            {copy.applyTo(
+              targets.length,
+              entityLower,
+              targets.slice(0, 5).map((target) => target.name).join(", "),
+              targets.length > 5,
+            )}
           </DialogDescription>
           {action === "owner" || action === "company" ? (
             <RecordPicker
               kind={action}
-              label={action === "owner" ? "Owner" : "Company"}
+              label={action === "owner" ? copy.ownerLabel : dictionary.crm.entities.COMPANY.singular}
               value={value}
               onChange={setValue}
               required={entity === "deal" && action === "owner"}
@@ -263,8 +272,8 @@ export function BulkActions({
           ) : (
             <p className="text-xs text-muted-foreground">
               {action === "restore"
-                ? "Records will return to the active list."
-                : "Records will move to the archived list and can be restored."}
+                ? copy.restoreDescription
+                : copy.archiveDescription}
             </p>
           )}
           <Button
@@ -275,12 +284,12 @@ export function BulkActions({
             onClick={run}
           >
             {pending
-              ? "Working…"
+              ? copy.working
               : action === "owner" || action === "company"
-                ? "Apply assignment"
+                ? copy.applyAssignment
                 : action === "restore"
-                  ? "Restore"
-                  : "Archive"}
+                  ? copy.restore
+                  : copy.archive}
           </Button>
         </DialogContent>
       </Dialog>

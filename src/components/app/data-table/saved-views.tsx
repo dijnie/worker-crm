@@ -15,6 +15,9 @@ import {
 } from "@/lib/record-list-contracts";
 import type { FieldEntity } from "@/lib/db/schema/constants";
 import { useAppData, useAppQuery } from "../app-data-provider";
+import { useDictionary } from "../i18n-provider";
+import { errorMessage } from "@/lib/i18n/error-message";
+import { ApiError } from "@/lib/api";
 import type { FieldDefinition } from "@/lib/field-form-values";
 import { supportedFieldFilter } from "../fields/field-facets";
 import {
@@ -38,6 +41,8 @@ export function SavedViews({
   definitionsReady?: boolean;
 }) {
   const { api, invalidate, generation, store } = useAppData();
+  const dictionary = useDictionary();
+  const copy = dictionary.recordList;
   const fieldEntity = entity.toUpperCase() as FieldEntity;
   const result = useAppQuery("saved-views", { entity }, (signal) =>
     api.savedViews.list(fieldEntity, { signal }),
@@ -78,7 +83,7 @@ export function SavedViews({
   }, [current?.id, current?.shared]);
   useEffect(() => {
     if (!current || !definitionsReady) return;
-    const repairMessage = "This view references a retired or unsupported field. Repair its filters before applying it.";
+    const repairMessage = copy.savedViews.repairFieldMessage;
     if (Object.keys(query.filters).some(key => !supportedFieldFilter(entity, key, fieldDefinitions))) {
       setUnsupported(current.id);
       setError(repairMessage);
@@ -86,11 +91,11 @@ export function SavedViews({
       setUnsupported(id => id === current.id ? null : id);
       setError(message => message === repairMessage ? "" : message);
     }
-  }, [current, definitionsReady, entity, fieldDefinitions, query.filters]);
+  }, [current, definitionsReady, entity, fieldDefinitions, query.filters, copy]);
   function select(id: string, repair = false) {
     const view = result.data?.find((item) => item.id === id);
     if (!view) return;
-    if (!definitionsReady) { setError("Wait for field definitions to load before applying this view."); return; }
+    if (!definitionsReady) { setError(copy.savedViews.waitForDefinitions); return; }
     try {
       const config = view.filters as ReturnType<typeof savedConfiguration>;
       const filters = repair
@@ -124,9 +129,7 @@ export function SavedViews({
       setError("");
     } catch {
       setUnsupported(id);
-      setError(
-        "This view contains unsupported filters or sorting. Remove unsupported field filters to apply it, or clear the view and save a supported configuration.",
-      );
+      setError(copy.savedViews.unsupportedConfigurationMessage);
     }
   }
   async function mutate(action: () => Promise<unknown>) {
@@ -140,7 +143,7 @@ export function SavedViews({
     } catch (error) {
       if (mounted.current && store.isCurrent(generation))
         setError(
-          error instanceof Error ? error.message : "Could not update the view.",
+          error instanceof ApiError ? errorMessage(error, dictionary) : copy.savedViews.updateFailedFallback,
         );
     } finally {
       if (mounted.current && store.isCurrent(generation)) setPending(false);
@@ -152,7 +155,7 @@ export function SavedViews({
         <Button variant="outline" size="sm" className="justify-start sm:justify-center">
           <Bookmark data-icon="inline-start" />
           <span className="max-w-40 truncate">
-            Saved views{current ? ` · ${current.name}` : ""}
+            {copy.savedViews.trigger}{current ? ` · ${current.name}` : ""}
           </span>
         </Button>
       </DropdownMenuTrigger>
@@ -166,9 +169,9 @@ export function SavedViews({
       >
         <div className="space-y-4">
           <label className="block text-xs">
-            Apply saved view
+            {copy.savedViews.applyLabel}
             <select
-              aria-label="Apply saved view"
+              aria-label={copy.savedViews.applyLabel}
               className={`${selectClass} h-8 bg-background text-xs`}
               value={query.view ?? ""}
               disabled={pending || result.loading || result.refreshing || !definitionsReady}
@@ -176,30 +179,30 @@ export function SavedViews({
                 event.target.value ? select(event.target.value) : clear()
               }
             >
-              <option value="">Choose a view</option>
+              <option value="">{copy.savedViews.chooseView}</option>
               {result.data?.map((view) => (
                 <option key={view.id} value={view.id}>
                   {view.name}
-                  {view.shared ? " (shared)" : " (private)"}
+                  {view.shared ? copy.savedViews.sharedSuffix : copy.savedViews.privateSuffix}
                 </option>
               ))}
             </select>
           </label>
           {!!result.error && (
             <p role="alert" className="text-xs text-destructive">
-              {result.error instanceof Error
-                ? result.error.message
-                : "Could not load saved views"}{" "}
+              {result.error instanceof ApiError
+                ? errorMessage(result.error, dictionary)
+                : copy.savedViews.loadFailedFallback}{" "}
               <button type="button" onClick={result.refresh}>
-                Retry views
+                {copy.savedViews.retry}
               </button>
             </p>
           )}
           <div className="grid gap-3 border-t pt-4">
             <Input
-              aria-label="View name"
+              aria-label={copy.savedViews.viewNameLabel}
               className="w-full"
-              placeholder="View name"
+              placeholder={copy.savedViews.viewNameLabel}
               value={name}
               maxLength={100}
               onChange={(event) => setName(event.target.value)}
@@ -211,7 +214,7 @@ export function SavedViews({
                 checked={shared}
                 onChange={(event) => setShared(event.target.checked)}
               />
-              Shared view
+              {copy.savedViews.sharedCheckbox}
             </label>
             <Button
               type="button"
@@ -231,7 +234,7 @@ export function SavedViews({
                 })
               }
             >
-              Save as new view
+              {copy.savedViews.saveAsNew}
             </Button>
           </div>
           {current?.mine && (
@@ -247,7 +250,7 @@ export function SavedViews({
                   )
                 }
               >
-                Rename view
+                {copy.savedViews.rename}
               </Button>
               <Button
                 type="button"
@@ -262,7 +265,7 @@ export function SavedViews({
                   )
                 }
               >
-                Update view configuration
+                {copy.savedViews.updateConfiguration}
               </Button>
               <Button
                 type="button"
@@ -277,7 +280,7 @@ export function SavedViews({
                   )
                 }
               >
-                {current.shared ? "Make private" : "Share view"}
+                {current.shared ? copy.savedViews.makePrivate : copy.savedViews.shareView}
               </Button>
               <Button
                 type="button"
@@ -291,7 +294,7 @@ export function SavedViews({
                   })
                 }
               >
-                Delete view
+                {copy.savedViews.deleteView}
               </Button>
             </div>
           )}
@@ -307,7 +310,7 @@ export function SavedViews({
               size="sm"
               onClick={() => select(unsupported, true)}
             >
-              Remove unsupported field filters
+              {copy.savedViews.removeUnsupportedFilters}
             </Button>
           )}
           <Button
@@ -317,7 +320,7 @@ export function SavedViews({
             className="w-full"
             onClick={clear}
           >
-            Clear filters
+            {copy.clearFilters}
           </Button>
         </div>
       </DropdownMenuContent>

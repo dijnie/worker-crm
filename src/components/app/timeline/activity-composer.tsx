@@ -8,12 +8,14 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api";
-import { ACTIVITY_PRESENTATION, type TimelineActivity } from "@/lib/activity-presentation";
+import { type TimelineActivity } from "@/lib/activity-presentation";
 import {
   MANUAL_ACTIVITY_TYPES, ActivityComposerValidationError, buildActivityCreateInput,
   emptyActivityDraft, isActivityDraftDirty, type ActivityComposerDraft, type ActivityComposerErrors, type ActivityRelatedIds,
 } from "@/lib/activity-composer-values";
+import { errorMessage, issueMessage } from "@/lib/i18n/error-message";
 import { useAppData } from "../app-data-provider";
+import { useDictionary } from "../i18n-provider";
 import type { RecordRef } from "../record-sheet/record-navigation";
 import type { DirtyChange } from "../record-sheet/inline-field";
 import { selectClass } from "../records/record-picker";
@@ -33,6 +35,9 @@ export function ActivityComposer(props: ActivityComposerProps) {
 
 function ComposerSession({ record, relatedIds, onDirtyChange, onCreated }: ActivityComposerProps) {
   const { api, store, generation, invalidate } = useAppData();
+  const dictionary = useDictionary();
+  const { common, crm, timeline } = dictionary;
+  const copy = timeline.composer;
   const id = useId();
   const [draft, setDraft] = useState(emptyActivityDraft);
   const draftRef = useRef(draft); draftRef.current = draft;
@@ -63,10 +68,10 @@ function ComposerSession({ record, relatedIds, onDirtyChange, onCreated }: Activ
     if (flight.current) return flight.current;
     if (!mounted.current || !store.isCurrent(generation)) return Promise.resolve(false);
     let input;
-    try { input = buildActivityCreateInput(record, draftRef.current, relatedIds); }
+    try { input = buildActivityCreateInput(record, draftRef.current, relatedIds, copy.errors); }
     catch (failure) {
       setFields(failure instanceof ActivityComposerValidationError ? failure.fields : {});
-      setMessage(failure instanceof Error ? failure.message : "Check the activity fields.");
+      setMessage(failure instanceof Error ? failure.message : copy.genericCheckFields);
       setSuccess("");
       requestAnimationFrame(() => form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
       return Promise.resolve(false);
@@ -81,7 +86,7 @@ function ComposerSession({ record, relatedIds, onDirtyChange, onCreated }: Activ
         if (!mounted.current) return true;
         const next = emptyActivityDraft(submittedType);
         draftRef.current = next; setDraft(next);
-        setSuccess(`${ACTIVITY_PRESENTATION[submittedType].label} saved.`);
+        setSuccess(copy.savedMessage(crm.activityTypes[submittedType]));
         created.current?.(activity);
         requestAnimationFrame(() => {
           if (!mounted.current || !store.isCurrent(generation)) return;
@@ -99,11 +104,11 @@ function ComposerSession({ record, relatedIds, onDirtyChange, onCreated }: Activ
           if (failure instanceof ApiError) for (const issue of failure.issues ?? []) {
             const field = issue.path[0];
             if (typeof field === "string" && ["type", "subject", "body", "occurredAt", "dueAt", "companyId", "contactId", "dealId"].includes(field)) {
-              nextFields[field as keyof ActivityComposerErrors] ??= issue.message;
+              nextFields[field as keyof ActivityComposerErrors] ??= issueMessage(issue, dictionary);
             }
           }
           setFields(nextFields);
-          setMessage(failure instanceof ApiError ? failure.message : "The save could not be confirmed. Check the timeline before trying again to avoid a duplicate.");
+          setMessage(failure instanceof ApiError ? errorMessage(failure, dictionary) : copy.saveUnconfirmed);
         }
         return false;
       } finally {
@@ -123,43 +128,43 @@ function ComposerSession({ record, relatedIds, onDirtyChange, onCreated }: Activ
   const fieldError = (field: keyof ActivityComposerErrors) => fields[field] && <FieldError id={`${id}-${field}-error`}>{fields[field]}</FieldError>;
   const accessibility = (field: keyof ActivityComposerErrors) => ({ "aria-invalid": !!fields[field], "aria-describedby": fields[field] ? `${id}-${field}-error` : undefined });
 
-  return <form ref={form} aria-label="Log activity" data-activity-composer data-inline-editor={dirty ? "" : undefined} noValidate
+  return <form ref={form} aria-label={copy.heading} data-activity-composer data-inline-editor={dirty ? "" : undefined} noValidate
     className="flex flex-col gap-3 rounded-lg border bg-card p-4" onSubmit={event => { event.preventDefault(); void save(); }} onKeyDown={event => {
       if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); void save(); }
       if (event.key === "Escape" && dirty) { event.preventDefault(); event.stopPropagation(); }
     }}>
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h3 className="text-sm font-medium">Log activity</h3>
-      <span className="text-xs text-muted-foreground">Ctrl / ⌘ + Enter to save</span>
+      <h3 className="text-sm font-medium">{copy.heading}</h3>
+      <span className="text-xs text-muted-foreground">{copy.shortcutHint}</span>
     </div>
     <fieldset disabled={pending} className="flex flex-col gap-3">
       <Field>
-        <FieldLabel htmlFor={`${id}-type`}>Activity type</FieldLabel>
+        <FieldLabel htmlFor={`${id}-type`}>{copy.typeLabel}</FieldLabel>
         <select id={`${id}-type`} className={selectClass} value={draft.type} onChange={event => change("type", event.target.value)} {...accessibility("type")}>
-          {MANUAL_ACTIVITY_TYPES.map(type => <option key={type} value={type}>{type === "EMAIL" ? "Log email" : ACTIVITY_PRESENTATION[type].label}</option>)}
+          {MANUAL_ACTIVITY_TYPES.map(type => <option key={type} value={type}>{type === "EMAIL" ? copy.logEmailOption : crm.activityTypes[type]}</option>)}
         </select>{fieldError("type")}
       </Field>
-      {draft.type === "EMAIL" && <p className="text-xs text-muted-foreground">Record an email in the CRM. This does not send an email.</p>}
+      {draft.type === "EMAIL" && <p className="text-xs text-muted-foreground">{copy.emailHint}</p>}
       <Field>
-        <FieldLabel htmlFor={`${id}-subject`}>Subject {draft.type === "TASK" ? "(required)" : "(optional)"}</FieldLabel>
-        <Input ref={subject} id={`${id}-subject`} aria-label="Subject" value={draft.subject} required={draft.type === "TASK"} maxLength={100000} onChange={event => change("subject", event.target.value)} {...accessibility("subject")} />{fieldError("subject")}
+        <FieldLabel htmlFor={`${id}-subject`}>{copy.subjectLabel(draft.type === "TASK")}</FieldLabel>
+        <Input ref={subject} id={`${id}-subject`} aria-label={copy.subjectAria} value={draft.subject} required={draft.type === "TASK"} maxLength={100000} onChange={event => change("subject", event.target.value)} {...accessibility("subject")} />{fieldError("subject")}
       </Field>
       <Field>
-        <FieldLabel htmlFor={`${id}-body`}>Body</FieldLabel>
-        <Textarea ref={body} id={`${id}-body`} aria-label="Body" placeholder={draft.type === "CALL" ? "Call outcome and notes" : "Activity notes"} rows={3} value={draft.body} maxLength={100000} onChange={event => change("body", event.target.value)} {...accessibility("body")} />{fieldError("body")}
+        <FieldLabel htmlFor={`${id}-body`}>{copy.bodyLabel}</FieldLabel>
+        <Textarea ref={body} id={`${id}-body`} aria-label={copy.bodyAria} placeholder={draft.type === "CALL" ? copy.bodyPlaceholderCall : copy.bodyPlaceholderDefault} rows={3} value={draft.body} maxLength={100000} onChange={event => change("body", event.target.value)} {...accessibility("body")} />{fieldError("body")}
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
-        <ActivityDateInput id={`${id}-occurredAt`} label="Occurred at" value={draft.occurredAt} defaultMode="datetime-local" onChange={value => change("occurredAt", value)} error={fields.occurredAt} />
-        {draft.type === "TASK" && <ActivityDateInput id={`${id}-dueAt`} label="Due date" value={draft.dueAt} defaultMode="date" onChange={value => change("dueAt", value)} error={fields.dueAt} />}
+        <ActivityDateInput id={`${id}-occurredAt`} label={copy.occurredAtLabel} value={draft.occurredAt} defaultMode="datetime-local" onChange={value => change("occurredAt", value)} error={fields.occurredAt} />
+        {draft.type === "TASK" && <ActivityDateInput id={`${id}-dueAt`} label={copy.dueAtLabel} value={draft.dueAt} defaultMode="date" onChange={value => change("dueAt", value)} error={fields.dueAt} />}
       </div>
-      <p className="text-xs text-muted-foreground">Leave occurrence blank for now. Dates use midnight UTC; date and time uses your local timezone.</p>
+      <p className="text-xs text-muted-foreground">{copy.timezoneHint}</p>
     </fieldset>
     {(["companyId", "contactId", "dealId"] as const).map(field => fields[field] && <p key={field} className="text-xs text-destructive">{fields[field]}</p>)}
     {message && <Alert variant="destructive">{message}</Alert>}
-    <div role="status" aria-live="polite" className="text-xs text-muted-foreground">{pending ? "Saving activity…" : success}</div>
+    <div role="status" aria-live="polite" className="text-xs text-muted-foreground">{pending ? copy.saving : success}</div>
     <div className="flex flex-wrap gap-2">
-      <Button type="submit" size="sm" aria-label="Add activity" disabled={pending}>{pending ? "Saving…" : "Add activity"}</Button>
-      {dirty && <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={discard}>Discard draft</Button>}
+      <Button type="submit" size="sm" aria-label={copy.addActivity} disabled={pending}>{pending ? common.saving : copy.addActivity}</Button>
+      {dirty && <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={discard}>{copy.discardDraft}</Button>}
     </div>
   </form>;
 }
@@ -167,16 +172,18 @@ function ComposerSession({ record, relatedIds, onDirtyChange, onCreated }: Activ
 function ActivityDateInput({ id, label, value, defaultMode, onChange, error }: {
   id: string; label: string; value: string; defaultMode: "date" | "datetime-local"; onChange: (value: string) => void; error?: string;
 }) {
+  const { timeline } = useDictionary();
+  const copy = timeline.composer;
   const [mode, setMode] = useState(defaultMode);
   return <Field>
-    <FieldLabel htmlFor={id}>{label} (optional)</FieldLabel>
-    <select aria-label={`${label} format`} className={selectClass} value={mode} onChange={event => {
+    <FieldLabel htmlFor={id}>{copy.withOptional(label)}</FieldLabel>
+    <select aria-label={copy.formatAria(label)} className={selectClass} value={mode} onChange={event => {
       const next = event.target.value as typeof mode;
       setMode(next);
       if (value) onChange(next === "date" ? value.slice(0, 10) : `${value.slice(0, 10)}T00:00`);
     }}>
-      <option value="date">Date only (UTC)</option>
-      <option value="datetime-local">Date and time (local)</option>
+      <option value="date">{copy.dateOnlyOption}</option>
+      <option value="datetime-local">{copy.dateTimeOption}</option>
     </select>
     <Input id={id} aria-label={label} type={mode} value={value} onChange={event => onChange(event.target.value)} aria-invalid={!!error} aria-describedby={error ? `${id}-error` : undefined} />
     {error && <FieldError id={`${id}-error`}>{error}</FieldError>}

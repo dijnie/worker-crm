@@ -1,5 +1,6 @@
 "use client";
 
+import { useDictionary } from "@/components/app/i18n-provider";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -80,6 +81,7 @@ function SheetContent({
 	size?: SheetSize;
 	showCloseButton?: boolean;
 }) {
+	const { common } = useDictionary();
 	return (
 		<SheetPortal>
 			<SheetOverlay />
@@ -98,7 +100,7 @@ function SheetContent({
 							size="icon-sm"
 						>
 							<XIcon />
-							<span className="sr-only">Close</span>
+							<span className="sr-only">{common.close}</span>
 						</Button>
 					</SheetPrimitive.Close>
 				)}

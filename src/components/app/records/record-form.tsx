@@ -3,6 +3,7 @@ import { canPermission } from "@/lib/auth/permissions";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type { DirtyEditor } from "../record-sheet/inline-field";
 import { ApiError } from "@/lib/api";
+import { errorMessage, issueMessage } from "@/lib/i18n/error-message";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAppData } from "../app-data-provider";
+import { useDictionary } from "../i18n-provider";
 import { RecordPicker } from "./record-picker";
 import {
   buildCreateInput,
@@ -21,30 +23,11 @@ import {
   CONTACT_FIELDS,
   DEAL_FIELDS,
   RECORD_INVALIDATIONS,
+  RecordFieldError,
+  recordEntityKey,
   type RecordDraft,
   type RecordEntity,
 } from "./form-values";
-const labels: Record<string, string> = {
-  name: "Name",
-  firstName: "First name",
-  lastName: "Last name",
-  domain: "Domain",
-  website: "Website",
-  description: "Description",
-  industry: "Industry",
-  city: "City",
-  stateCode: "State / region",
-  country: "Country",
-  phone: "Phone",
-  email: "Email",
-  linkedinUrl: "LinkedIn URL",
-  twitterUrl: "Twitter URL",
-  githubUrl: "GitHub URL",
-  title: "Title",
-  amount: "Amount",
-  currency: "Currency",
-  expectedCloseDate: "Expected close date",
-};
 export function RecordForm({
   entity,
   defaults = {},
@@ -61,6 +44,8 @@ export function RecordForm({
   onDirtyChange?: (state: DirtyEditor | null) => void;
 }) {
   const { api, account, invalidate, generation, store } = useAppData();
+  const dictionary = useDictionary();
+  const { form: copy, properties: labels } = dictionary.recordSheet;
   const permitted = canPermission(account, entity, "create") && (entity !== "deal" || canPermission(account, "company", "read"));
   const prefix = useId();
   const [draft, setDraft] = useState<RecordDraft>(() => ({
@@ -128,7 +113,7 @@ export function RecordForm({
         setError(
           error instanceof Error
             ? error
-            : new Error("Could not create the record."),
+            : new Error(copy.createFailed),
         );
       return false;
     } finally {
@@ -148,7 +133,7 @@ export function RecordForm({
   const issues = error instanceof ApiError ? (error.issues ?? []) : [];
   const unplaced = issues.filter((issue) => !(fields as readonly string[]).includes(String(issue.path[0] ?? "")));
   const issuesFor = (key: string) => issues.filter((issue) => String(issue.path[0] ?? "") === key);
-  if (!permitted) return <p role="alert" className="text-xs">Your role cannot create this record. Creating deals also requires Company Read.</p>;
+  if (!permitted) return <p role="alert" className="text-xs">{copy.permissionDenied}</p>;
   return (
     <form ref={formRef} onSubmit={submit} className="space-y-5">
       <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">
@@ -171,10 +156,10 @@ export function RecordForm({
                 }
                 label={
                   key === "ownerId"
-                    ? "Owner"
+                    ? dictionary.recordSheet.sheet.ownerLabel
                     : key === "companyId"
-                      ? "Company"
-                      : "Primary contact"
+                      ? dictionary.crm.entities.COMPANY.singular
+                      : labels.primaryContactId
                 }
                 value={draft[key] ?? ""}
                 onChange={(value) => change(key, value)}
@@ -231,21 +216,19 @@ export function RecordForm({
                   onChange={(event) => change(key, event.target.value)}
                 />
               )}
-              <FieldError errors={fieldIssues} />
+              <FieldError errors={fieldIssues.map((issue) => ({ message: issueMessage(issue, dictionary) }))} />
             </Field>
           );
         })}
       </fieldset>
       {entity === "deal" && (
         <p className="text-muted-foreground text-xs">
-          New deals start at Demo booked. Amounts are stored exactly in the
-          selected currency.
+          {copy.dealHint(dictionary.crm.stages.DEMO_BOOKED)}
         </p>
       )}
       {entity === "company" && (
         <p className="text-muted-foreground text-xs">
-          Choosing a primary contact leaves their employer unchanged. Domains
-          and email addresses are normalized when saved.
+          {copy.companyHint}
         </p>
       )}
       {error && (
@@ -253,10 +236,10 @@ export function RecordForm({
           role="alert"
           className="space-y-1 rounded-md border border-destructive/30 p-3 text-destructive text-xs"
         >
-          <p>{error.message}</p>
+          <p>{error instanceof ApiError ? errorMessage(error, dictionary) : error instanceof RecordFieldError ? dictionary.recordSheet.validation[error.reason] : error.message}</p>
           {unplaced.map((issue, index) => (
             <p key={index}>
-              {issue.path.join(".")}: {issue.message}
+              {issue.path.join(".")}: {issueMessage(issue, dictionary)}
             </p>
           ))}
         </div>
@@ -268,10 +251,10 @@ export function RecordForm({
           onClick={onCancel}
           disabled={pending}
         >
-          Cancel
+          {dictionary.common.cancel}
         </Button>
         <Button type="submit" disabled={pending}>
-          {pending ? "Saving…" : `Add ${entity}`}
+          {pending ? dictionary.common.saving : copy.addEntity(dictionary.crm.entities[recordEntityKey(entity)].lower)}
         </Button>
       </div>
     </form>
@@ -289,6 +272,8 @@ export function CreateRecordDialog({
   defaults?: RecordDraft;
 }) {
   const [pending, setPending] = useState(false);
+  const dictionary = useDictionary();
+  const entityLower = dictionary.crm.entities[recordEntityKey(entity)].lower;
   return (
     <Dialog
       open={open}
@@ -297,8 +282,8 @@ export function CreateRecordDialog({
       }}
     >
       <DialogContent className="max-h-[90vh] gap-4 overflow-y-auto sm:max-w-2xl">
-        <DialogTitle>New {entity}</DialogTitle>
-        <DialogDescription>Add a {entity} to your workspace.</DialogDescription>
+        <DialogTitle>{dictionary.recordSheet.form.newEntity(entityLower)}</DialogTitle>
+        <DialogDescription>{dictionary.recordSheet.form.createDescription(entityLower)}</DialogDescription>
         {open && (
           <RecordForm
             entity={entity}

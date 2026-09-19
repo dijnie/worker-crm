@@ -5,6 +5,7 @@ import { AppDataStore } from "@/lib/app-data-store";
 import { authClient } from "@/lib/auth/auth-client";
 import { safeReturnUrl } from "@/lib/auth/safe-return-url";
 import type { AccountIdentity } from "@/lib/auth/request-context";
+import { useDictionary } from "./i18n-provider";
 
 type AppData = { api: ReturnType<typeof createApiClient>; store: AppDataStore; account: AccountIdentity;
   generation: number; invalidate: (resources: readonly string[]) => void; clear: () => void; resume: () => void;
@@ -20,7 +21,6 @@ function AccountData({ initialAccount, children }: { initialAccount: AccountIden
   const current = useRef(account); current.current = account;
   const session = authClient.useSession();
   const sessionId = useRef<string | undefined>(undefined);
-  const [accessError, setAccessError] = useState("");
   const [accessUnavailable, setAccessUnavailable] = useState(false);
   const rechecking = useRef<Promise<void> | null>(null);
   const mounted = useRef(true);
@@ -40,11 +40,11 @@ function AccountData({ initialAccount, children }: { initialAccount: AccountIden
       if (accessSignature(next) !== accessSignature(current.current)) {
         store.clear(true); current.current = next; setAccount(next);
       }
-      setAccessUnavailable(false); setAccessError(""); store.resume();
+      setAccessUnavailable(false); store.resume();
     }).catch((failure: unknown) => {
       if (!mounted.current || controller.signal.aborted) return;
       if (failure instanceof ApiError && (failure.status === 401 || failure.code === "INACTIVE_MEMBERSHIP")) navigate(failure);
-      else { store.clear(true); setAccessUnavailable(true); setAccessError("Your access could not be checked. Try again to resume the workspace."); }
+      else { store.clear(true); setAccessUnavailable(true); }
     }).finally(() => { rechecking.current = null; });
     return rechecking.current;
   }, [navigate, store]);
@@ -86,8 +86,19 @@ function AccountData({ initialAccount, children }: { initialAccount: AccountIden
   const value = { api, store, account, generation: store.generation, refreshAccount,
     invalidate: (resources: readonly string[]) => store.invalidate(resources), clear: () => store.clear(true), resume: () => store.resume() };
   return <Context.Provider value={value}>
-    {accessUnavailable ? <div role="alert" className="mx-auto max-w-lg space-y-4 p-8"><p>{accessError}</p><button className="underline" onClick={() => void refreshAccount()}>Check access again</button></div> : children}
+    {accessUnavailable ? <AccessUnavailableNotice onRetry={() => void refreshAccount()} /> : children}
   </Context.Provider>;
+}
+// A separate component so its dictionary lookup only runs while access is
+// actually unavailable, not on every render of the (much more common) happy path.
+function AccessUnavailableNotice({ onRetry }: { onRetry: () => void }) {
+  const { shell } = useDictionary();
+  return (
+    <div role="alert" className="mx-auto max-w-lg space-y-4 p-8">
+      <p>{shell.appDataProvider.accessUnavailable}</p>
+      <button className="underline" onClick={onRetry}>{shell.appDataProvider.checkAccessAgain}</button>
+    </div>
+  );
 }
 export function useAppData() {
   const context = useContext(Context);

@@ -21,9 +21,11 @@ import { useTheme } from "next-themes";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAppData } from "./app-data-provider";
+import { useDictionary } from "./i18n-provider";
 
 export function useSignOut() {
   const { clear, resume } = useAppData();
+  const { shell: copy } = useDictionary();
   const [pending, setPending] = useState(false);
 
   async function signOut() {
@@ -33,13 +35,13 @@ export function useSignOut() {
       const result = await authClient.signOut();
       if (result.error) {
         resume();
-        toast.error("Sign out failed. Please try again.");
+        toast.error(copy.accountMenu.signOutFailedRetry);
         return;
       }
       window.location.assign("/sign-in");
     } catch {
       resume();
-      toast.error("Sign out failed. Check your connection and try again.");
+      toast.error(copy.accountMenu.signOutFailedConnection);
     } finally {
       setPending(false);
     }
@@ -49,15 +51,17 @@ export function useSignOut() {
 }
 
 export function SignOutButton() {
+  const { shell: copy } = useDictionary();
   const { pending, signOut } = useSignOut();
   return (
     <Button variant="outline" disabled={pending} onClick={() => void signOut()}>
-      {pending ? "Signing out…" : "Sign out"}
+      {pending ? copy.accountMenu.signingOut : copy.accountMenu.signOut}
     </Button>
   );
 }
 
 export function AccountMenu({ account }: { account: AccountIdentity }) {
+  const { shell: copy } = useDictionary();
   const { resolvedTheme, setTheme } = useTheme();
   const { pending, signOut } = useSignOut();
   const isDark = resolvedTheme === "dark";
@@ -68,7 +72,7 @@ export function AccountMenu({ account }: { account: AccountIdentity }) {
         <Button
           variant="ghost"
           size="icon"
-          aria-label="Account"
+          aria-label={copy.accountMenu.accountLabel}
           className="hover:bg-transparent aria-expanded:bg-transparent dark:hover:bg-transparent"
         >
           <Avatar className="size-7">
@@ -85,7 +89,7 @@ export function AccountMenu({ account }: { account: AccountIdentity }) {
             {account.email}
           </span>
           <span className="min-w-0 truncate font-normal text-muted-foreground text-xs">
-            {account.role?.name ?? "No role"}
+            {account.role?.name ?? copy.accountMenu.noRole}
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -96,17 +100,17 @@ export function AccountMenu({ account }: { account: AccountIdentity }) {
           }}
         >
           {isDark ? <Light /> : <Asleep />}
-          {isDark ? "Light mode" : "Dark mode"}
+          {isDark ? copy.accountMenu.lightMode : copy.accountMenu.darkMode}
         </DropdownMenuItem>
         {account.role?.isSystem && (
           <DropdownMenuItem asChild>
-            <Link href="/settings/members">Manage members</Link>
+            <Link href="/settings/members">{copy.accountMenu.manageMembers}</Link>
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled={pending} onSelect={() => void signOut()}>
           <Logout />
-          {pending ? "Signing out…" : "Sign out"}
+          {pending ? copy.accountMenu.signingOut : copy.accountMenu.signOut}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

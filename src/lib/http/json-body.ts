@@ -12,7 +12,7 @@ function hasJsonContentType(request: Request): boolean {
 async function parseBody(request: Request): Promise<JsonBody> {
   const length = request.headers.get("Content-Length");
   if (length !== null && /^\d+$/.test(length) && Number(length) > MAX_JSON_BODY_BYTES) {
-    throw new ServiceError(413, "JSON body is too large");
+    throw new ServiceError(413, "JSON body is too large", "BODY_TOO_LARGE");
   }
   if (request.body === null) return { empty: true };
 
@@ -27,8 +27,8 @@ async function parseBody(request: Request): Promise<JsonBody> {
       if (done) { complete = true; break; }
       if (value.byteLength === 0) continue;
       bytes += value.byteLength;
-      if (bytes > MAX_JSON_BODY_BYTES) throw new ServiceError(413, "JSON body is too large");
-      if (!hasJsonContentType(request)) throw new ServiceError(415, "Expected application/json");
+      if (bytes > MAX_JSON_BODY_BYTES) throw new ServiceError(413, "JSON body is too large", "BODY_TOO_LARGE");
+      if (!hasJsonContentType(request)) throw new ServiceError(415, "Expected application/json", "UNSUPPORTED_MEDIA_TYPE");
       chunks.push(value);
     }
     if (bytes === 0) return { empty: true };
@@ -41,7 +41,7 @@ async function parseBody(request: Request): Promise<JsonBody> {
     return { empty: false, value: JSON.parse(new TextDecoder().decode(data)) };
   } catch (error) {
     if (error instanceof ServiceError) throw error;
-    throw new ServiceError(400, "Expected a valid JSON body");
+    throw new ServiceError(400, "Expected a valid JSON body", "INVALID_JSON");
   } finally {
     if (reader) {
       // Cancellation may never settle for an untrusted stream.
@@ -54,7 +54,7 @@ async function parseBody(request: Request): Promise<JsonBody> {
 }
 
 export async function readJsonBody(request: Request, options?: { allowEmpty?: boolean }): Promise<unknown> {
-  if (!options?.allowEmpty && !hasJsonContentType(request)) throw new ServiceError(415, "Expected application/json");
+  if (!options?.allowEmpty && !hasJsonContentType(request)) throw new ServiceError(415, "Expected application/json", "UNSUPPORTED_MEDIA_TYPE");
   let body = bodies.get(request);
   if (!body) {
     body = parseBody(request);
@@ -63,5 +63,5 @@ export async function readJsonBody(request: Request, options?: { allowEmpty?: bo
   const result = await body;
   if (!result.empty) return result.value;
   if (options?.allowEmpty) return undefined;
-  throw new ServiceError(400, "Expected a valid JSON body");
+  throw new ServiceError(400, "Expected a valid JSON body", "INVALID_JSON");
 }

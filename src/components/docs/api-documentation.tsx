@@ -7,6 +7,7 @@ import { Component, useEffect, useState, type ComponentProps, type ComponentType
 import type SwaggerUIComponent from "swagger-ui-react";
 import "swagger-ui-react/swagger-ui.css";
 import "@/styles/api-docs.css";
+import { useDictionary } from "@/components/app/i18n-provider";
 
 type SwaggerUIProps = ComponentProps<typeof SwaggerUIComponent>;
 
@@ -50,6 +51,7 @@ class DocumentationBoundary extends Component<DocumentationBoundaryProps, { fail
 }
 
 export function ApiDocumentation() {
+  const { common, shell: copy } = useDictionary();
   const [SwaggerUI, setSwaggerUI] = useState<ComponentType<SwaggerUIProps> | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -73,9 +75,9 @@ export function ApiDocumentation() {
   const error = (
     <Card role="alert">
       <CardContent className="gap-3">
-        <p className="text-sm font-medium">API documentation could not load.</p>
-        <p className="text-xs/relaxed text-muted-foreground">Retry the interactive viewer, or open the OpenAPI JSON above.</p>
-        <Button variant="outline" className="self-start" onClick={() => setAttempt(value => value + 1)}>Retry</Button>
+        <p className="text-sm font-medium">{copy.apiDocumentation.loadFailedTitle}</p>
+        <p className="text-xs/relaxed text-muted-foreground">{copy.apiDocumentation.loadFailedDescription}</p>
+        <Button variant="outline" className="self-start" onClick={() => setAttempt(value => value + 1)}>{common.retry}</Button>
       </CardContent>
     </Card>
   );
@@ -83,7 +85,7 @@ export function ApiDocumentation() {
   if (failed) return error;
   if (!SwaggerUI) {
     return (
-      <Card role="status" aria-busy="true" aria-label="Loading API documentation">
+      <Card role="status" aria-busy="true" aria-label={copy.apiDocumentation.loadingLabel}>
         <CardContent className="gap-4">
           <Skeleton className="h-5 w-48 max-w-full" />
           <Skeleton className="h-3 w-full" />
@@ -97,7 +99,7 @@ export function ApiDocumentation() {
 
   return (
     <DocumentationBoundary key={attempt} fallback={error}>
-      <section className="api-docs" aria-label="Interactive API reference">
+      <section className="api-docs" aria-label={copy.apiDocumentation.interactiveLabel}>
         <SwaggerUI
           url="/api/openapi"
           plugins={swaggerPlugins}

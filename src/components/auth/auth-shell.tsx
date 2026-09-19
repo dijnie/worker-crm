@@ -4,12 +4,12 @@ import Logo from "@/components/ui/logo";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-export function AuthShell({ children }: { children: ReactNode }) {
+export function AuthShell({ homepageLabel, children }: { homepageLabel: string; children: ReactNode }) {
   return (
     <main className="flex min-h-svh flex-col items-center justify-center gap-6 bg-muted px-4 py-10">
       <Link
         href="/"
-        aria-label="Homepage"
+        aria-label={homepageLabel}
         className="flex text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
       >
         <Logo className="size-6 shrink-0" />
@@ -21,7 +21,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
   );
 }
 
-export function AuthFormFallback() {
+export function AuthFormFallback({ loadingLabel }: { loadingLabel: string }) {
   return (
     <div role="status" aria-busy="true" className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
@@ -32,7 +32,7 @@ export function AuthFormFallback() {
         <Skeleton className="h-8 w-full" />
         <Skeleton className="h-8 w-full" />
       </div>
-      <span className="sr-only">Loading form…</span>
+      <span className="sr-only">{loadingLabel}</span>
     </div>
   );
 }

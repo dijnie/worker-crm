@@ -30,24 +30,27 @@ import {
   PageShellTitle,
 } from "@/components/app/page-shell";
 import { selectClass } from "@/components/app/records/record-picker";
+import { useDictionary } from "@/components/app/i18n-provider";
 import { ApiError } from "@/lib/api";
 import { authClient } from "@/lib/auth/auth-client";
+import { errorMessage } from "@/lib/i18n/error-message";
 import type { MemberMutationInput, MemberRecord } from "@services/member.service";
 import type { Page } from "@/lib/utils/validation";
 import { useEffect, useRef, useState } from "react";
 
 const pageSize = 20;
 
-const columns: SimpleTableColumn[] = [
-  { id: "name", header: "Name", width: "w-[34%]" },
-  { id: "email", header: "Email", width: "w-[28%]", className: "hidden md:table-cell" },
-  { id: "role", header: "Role", width: "w-[14%]" },
-  { id: "status", header: "Status", width: "w-[12%]" },
-  { id: "actions", srLabel: "Actions", align: "right", width: "w-[12%]" },
-];
-
 export function MemberManagement({ currentUserId }: { currentUserId: string }) {
   const { api, store, generation, invalidate, clear, refreshAccount } = useAppData();
+  const dictionary = useDictionary();
+  const copy = dictionary.access.members;
+  const columns: SimpleTableColumn[] = [
+    { id: "name", header: copy.nameHeader, width: "w-[34%]" },
+    { id: "email", header: copy.emailHeader, width: "w-[28%]", className: "hidden md:table-cell" },
+    { id: "role", header: copy.roleHeader, width: "w-[14%]" },
+    { id: "status", header: copy.statusHeader, width: "w-[12%]" },
+    { id: "actions", srLabel: copy.actionsHeader, align: "right", width: "w-[12%]" },
+  ];
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<"all" | "active" | "revoked">("all");
   const [data, setData] = useState<Page<MemberRecord> | null>(null);
@@ -68,7 +71,7 @@ export function MemberManagement({ currentUserId }: { currentUserId: string }) {
   useEffect(() => {
     setLoading(members.isLoading || members.isRefreshing);
     setData(members.data ?? null);
-    setLoadError(members.error instanceof Error ? members.error.message : members.error ? "Members could not be loaded. Try again." : "");
+    setLoadError(members.error instanceof ApiError ? errorMessage(members.error, dictionary) : members.error ? copy.loadFailed : "");
     if (members.data && !members.data.items.length && page > 1) setPage(Math.max(1, Math.ceil(members.data.total / pageSize)));
   }, [members.data, members.error, members.isLoading, members.isRefreshing, page]);
 
@@ -90,11 +93,11 @@ export function MemberManagement({ currentUserId }: { currentUserId: string }) {
         return;
       }
       if (updated.id === currentUserId) await refreshAccount();
-      setNotice(action.action === "revoke" ? "Access revoked. This account has been signed out." : action.action === "restore" ? "Access restored with no role. This account must sign in again and be assigned a role." : "Member role updated.");
+      setNotice(action.action === "revoke" ? copy.accessRevokedNotice : action.action === "restore" ? copy.accessRestoredNotice : copy.roleUpdatedNotice);
       setRevision((value) => value + 1);
     } catch (error) {
       if (!store.isCurrent(epoch)) return;
-      setActionError(error instanceof ApiError ? error.message : "The change could not be saved. Check your connection and try again.");
+      setActionError(error instanceof ApiError ? errorMessage(error, dictionary) : copy.changeFailed);
       if (error instanceof ApiError && [404, 409].includes(error.status)) {
         setRevokeTarget(null);
         setRevision((value) => value + 1);
@@ -113,9 +116,9 @@ export function MemberManagement({ currentUserId }: { currentUserId: string }) {
     <PageShell>
       <PageShellHeader>
         <PageShellHeading>
-          <PageShellTitle>Members</PageShellTitle>
+          <PageShellTitle>{copy.title}</PageShellTitle>
           <PageShellDescription>
-            Everyone with active access shares the CRM workspace. System accounts manage roles and access. At least one active system account must remain.
+            {copy.description}
           </PageShellDescription>
         </PageShellHeading>
       </PageShellHeader>
@@ -123,7 +126,7 @@ export function MemberManagement({ currentUserId }: { currentUserId: string }) {
       <PageShellContent>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <Field className="max-w-56">
-            <FieldLabel htmlFor="member-status">Access status</FieldLabel>
+            <FieldLabel htmlFor="member-status">{copy.accessStatusLabel}</FieldLabel>
             <select
               id="member-status"
               name="status"
@@ -136,23 +139,23 @@ export function MemberManagement({ currentUserId }: { currentUserId: string }) {
               }}
               className={selectClass}
             >
-              <option value="all">All members</option>
-              <option value="active">Active</option>
-              <option value="revoked">Revoked</option>
+              <option value="all">{copy.statusAll}</option>
+              <option value="active">{copy.statusActive}</option>
+              <option value="revoked">{copy.statusRevoked}</option>
             </select>
           </Field>
-          <Button variant="outline" disabled={disabled} onClick={refresh}>Refresh members</Button>
+          <Button variant="outline" disabled={disabled} onClick={refresh}>{copy.refresh}</Button>
         </div>
 
         {!!roles.error && <Alert variant="destructive">
-          Roles could not load.{" "}
-          <Button variant="link" className="h-auto px-0" onClick={roles.refresh}>Retry roles</Button>
+          {copy.rolesUnavailable}{" "}
+          <Button variant="link" className="h-auto px-0" onClick={roles.refresh}>{copy.retryRoles}</Button>
         </Alert>}
         {notice && <Alert role="status">{notice}</Alert>}
         {actionError && !revokeTarget && <Alert variant="destructive" ref={errorRef} tabIndex={-1}>{actionError}</Alert>}
 
-        <section aria-label="Workspace members" aria-busy={loading} className="flex flex-col gap-3">
-          {loading && <CardContent role="status" aria-label="Loading members" className="gap-3">
+        <section aria-label={copy.workspaceMembersLabel} aria-busy={loading} className="flex flex-col gap-3">
+          {loading && <CardContent role="status" aria-label={copy.loadingLabel} className="gap-3">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex min-w-0 items-center gap-4">
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -167,49 +170,49 @@ export function MemberManagement({ currentUserId }: { currentUserId: string }) {
           </CardContent>}
           {loadError && <CardContent className="items-start gap-3">
             <Alert variant="destructive">{loadError}</Alert>
-            <Button variant="outline" onClick={refresh}>Try again</Button>
+            <Button variant="outline" onClick={refresh}>{copy.tryAgain}</Button>
           </CardContent>}
-          {!loading && data && data.items.length === 0 && <CardContent className="text-xs text-muted-foreground">No members match this access status.</CardContent>}
+          {!loading && data && data.items.length === 0 && <CardContent className="text-xs text-muted-foreground">{copy.empty}</CardContent>}
           {!loading && data && data.items.length > 0 && <SimpleTable columns={columns}>
             {data.items.map((member) => <SimpleTableRow key={member.id}>
               <TableCell className="whitespace-normal">
                 <span className="flex min-w-0 items-baseline gap-2">
                   <span className="truncate font-medium">{member.name}</span>
-                  {member.id === currentUserId && <span className="text-xs text-muted-foreground">(you)</span>}
+                  {member.id === currentUserId && <span className="text-xs text-muted-foreground">{copy.you}</span>}
                 </span>
               </TableCell>
               <TableCell className="hidden whitespace-normal break-all text-muted-foreground md:table-cell">{member.email}</TableCell>
-              <TableCell><Badge variant="outline">{member.role?.name ?? "No role"}</Badge></TableCell>
-              <TableCell><Badge variant={member.status === "revoked" ? "destructive" : "secondary"}>{member.status === "active" ? "Active" : "Revoked"}</Badge></TableCell>
+              <TableCell><Badge variant="outline">{member.role?.name ?? copy.noRole}</Badge></TableCell>
+              <TableCell><Badge variant={member.status === "revoked" ? "destructive" : "secondary"}>{member.status === "active" ? copy.statusActiveBadge : copy.statusRevokedBadge}</Badge></TableCell>
               <TableCell className="text-right">
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   {member.status === "active" ? <>
                     <select
-                      aria-label={`Role for ${member.name}`}
+                      aria-label={copy.roleForAria(member.name)}
                       value={member.roleId ?? ""}
                       disabled={disabled || roles.loading || !!roles.error}
                       className={`${selectClass} w-36`}
                       onChange={event => void mutate(member, { action: "change-role", roleId: event.target.value || null, expectedRevision: member.revision })}
                     >
-                      <option value="">No role</option>
+                      <option value="">{copy.noRole}</option>
                       {roles.data?.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
                     </select>
                     <Button
                       variant="outline"
                       className="text-destructive"
                       disabled={disabled}
-                      aria-label={`Revoke access for ${member.name}`}
+                      aria-label={copy.revokeAccessForAria(member.name)}
                       onClick={() => { setActionError(""); setRevokeTarget(member); }}
                     >
-                      Revoke access
+                      {copy.revokeAccess}
                     </Button>
                   </> : <Button
                     variant="outline"
                     disabled={disabled}
-                    aria-label={`Restore access for ${member.name}`}
+                    aria-label={copy.restoreAccessForAria(member.name)}
                     onClick={() => mutate(member, { action: "restore", expectedRevision: member.revision })}
                   >
-                    {pendingId === member.id ? "Restoring…" : "Restore access"}
+                    {pendingId === member.id ? copy.restoring : copy.restoreAccess}
                   </Button>}
                 </div>
               </TableCell>
@@ -217,11 +220,11 @@ export function MemberManagement({ currentUserId }: { currentUserId: string }) {
           </SimpleTable>}
         </section>
 
-        {data && <nav aria-label="Members pagination" className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs tabular-nums text-muted-foreground">Page {page} of {totalPages} · {data.total} {data.total === 1 ? "member" : "members"}</p>
+        {data && <nav aria-label={copy.paginationLabel} className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs tabular-nums text-muted-foreground">{copy.paginationSummary(page, totalPages, data.total)}</p>
           <div className="flex gap-2">
-            <Button variant="outline" disabled={disabled || page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</Button>
-            <Button variant="outline" disabled={disabled || page >= totalPages} onClick={() => setPage((value) => value + 1)}>Next</Button>
+            <Button variant="outline" disabled={disabled || page <= 1} onClick={() => setPage((value) => value - 1)}>{copy.previous}</Button>
+            <Button variant="outline" disabled={disabled || page >= totalPages} onClick={() => setPage((value) => value + 1)}>{copy.next}</Button>
           </div>
         </nav>}
       </PageShellContent>
@@ -232,21 +235,21 @@ export function MemberManagement({ currentUserId }: { currentUserId: string }) {
           onPointerDownOutside={(event) => { if (pendingId) event.preventDefault(); }}
         >
           <DialogHeader>
-            <DialogTitle>Revoke workspace access?</DialogTitle>
+            <DialogTitle>{copy.revokeDialogTitle}</DialogTitle>
             <DialogDescription className="break-words text-pretty">
-              {revokeTarget?.name} will be signed out and lose access to the shared workspace. Their CRM records and history will remain. A system account can restore access later.
+              {copy.revokeDialogDescription(revokeTarget?.name ?? "")}
             </DialogDescription>
           </DialogHeader>
-          {revokeTarget?.id === currentUserId && <p className="text-xs">You are revoking your own access. Another system account will need to restore it.</p>}
+          {revokeTarget?.id === currentUserId && <p className="text-xs">{copy.revokingSelf}</p>}
           {actionError && <Alert variant="destructive" ref={errorRef} tabIndex={-1}>{actionError}</Alert>}
           <DialogFooter>
-            <Button variant="outline" disabled={pendingId !== null} onClick={() => setRevokeTarget(null)}>Cancel</Button>
+            <Button variant="outline" disabled={pendingId !== null} onClick={() => setRevokeTarget(null)}>{dictionary.common.cancel}</Button>
             <Button
               variant="destructive"
               disabled={pendingId !== null}
               onClick={() => { if (revokeTarget) void mutate(revokeTarget, { action: "revoke", expectedRevision: revokeTarget.revision }); }}
             >
-              {pendingId ? "Revoking…" : "Revoke access"}
+              {pendingId ? copy.revoking : copy.revokeAccess}
             </Button>
           </DialogFooter>
         </DialogContent>

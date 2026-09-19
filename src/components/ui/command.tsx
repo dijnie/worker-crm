@@ -1,5 +1,6 @@
 "use client";
 
+import { useDictionary } from "@/components/app/i18n-provider";
 import {
 	Dialog,
 	DialogContent,
@@ -34,8 +35,8 @@ function Command({
 }
 
 function CommandDialog({
-	title = "Command Palette",
-	description = "Search for a command to run...",
+	title,
+	description,
 	children,
 	className,
 	showCloseButton = false,
@@ -46,11 +47,12 @@ function CommandDialog({
 	className?: string;
 	showCloseButton?: boolean;
 }) {
+	const { ui } = useDictionary();
 	return (
 		<Dialog {...props}>
 			<DialogHeader className="sr-only">
-				<DialogTitle>{title}</DialogTitle>
-				<DialogDescription>{description}</DialogDescription>
+				<DialogTitle>{title ?? ui.command.paletteTitle}</DialogTitle>
+				<DialogDescription>{description ?? ui.command.paletteDescription}</DialogDescription>
 			</DialogHeader>
 			<DialogContent
 				className={cn(

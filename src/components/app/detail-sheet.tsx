@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils/cn";
 import { type ReactNode, useRef, useState } from "react";
+import { useDictionary } from "./i18n-provider";
 import {
 	Sheet,
 	SheetContent,
@@ -92,9 +93,9 @@ export function DetailSheetHeader({
 	note,
 	actions,
 	onBack,
-	backLabel = "Back",
+	backLabel,
 	onClose,
-	closeLabel = "Close",
+	closeLabel,
 }: {
 	media?: ReactNode;
 	title: ReactNode;
@@ -106,6 +107,9 @@ export function DetailSheetHeader({
 	onClose: () => void;
 	closeLabel?: string;
 }) {
+	const { common, shell } = useDictionary();
+	const resolvedBackLabel = backLabel ?? shell.detailSheet.back;
+	const resolvedCloseLabel = closeLabel ?? common.close;
 	return (
 		<SheetHeader className={cn("gap-0 border-b py-3", GUTTER)}>
 			<div className="flex items-start gap-3">
@@ -114,10 +118,10 @@ export function DetailSheetHeader({
 						<TooltipTrigger asChild>
 							<Button variant="ghost" size="icon-sm" onClick={onBack}>
 								<Icon icon={ArrowLeft} />
-								<span className="sr-only">{backLabel}</span>
+								<span className="sr-only">{resolvedBackLabel}</span>
 							</Button>
 						</TooltipTrigger>
-						<TooltipContent>{backLabel}</TooltipContent>
+						<TooltipContent>{resolvedBackLabel}</TooltipContent>
 					</Tooltip>
 				) : null}
 
@@ -146,7 +150,7 @@ export function DetailSheetHeader({
 					) : null}
 					<Button variant="ghost" size="icon-sm" onClick={onClose}>
 						<Icon icon={Close} />
-						<span className="sr-only">{closeLabel}</span>
+						<span className="sr-only">{resolvedCloseLabel}</span>
 					</Button>
 				</div>
 			</div>
@@ -352,6 +356,7 @@ export function DetailSheetPending({
 	fields: string[];
 	running: boolean;
 }) {
+	const { shell } = useDictionary();
 	if (fields.length === 0) return null;
 
 	return (
@@ -365,7 +370,7 @@ export function DetailSheetPending({
 					)}
 				/>
 				<span className="font-medium text-xs">
-					{running ? "Agent is researching" : "Not known yet"}
+					{running ? shell.detailSheet.researching : shell.detailSheet.unknownYet}
 				</span>
 			</div>
 			<p className="text-pretty text-muted-foreground text-xs/5">

@@ -10,61 +10,55 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError } from "@/lib/api";
+import { APP_LOCALES, isAppLocale, type AppLocale } from "@/lib/i18n/config";
 import { errorMessage } from "@/lib/i18n/error-message";
 import { useEffect, useState } from "react";
 import { useAppData, useAppQuery } from "../app-data-provider";
 import { useDictionary } from "../i18n-provider";
+import { selectClass } from "../records/record-picker";
 
-export function ReportingCurrencyForm() {
+export function WorkspaceLanguageForm() {
   const { api, invalidate } = useAppData();
   const dictionary = useDictionary();
   const { common, settings: copy } = dictionary;
   const settings = useAppQuery("settings", {}, signal => api.settings.get({ signal }));
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState<AppLocale | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const [confirmation, setConfirmation] = useState("");
 
   useEffect(() => {
-    if (settings.data) setDraft(settings.data.reportingCurrency);
+    if (settings.data) setDraft(settings.data.locale);
   }, [settings.data]);
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
     const stored = settings.data;
-    if (!stored || pending) return;
+    if (!stored || !draft || pending) return;
     setPending(true);
     setError("");
-    setConfirmation("");
     try {
-      const next = await api.settings.update({
-        reportingCurrency: draft,
-        expectedRevision: stored.revision,
-      });
-      invalidate(["settings"]);
-      setConfirmation(copy.currency.saved(next.reportingCurrency));
+      await api.settings.update({ locale: draft, expectedRevision: stored.revision });
+      // The language is resolved on the server for the whole document, so a
+      // reload is what makes server-rendered and client copy agree.
+      window.location.reload();
     } catch (failure) {
-      // A stale revision means someone else changed it first. Reload so the
-      // editor shows the value that actually won, then let the user retry.
       if (failure instanceof ApiError && failure.status === 409) {
-        setError(copy.currency.conflict);
+        setError(copy.language.conflict);
         invalidate(["settings"]);
       } else {
-        setError(failure instanceof ApiError ? errorMessage(failure, dictionary) : copy.currency.failed);
+        setError(failure instanceof ApiError ? errorMessage(failure, dictionary) : copy.language.failed);
       }
-    } finally {
       setPending(false);
     }
   }
 
   return (
-    <Card role="region" aria-label={copy.currency.regionLabel}>
+    <Card role="region" aria-label={copy.language.regionLabel}>
       <CardHeader>
-        <CardTitle>{copy.currency.title}</CardTitle>
-        <CardDescription>{copy.currency.description}</CardDescription>
+        <CardTitle>{copy.language.title}</CardTitle>
+        <CardDescription>{copy.language.description}</CardDescription>
       </CardHeader>
       <CardContent className="flex-col gap-3">
         {settings.loading ? (
@@ -72,7 +66,7 @@ export function ReportingCurrencyForm() {
         ) : settings.error ? (
           <Alert variant="destructive">
             <AlertTitle>{copy.unavailableTitle}</AlertTitle>
-            <AlertDescription>{copy.currency.unavailable}</AlertDescription>
+            <AlertDescription>{copy.language.unavailable}</AlertDescription>
             <Button type="button" variant="outline" size="sm" onClick={settings.refresh}>
               {common.retry}
             </Button>
@@ -80,31 +74,27 @@ export function ReportingCurrencyForm() {
         ) : (
           <form className="flex flex-col items-start gap-3" noValidate onSubmit={save}>
             <Field className="w-40" orientation="vertical">
-              <FieldLabel htmlFor="reporting-currency">{copy.currency.label}</FieldLabel>
-              <Input
-                id="reporting-currency"
-                name="reportingCurrency"
-                value={draft}
+              <FieldLabel htmlFor="workspace-language">{copy.language.label}</FieldLabel>
+              <select
+                id="workspace-language"
+                name="locale"
+                className={selectClass}
+                value={draft ?? ""}
                 disabled={pending}
-                onChange={event => setDraft(event.target.value)}
-                autoCapitalize="characters"
-                autoComplete="off"
-                spellCheck={false}
                 aria-invalid={!!error}
-                className="uppercase"
-              />
+                onChange={event => { if (isAppLocale(event.target.value)) setDraft(event.target.value); }}
+              >
+                {APP_LOCALES.map(locale => (
+                  <option key={locale} value={locale} lang={locale}>{common.languageNames[locale]}</option>
+                ))}
+              </select>
             </Field>
             <Button type="submit" disabled={pending}>
-              {pending ? common.saving : copy.currency.submit}
+              {pending ? common.saving : copy.language.submit}
             </Button>
             {error && (
               <p role="alert" className="text-destructive text-xs">
                 {error}
-              </p>
-            )}
-            {confirmation && (
-              <p role="status" className="text-muted-foreground text-xs">
-                {confirmation}
               </p>
             )}
           </form>

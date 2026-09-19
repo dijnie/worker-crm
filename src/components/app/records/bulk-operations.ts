@@ -4,11 +4,23 @@ export interface BulkOutcome {
   error?: string;
   status?: number;
 }
+/** The copy `runBulkOperation` reports; callers pass their dictionary strings, tests rely on the English default. */
+export interface BulkOperationStrings {
+  stopped: string;
+  accessChanged: string;
+  operationFailed: string;
+}
+const DEFAULT_BULK_STRINGS: BulkOperationStrings = {
+  stopped: "Stopped because workspace access changed.",
+  accessChanged: "Workspace access changed; refresh before retrying.",
+  operationFailed: "Operation failed",
+};
 export async function runBulkOperation(
   ids: readonly string[],
   action: (id: string) => Promise<unknown>,
-  options: { isCurrent?: () => boolean; onSuccess?: (id: string) => void } = {},
+  options: { isCurrent?: () => boolean; onSuccess?: (id: string) => void; strings?: BulkOperationStrings; describe?: (failure: unknown) => string } = {},
 ): Promise<BulkOutcome[]> {
+  const strings = options.strings ?? DEFAULT_BULK_STRINGS;
   const unique = [...new Set(ids)];
   if (unique.length > 100 || unique.some((id) => !id.trim() || id.length > 200))
     throw new Error("Select between one and 100 valid records.");
@@ -23,7 +35,7 @@ export async function runBulkOperation(
         outcomes[index] = {
           id,
           ok: false,
-          error: "Stopped because workspace access changed.",
+          error: strings.stopped,
         };
         continue;
       }
@@ -34,7 +46,7 @@ export async function runBulkOperation(
           outcomes[index] = {
             id,
             ok: false,
-            error: "Workspace access changed; refresh before retrying.",
+            error: strings.accessChanged,
           };
         } else {
           outcomes[index] = { id, ok: true };
@@ -51,7 +63,8 @@ export async function runBulkOperation(
         outcomes[index] = {
           id,
           ok: false,
-          error: error instanceof Error ? error.message : "Operation failed",
+          // `describe` puts a record's failure in the interface language; without it the raw message stands.
+          error: options.describe ? options.describe(error) : error instanceof Error ? error.message : strings.operationFailed,
           status,
         };
         if (status === 401 || status === 403) stopped = true;

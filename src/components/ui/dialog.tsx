@@ -1,5 +1,6 @@
 "use client";
 
+import { useDictionary } from "@/components/app/i18n-provider";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
 import { XIcon } from "lucide-react";
@@ -54,6 +55,7 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
 	showCloseButton?: boolean;
 }) {
+	const { common } = useDictionary();
 	return (
 		<DialogPortal>
 			<DialogOverlay />
@@ -74,7 +76,7 @@ function DialogContent({
 							size="icon-sm"
 						>
 							<XIcon />
-							<span className="sr-only">Close</span>
+							<span className="sr-only">{common.close}</span>
 						</Button>
 					</DialogPrimitive.Close>
 				)}
@@ -101,6 +103,7 @@ function DialogFooter({
 }: React.ComponentProps<"div"> & {
 	showCloseButton?: boolean;
 }) {
+	const { common } = useDictionary();
 	return (
 		<div
 			data-slot="dialog-footer"
@@ -113,7 +116,7 @@ function DialogFooter({
 			{children}
 			{showCloseButton && (
 				<DialogPrimitive.Close asChild>
-					<Button variant="outline">Close</Button>
+					<Button variant="outline">{common.close}</Button>
 				</DialogPrimitive.Close>
 			)}
 		</div>

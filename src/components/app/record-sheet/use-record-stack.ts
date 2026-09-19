@@ -2,18 +2,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAppData } from "../app-data-provider";
-import { RECORD_OPEN_EVENT, openRecord, parseRecordStack, writeRecordStack, type RecordRef } from "./record-navigation";
+import { useDictionary } from "../i18n-provider";
+import { errorMessage } from "@/lib/i18n/error-message";
+import { RECORD_OPEN_EVENT, RecordLinkError, openRecord, parseRecordStack, writeRecordStack, type RecordRef } from "./record-navigation";
 import type { DirtyEditor } from "./inline-field";
 
 const HISTORY_INDEX = "workerRecordHistoryIndex";
 function readLocation() {
   try { return { stack: parseRecordStack(window.location.search), error: null }; }
-  catch (error) { return { stack: [] as RecordRef[], error: error instanceof Error ? error : new Error("Invalid record link.") }; }
+  catch (error) { return { stack: [] as RecordRef[], error: error instanceof RecordLinkError ? error : new RecordLinkError() }; }
 }
 
 /** The browser URL owns the stack; the registry contains drafts, never another stack. */
 export function useRecordStack() {
   const { generation, store } = useAppData();
+  const dictionary = useDictionary();
   const pathname = usePathname();
   const search = useSearchParams().toString();
   const syncLocation = useRef<(() => void) | null>(null);
@@ -36,7 +39,7 @@ export function useRecordStack() {
   const request = useCallback((action: () => void) => {
     const execute = () => {
       try { action(); }
-      catch (error) { setLocation(current => ({ ...current, error: error instanceof Error ? error : new Error("Could not open record.") })); }
+      catch (error) { setLocation(current => ({ ...current, error: error instanceof RecordLinkError ? error : new RecordLinkError("Could not open record.", "openFailed") })); }
     };
     if (dirty() && !bypass.current && store.isCurrent(currentGeneration.current)) {
       next.current = execute; setSaveError(""); setPending(true);
@@ -147,14 +150,14 @@ export function useRecordStack() {
     try {
       for (const editor of [...editors.current.values()]) {
         if (editor.dirty && !(await editor.save())) {
-          if (store.isCurrent(epoch)) setSaveError("Some changes could not be saved. Stay on this record to review the field errors.");
+          if (store.isCurrent(epoch)) setSaveError(dictionary.recordSheet.host.savePartialFailure);
           return;
         }
         if (!store.isCurrent(epoch)) return;
       }
       if (store.isCurrent(epoch)) finish();
     } catch (error) {
-      if (store.isCurrent(epoch)) setSaveError(error instanceof Error ? error.message : "Changes could not be saved.");
+      if (store.isCurrent(epoch)) setSaveError(error instanceof Error ? errorMessage(error, dictionary) : dictionary.recordSheet.host.saveFailedGeneric);
     } finally { busy.current = false; if (store.isCurrent(epoch)) setSaving(false); }
   };
   return { ...location, onDirtyChange, pending, saving: saving || draftPending, saveError, stay, save, discard,

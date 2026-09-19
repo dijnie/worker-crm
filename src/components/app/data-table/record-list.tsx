@@ -7,6 +7,7 @@ import type {
   RecordFields,
 } from "@/lib/record-list-contracts";
 import type { Page } from "@/lib/utils/validation";
+import type { DealStage, EnrichmentStatus, FieldEntity } from "@/lib/db/schema/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -19,8 +20,8 @@ import {
   BulkReportView,
   type BulkReport,
 } from "../records/bulk-actions";
-import { stageLabel } from "../records/stage-change";
 import {
+  RecordLinkError,
   buildRecordUrl,
   openRecord,
   parseRecordStack,
@@ -31,18 +32,22 @@ import { PageShellLoading } from "../page-shell";
 import Search from "@carbon/icons-react/es/Search";
 import Renew from "@carbon/icons-react/es/Renew";
 import Close from "@carbon/icons-react/es/Close";
-import { facetLabels, useListFacets } from "./facet-filters";
+import { useListFacets } from "./facet-filters";
 import { SavedViews } from "./saved-views";
 import { useTableQuery } from "./use-table-query";
 import { tableQueryToApi, type TableQuery } from "./table-query";
 import { useFieldDefinitions } from "../fields/use-field-definitions";
 import { fieldColumns } from "../fields/field-columns";
 import {
+  fieldFacetCopy,
   fieldFilterLabel,
   fieldFilterValues,
   supportedFieldFilter,
 } from "../fields/field-facets";
 import { useAssigneeDirectory } from "../records/use-assignee-directory";
+import { useDictionary, useFormat } from "../i18n-provider";
+import { errorMessage } from "@/lib/i18n/error-message";
+import { ApiError } from "@/lib/api";
 
 export interface RecordListRow extends RecordSummary, RecordFields {
   id: string;
@@ -74,7 +79,6 @@ export interface RecordListQueryState {
   clear: () => void;
 }
 const emptyRows: RecordListRow[] = [];
-const labels = { company: "Companies", contact: "Contacts", deal: "Deals" };
 const pageSizes = [25, 50, 100];
 /** `hideable: false` pins a column: the ported table omits it from its column menu. */
 type ListColumn = DataTableColumn<RecordListRow>;
@@ -84,28 +88,8 @@ const rowControlSelector =
 export function recordName(row: RecordListRow) {
   return row.name ?? [row.firstName, row.lastName].filter(Boolean).join(" ");
 }
-function date(value: string | null | undefined, dayOnly = false) {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? value
-    : dayOnly
-      ? parsed.toLocaleDateString(undefined, { timeZone: "UTC" })
-      : parsed.toLocaleString();
-}
-function relatedCompanyCell(row: RecordListRow) {
-  if (!row.companyId) return "—";
-  return (
-    <RecordLink reference={{ kind: "company", id: row.companyId }}>
-      {row.company?.name ?? `Unknown company (${row.companyId})`}
-      {row.company?.archivedAt ? " (archived)" : ""}
-    </RecordLink>
-  );
-}
-function ownerCell(row: RecordListRow) {
-  if (row.owner?.name) return row.owner.name;
-  if (row.ownerId) return `Unavailable / historical (${row.ownerId})`;
-  return "Unassigned";
+function fieldEntityOf(entity: RecordEntity): FieldEntity {
+  return entity.toUpperCase() as FieldEntity;
 }
 function RecordLink({
   reference,
@@ -146,6 +130,7 @@ function RecordLink({
 /** The page header owns "New <entity>"; an empty list reuses the same control. */
 export function CreateRecordButton({ entity }: { entity: RecordEntity }) {
   const { account } = useAppData();
+  const dictionary = useDictionary();
   const [creating, setCreating] = useState(false);
   const canCreate =
     canPermission(account, entity, "create") &&
@@ -153,7 +138,9 @@ export function CreateRecordButton({ entity }: { entity: RecordEntity }) {
   if (!canCreate) return null;
   return (
     <>
-      <Button onClick={() => setCreating(true)}>New {entity}</Button>
+      <Button onClick={() => setCreating(true)}>
+        {dictionary.recordList.list.newRecord(dictionary.crm.entities[fieldEntityOf(entity)].lower)}
+      </Button>
       <CreateRecordDialog
         entity={entity}
         open={creating}
@@ -170,6 +157,10 @@ function ListContent({
   state: RecordListQueryState;
 }) {
   const { api, account } = useAppData();
+  const dictionary = useDictionary();
+  const format = useFormat();
+  const copy = dictionary.recordList;
+  const facetCopy = useMemo(() => fieldFacetCopy(dictionary.fields), [dictionary]);
   const { query, update, clear, write } = state;
   const canUpdate = canPermission(account, entity, "update");
   const canSelect =
@@ -181,14 +172,14 @@ function ListContent({
   const fieldQuery = useFieldDefinitions(entity);
   const directory = useAssigneeDirectory();
   const directoryStatus = directory.error
-    ? "User directory unavailable"
+    ? copy.list.directoryStatusUnavailable
     : directory.loading
-      ? "Loading user…"
+      ? copy.list.directoryStatusLoading
       : undefined;
   const customColumns = useMemo(
     () =>
-      fieldColumns(fieldQuery.data ?? [], directory.data ?? [], directoryStatus),
-    [fieldQuery.data, directory.data, directoryStatus],
+      fieldColumns(fieldQuery.data ?? [], directory.data ?? [], directoryStatus, dictionary.fields.valueDisplay),
+    [fieldQuery.data, directory.data, directoryStatus, dictionary],
   );
   const unavailableFilters = fieldQuery.data
     ? Object.keys(query.filters).filter(
@@ -239,12 +230,44 @@ function ListContent({
   const selectedTargets = rows
     .filter((row) => selection.has(row.id))
     .map((row) => ({ id: row.id, name: recordName(row) }));
+  const formatDate = useMemo(
+    () => (value: string | null | undefined, dayOnly = false) => {
+      if (!value) return dictionary.crm.empty;
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return value;
+      return dayOnly ? format.day(parsed) : format.timestamp(parsed);
+    },
+    [dictionary, format],
+  );
+  const relatedCompanyCell = useMemo(
+    () => (row: RecordListRow) => {
+      if (!row.companyId) return dictionary.crm.empty;
+      return (
+        <RecordLink reference={{ kind: "company", id: row.companyId }}>
+          {row.company?.name ?? copy.list.unknownCompany(row.companyId)}
+          {row.company?.archivedAt ? copy.list.archivedSuffix : ""}
+        </RecordLink>
+      );
+    },
+    [dictionary, copy],
+  );
+  const ownerCell = useMemo(
+    () => (row: RecordListRow) => {
+      if (row.owner?.name) return row.owner.name;
+      if (row.ownerId) return copy.list.ownerUnavailable(row.ownerId);
+      return copy.list.unassigned;
+    },
+    [copy],
+  );
   const columns = useMemo<ListColumn[]>(() => {
+    const fieldEntity = fieldEntityOf(entity);
     const base: ListColumn[] = [
       {
         id: "name",
         header:
-          entity === "contact" ? "Name" : entity === "company" ? "Company" : "Deal",
+          entity === "contact"
+            ? copy.list.columns.name
+            : dictionary.crm.entities[fieldEntity].singular,
         sortable: true,
         hideable: false,
         width: "w-[24%]",
@@ -260,23 +283,23 @@ function ListContent({
       base.push(
         {
           id: "domain",
-          header: "Domain",
+          header: copy.list.columns.domain,
           sortable: true,
           width: "w-[16%]",
           cellClassName: "truncate",
-          cell: (row) => row.domain ?? "—",
+          cell: (row) => row.domain ?? dictionary.crm.empty,
         },
         {
           id: "industry",
-          header: "Industry",
+          header: copy.list.columns.industry,
           sortable: true,
           width: "w-[14%]",
           cellClassName: "truncate",
-          cell: (row) => row.industry ?? "—",
+          cell: (row) => row.industry ?? dictionary.crm.empty,
         },
         {
           id: "owner",
-          header: "Owner",
+          header: copy.list.columns.owner,
           sortable: true,
           width: "w-[16%]",
           cellClassName: "truncate",
@@ -284,44 +307,44 @@ function ListContent({
         },
         {
           id: "contacts",
-          header: "Contacts",
+          header: copy.list.columns.contacts,
           sortable: true,
           align: "right",
           width: "w-[9%]",
           cellClassName: "tabular-nums",
-          cell: (row) => row.contactCount ?? "—",
+          cell: (row) => row.contactCount ?? dictionary.crm.empty,
         },
         {
           id: "deals",
-          header: "Open deals",
+          header: copy.list.columns.openDeals,
           sortable: true,
           align: "right",
           width: "w-[9%]",
           cellClassName: "tabular-nums",
-          cell: (row) => row.openDealCount ?? "—",
+          cell: (row) => row.openDealCount ?? dictionary.crm.empty,
         },
       );
     if (entity === "contact")
       base.push(
         {
           id: "title",
-          header: "Title",
+          header: copy.list.columns.title,
           sortable: true,
           width: "w-[16%]",
           cellClassName: "truncate",
-          cell: (row) => row.title ?? "—",
+          cell: (row) => row.title ?? dictionary.crm.empty,
         },
         {
           id: "email",
-          header: "Email",
+          header: copy.list.columns.email,
           sortable: true,
           width: "w-[18%]",
           cellClassName: "truncate",
-          cell: (row) => row.email ?? "—",
+          cell: (row) => row.email ?? dictionary.crm.empty,
         },
         {
           id: "company",
-          header: "Company",
+          header: dictionary.crm.entities.COMPANY.singular,
           sortable: true,
           width: "w-[18%]",
           cellClassName: "truncate",
@@ -329,7 +352,7 @@ function ListContent({
         },
         {
           id: "owner",
-          header: "Owner",
+          header: copy.list.columns.owner,
           sortable: true,
           width: "w-[16%]",
           cellClassName: "truncate",
@@ -340,7 +363,7 @@ function ListContent({
       base.push(
         {
           id: "company",
-          header: "Company",
+          header: dictionary.crm.entities.COMPANY.singular,
           sortable: true,
           width: "w-[12%]",
           cellClassName: "truncate",
@@ -348,23 +371,31 @@ function ListContent({
         },
         {
           id: "stage",
-          header: "Stage",
+          header: copy.list.columns.stage,
           sortable: true,
           width: "w-[8%]",
-          cell: (row) => stageLabel(row.stage ?? "DEMO_BOOKED"),
+          cell: (row) => {
+            const stage = (row.stage ?? "DEMO_BOOKED") as DealStage;
+            return dictionary.crm.stages[stage] ?? row.stage ?? "DEMO_BOOKED";
+          },
         },
         {
           id: "amount",
-          header: "Amount (grouped by currency)",
+          header: copy.list.columns.amount,
           sortable: true,
           align: "right",
           width: "w-[9%]",
           cellClassName: "tabular-nums",
-          cell: (row) => (row.amount == null ? "—" : `${row.currency} ${row.amount}`),
+          cell: (row) =>
+            row.amount == null
+              ? dictionary.crm.empty
+              : row.currency
+                ? format.money(row.amount, row.currency)
+                : format.decimal(row.amount),
         },
         {
           id: "owner",
-          header: "Owner",
+          header: copy.list.columns.owner,
           sortable: true,
           width: "w-[9%]",
           cellClassName: "truncate",
@@ -372,49 +403,51 @@ function ListContent({
         },
         {
           id: "expectedCloseDate",
-          header: "Close date",
+          header: copy.list.columns.closeDate,
           sortable: true,
           align: "right",
           width: "w-[7%]",
-          cell: (row) => date(row.expectedCloseDate, true),
+          cell: (row) => formatDate(row.expectedCloseDate, true),
         },
       );
     base.push(
       {
         id: "createdAt",
-        header: "Created",
+        header: copy.list.columns.created,
         sortable: true,
         align: "right",
         width: "w-[12%]",
         defaultHidden: true,
-        cell: (row) => date(row.createdAt),
+        cell: (row) => formatDate(row.createdAt),
       },
       {
         id: "lastActivity",
-        header: "Last activity",
+        header: copy.list.columns.lastActivity,
         sortable: true,
         align: "right",
         width: "w-[12%]",
-        cell: (row) => date(row.lastActivityAt),
+        cell: (row) => formatDate(row.lastActivityAt),
       },
     );
     if (entity === "company")
       base.push({
         id: "enrichment",
-        header: "Enrichment",
+        header: copy.list.columns.enrichment,
         width: "w-[12%]",
         defaultHidden: true,
         cell: (row) =>
-          row.enrichmentStatus ? stageLabel(row.enrichmentStatus) : "—",
+          row.enrichmentStatus
+            ? (dictionary.crm.enrichmentStatuses[row.enrichmentStatus as EnrichmentStatus] ?? row.enrichmentStatus)
+            : dictionary.crm.empty,
       });
     if (query.archived)
       base.push({
         id: "archivedAt",
-        header: "Archived",
+        header: copy.list.columns.archived,
         sortable: true,
         align: "right",
         width: "w-[12%]",
-        cell: (row) => date(row.archivedAt),
+        cell: (row) => formatDate(row.archivedAt),
       });
     base.push(
       ...customColumns.map((extension) => ({
@@ -428,7 +461,7 @@ function ListContent({
     if (entity === "deal" && canUpdate)
       base.push({
         id: "actions",
-        header: "Actions",
+        header: copy.list.columns.actions,
         hideable: false,
         align: "right",
         width: "w-[132px]",
@@ -458,12 +491,18 @@ function ListContent({
     canActivitySummary,
     canUpdate,
     settled,
+    dictionary,
+    copy,
+    format,
+    formatDate,
+    relatedCompanyCell,
+    ownerCell,
   ]);
   let recordError = "";
   try {
     parseRecordStack(window.location.search);
   } catch (error) {
-    recordError = error instanceof Error ? error.message : "Invalid record link";
+    recordError = dictionary.recordSheet.host.navigation[error instanceof RecordLinkError ? error.reason : "invalid"];
   }
   const filtered =
     !!query.q ||
@@ -502,6 +541,8 @@ function ListContent({
     },
     setPageSize: (pageSize) => update({ limit: pageSize }),
   };
+  const entityLower = dictionary.crm.entities[fieldEntityOf(entity)].lower;
+  const entityLowerPlural = dictionary.crm.entities[fieldEntityOf(entity)].lowerPlural;
   return (
     <div
       className="flex min-h-0 flex-1 flex-col gap-3"
@@ -523,22 +564,22 @@ function ListContent({
         >
           {recordError}
           <Button size="sm" variant="outline" onClick={() => writeRecordStack([])}>
-            Close invalid record link
+            {copy.list.invalidRecordLinkClose}
           </Button>
         </div>
       )}
       {fieldQuery.error ? (
         <p role="alert" className="text-xs text-destructive">
-          Custom field definitions could not load.{" "}
-          {fieldQuery.error instanceof Error
-            ? fieldQuery.error.message
-            : "Request failed."}{" "}
+          {copy.list.fieldsUnavailableMessage}{" "}
+          {fieldQuery.error instanceof ApiError
+            ? errorMessage(fieldQuery.error, dictionary)
+            : copy.list.requestFailedFallback}{" "}
           <button
             type="button"
             className="underline"
             onClick={fieldQuery.refresh}
           >
-            Retry custom fields
+            {copy.list.retryCustomFields}
           </button>
         </p>
       ) : null}
@@ -550,13 +591,13 @@ function ListContent({
             !field.archivedAt,
         ) && (
           <p role="alert" className="text-xs text-destructive">
-            User directory unavailable.{" "}
+            {copy.list.userDirectoryUnavailableMessage}{" "}
             <button
               type="button"
               className="underline"
               onClick={directory.refresh}
             >
-              Retry user directory
+              {copy.list.retryUserDirectory}
             </button>
           </p>
         )}
@@ -565,10 +606,7 @@ function ListContent({
           role="alert"
           className="space-y-2 rounded-md border border-destructive/30 p-3 text-xs"
         >
-          <p>
-            A selected custom field is retired or no longer supports filtering.
-            Repair the filters to continue.
-          </p>
+          <p>{copy.list.unavailableFieldFiltersMessage}</p>
           <Button
             variant="outline"
             size="sm"
@@ -582,7 +620,7 @@ function ListContent({
               })
             }
           >
-            Remove unavailable field filters
+            {copy.list.removeUnavailableFieldFilters}
           </Button>
         </div>
       )}
@@ -596,29 +634,31 @@ function ListContent({
         />
         <Input
           className="pl-8"
-          aria-label={`Search ${labels[entity].toLowerCase()}`}
-          placeholder={`Search ${labels[entity].toLowerCase()}…`}
+          aria-label={copy.list.search.ariaLabel(entityLowerPlural)}
+          placeholder={copy.list.search.placeholder(entityLowerPlural)}
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
       </div>
       {!!facetError && (
         <p role="alert" className="text-xs text-destructive">
-          Filter options could not load.{" "}
-          {facetError instanceof Error ? facetError.message : "Request failed."}{" "}
+          {copy.list.filterOptionsUnavailableMessage}{" "}
+          {facetError instanceof ApiError
+            ? errorMessage(facetError, dictionary)
+            : copy.list.requestFailedFallback}{" "}
           <button type="button" className="underline" onClick={refreshFacets}>
-            Retry filters
+            {copy.list.retryFilters}
           </button>
         </p>
       )}
       {Object.keys(query.filters).length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground">Filtered by</span>
+          <span className="text-xs text-muted-foreground">{copy.list.filteredBy}</span>
           {Object.entries(query.filters).map(([facet, values]) => (
             <button
               key={facet}
               type="button"
-              aria-label={`Remove ${facetLabels[facet] ?? fieldFilterLabel(facet, fieldQuery.data ?? [])} filter`}
+              aria-label={copy.list.removeFilter(copy.facets[facet] ?? fieldFilterLabel(facet, fieldQuery.data ?? [], facetCopy))}
               className="inline-flex max-w-full items-center gap-1.5 rounded-sm border bg-card px-2 py-1 text-xs text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => {
                 const filters = { ...query.filters };
@@ -627,10 +667,10 @@ function ListContent({
               }}
             >
               <span className="truncate">
-                {facetLabels[facet] ?? fieldFilterLabel(facet, fieldQuery.data ?? [])}
+                {copy.facets[facet] ?? fieldFilterLabel(facet, fieldQuery.data ?? [], facetCopy)}
                 :{" "}
                 {facet === "owner" || facet === "company"
-                  ? `${values.length} selected`
+                  ? copy.list.selectedCount(values.length)
                   : facet.startsWith("field:")
                     ? fieldFilterValues(
                         facet,
@@ -638,6 +678,7 @@ function ListContent({
                         fieldQuery.data ?? [],
                         directory.data ?? [],
                         directoryStatus,
+                        facetCopy,
                       )
                     : values.join(", ")}
               </span>
@@ -645,25 +686,22 @@ function ListContent({
             </button>
           ))}
           <Button size="sm" variant="ghost" onClick={clear}>
-            Clear filters
+            {copy.clearFilters}
           </Button>
         </div>
       )}
       {query.sort === "amount" && (
-        <p className="text-xs text-muted-foreground">
-          Amounts are grouped by currency and sorted exactly within each
-          currency. No exchange-rate conversion is applied.
-        </p>
+        <p className="text-xs text-muted-foreground">{copy.list.amountSortNote}</p>
       )}
       {result.error ? (
         <div role="alert" className="rounded-md border border-destructive/30 p-6">
           <p className="text-xs">
-            {result.error instanceof Error
-              ? result.error.message
-              : "Could not load records."}
+            {result.error instanceof ApiError
+              ? errorMessage(result.error, dictionary)
+              : copy.list.loadRecordsFailedFallback}
           </p>
           <Button variant="outline" className="mt-3" onClick={result.refresh}>
-            Retry records
+            {copy.list.retryRecords}
           </Button>
         </div>
       ) : (
@@ -697,14 +735,14 @@ function ListContent({
                   checked={query.archived}
                   onChange={(event) => update({ archived: event.target.checked })}
                 />
-                Archived
+                {copy.list.columns.archived}
               </label>
               <Button
                 variant="outline"
                 size="sm"
                 className="justify-start sm:justify-center"
-                aria-label="Refresh"
-                title="Refresh records"
+                aria-label={copy.list.refreshAriaLabel}
+                title={copy.list.refreshTitle}
                 onClick={result.refresh}
                 disabled={loading}
               >
@@ -747,17 +785,17 @@ function ListContent({
             <div className="flex flex-col items-center gap-2">
               <p className="font-medium text-foreground">
                 {filtered
-                  ? "No matching records"
-                  : `No ${labels[entity].toLowerCase()} yet`}
+                  ? copy.list.emptyNoMatches
+                  : copy.list.emptyNoneYet(entityLowerPlural)}
               </p>
               <p className="text-xs">
                 {filtered
-                  ? "Adjust your search or filters to find records."
-                  : `Create your first ${entity} to get started.`}
+                  ? copy.list.emptyAdjustFilters
+                  : copy.list.emptyCreateFirst(entityLower)}
               </p>
               {filtered && (
                 <Button variant="outline" size="sm" onClick={clear}>
-                  Clear filters
+                  {copy.clearFilters}
                 </Button>
               )}
             </div>
@@ -766,15 +804,15 @@ function ListContent({
             <span className="flex flex-wrap items-center gap-3">
               <span role="status">
                 {result.loading
-                  ? "Loading records…"
+                  ? copy.list.loadingRecords
                   : result.refreshing
-                    ? "Refreshing records…"
-                    : `${total} ${total === 1 ? "record" : "records"}`}
+                    ? copy.list.refreshingRecords
+                    : copy.list.recordCount(total)}
               </span>
               <label className="flex items-center gap-1.5">
-                Page size
+                {copy.list.pageSizeLabel}
                 <select
-                  aria-label="Page size"
+                  aria-label={copy.list.pageSizeLabel}
                   className="h-7 rounded-sm border border-input bg-background px-1.5 text-xs text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
                   value={query.limit}
                   onChange={(event) =>
@@ -796,18 +834,16 @@ function ListContent({
   );
 }
 export function RecordList({ entity }: { entity: RecordEntity }) {
+  const dictionary = useDictionary();
   const state = useTableQuery(entity);
   if (!state.ready) return <PageShellLoading />;
   if (state.error)
     return (
       <div role="alert" className="space-y-3">
-        <p className="text-xs">
-          This table link contains an unsupported or invalid query. Your filters
-          have not been applied.
-        </p>
-        <p className="text-xs text-destructive">{state.error.message}</p>
+        <p className="text-xs">{dictionary.recordList.list.invalidLinkMessage}</p>
+        <p className="text-xs text-destructive">{dictionary.recordList.list.invalidLinkDetail(state.error.message)}</p>
         <Button variant="outline" onClick={state.clear}>
-          Clear invalid filters
+          {dictionary.recordList.list.clearInvalidFilters}
         </Button>
       </div>
     );

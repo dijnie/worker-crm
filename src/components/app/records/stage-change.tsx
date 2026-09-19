@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
 import type { DirtyEditor } from "../record-sheet/inline-field";
-import { propertyError } from "../record-sheet/property-values";
+import { propertyFailureMessage } from "../record-sheet/property-values";
+import { useDictionary } from "../i18n-provider";
 import { DEAL_STAGES, type DealStage } from "@/lib/db/schema/constants";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -13,15 +14,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { selectClass } from "./record-picker";
-export function stageLabel(value: string) {
-  return value
-    .toLowerCase()
-    .split("_")
-    .map((part, index) =>
-      index ? part : part[0].toUpperCase() + part.slice(1),
-    )
-    .join(" ");
-}
 export function StageChangeDialog({
   open,
   onOpenChange,
@@ -39,6 +31,8 @@ export function StageChangeDialog({
   onDirtyChange?: (state: DirtyEditor | null) => void;
   initialStage?: DealStage;
 }) {
+  const dictionary = useDictionary();
+  const { stageChange: copy } = dictionary.recordSheet;
   const stageId = useId();
   const reasonId = useId();
   const [stage, setStage] = useState<DealStage>(initialStage);
@@ -50,10 +44,10 @@ export function StageChangeDialog({
   useEffect(() => { if (open) { openedStage.current = initialStage; setStage(initialStage); setReason(""); setError(""); setConfirmClose(false); } }, [open]);
   const save = (): Promise<boolean> => {
     if (flight.current) return flight.current;
-    if ((stage === "CLOSED_LOST" || stage === "UNQUALIFIED_TO_BUY") && !reason.trim()) { setError("A lost deal needs a reason."); return Promise.resolve(false); }
-    if (reason.trim().length > 100000) { setError("Reason must be at most 100000 characters."); return Promise.resolve(false); }
+    if ((stage === "CLOSED_LOST" || stage === "UNQUALIFIED_TO_BUY") && !reason.trim()) { setError(copy.lostReasonRequired); return Promise.resolve(false); }
+    if (reason.trim().length > 100000) { setError(copy.reasonTooLong); return Promise.resolve(false); }
     setError("");
-    flight.current = onSubmit(stage, reason.trim() || undefined).then(() => true).catch(failure => { setError(propertyError(failure)); return false; }).finally(() => { flight.current = null; });
+    flight.current = onSubmit(stage, reason.trim() || undefined).then(() => true).catch(failure => { setError(propertyFailureMessage(failure, dictionary)); return false; }).finally(() => { flight.current = null; });
     return flight.current;
   };
   const latestSave = useRef(save); latestSave.current = save;
@@ -72,10 +66,9 @@ export function StageChangeDialog({
       }}
     >
       <DialogContent className="gap-4 sm:max-w-md">
-        <DialogTitle>Change stage</DialogTitle>
+        <DialogTitle>{dictionary.recordSheet.common.changeStage}</DialogTitle>
         <DialogDescription>
-          Update {count} selected {count === 1 ? "deal" : "deals"}. Each
-          transition is recorded in its activity history.
+          {copy.description(count, count === 1 ? dictionary.crm.entities.DEAL.lower : dictionary.crm.entities.DEAL.lowerPlural)}
         </DialogDescription>
         <form
           className="space-y-4"
@@ -85,10 +78,10 @@ export function StageChangeDialog({
           }}
         >
           <Field>
-            <FieldLabel htmlFor={stageId}>Stage</FieldLabel>
+            <FieldLabel htmlFor={stageId}>{copy.stageLabel}</FieldLabel>
             <select
               id={stageId}
-              aria-label="Stage"
+              aria-label={copy.stageLabel}
               className={selectClass}
               value={stage}
               disabled={pending}
@@ -96,18 +89,18 @@ export function StageChangeDialog({
             >
               {DEAL_STAGES.map((stage) => (
                 <option key={stage} value={stage}>
-                  {stageLabel(stage)}
+                  {dictionary.crm.stages[stage]}
                 </option>
               ))}
             </select>
           </Field>
           <Field>
             <FieldLabel htmlFor={reasonId}>
-              Reason{losing ? " *" : " (optional)"}
+              {copy.reasonLabel(losing)}
             </FieldLabel>
             <Textarea
               id={reasonId}
-              aria-label="Reason"
+              aria-label={copy.reasonAria}
               required={losing}
               value={reason}
               disabled={pending}
@@ -119,13 +112,13 @@ export function StageChangeDialog({
             type="submit"
             disabled={pending || (losing && !reason.trim())}
           >
-            {pending ? "Updating…" : "Update stage"}
+            {pending ? copy.updating : copy.updateStage}
           </Button>
         </form>
-        {confirmClose && <div role="alert" className="space-y-3 rounded-md border p-3 text-xs"><p>Save the stage change before closing?</p><div className="flex gap-2">
-          <Button disabled={pending} onClick={async () => { if (await save()) onOpenChange(false); }}>Save and close</Button>
-          <Button variant="outline" disabled={pending} onClick={() => { setStage(openedStage.current); setReason(""); onOpenChange(false); }}>Discard</Button>
-          <Button variant="ghost" disabled={pending} onClick={() => setConfirmClose(false)}>Stay</Button>
+        {confirmClose && <div role="alert" className="space-y-3 rounded-md border p-3 text-xs"><p>{copy.confirmCloseTitle}</p><div className="flex gap-2">
+          <Button disabled={pending} onClick={async () => { if (await save()) onOpenChange(false); }}>{dictionary.recordSheet.common.saveAndClose}</Button>
+          <Button variant="outline" disabled={pending} onClick={() => { setStage(openedStage.current); setReason(""); onOpenChange(false); }}>{dictionary.recordSheet.common.discard}</Button>
+          <Button variant="ghost" disabled={pending} onClick={() => setConfirmClose(false)}>{dictionary.recordSheet.common.stay}</Button>
         </div></div>}
       </DialogContent>
     </Dialog>

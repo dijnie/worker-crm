@@ -7,6 +7,7 @@ import ChevronDown from "@carbon/icons-react/es/ChevronDown";
 import ChevronRight from "@carbon/icons-react/es/ChevronRight";
 import Column from "@carbon/icons-react/es/Column";
 import Filter from "@carbon/icons-react/es/Filter";
+import { useDictionary, useFormat } from "@/components/app/i18n-provider";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -186,6 +187,7 @@ function FacetSubmenu({
 	selected: string[];
 	onChange: (values: string[]) => void;
 }) {
+	const { ui } = useDictionary();
 	return (
 		<DropdownMenuSub>
 			<DropdownMenuSubTrigger>
@@ -201,13 +203,13 @@ function FacetSubmenu({
 						className="max-h-72"
 					>
 						<CommandInput
-							placeholder={`Search ${facet.label.toLowerCase()}…`}
+							placeholder={ui.dataTable.searchFacetPlaceholder(facet.label.toLowerCase())}
 							value={facet.search}
 							onValueChange={facet.onSearchChange}
 							onKeyDown={(event) => event.stopPropagation()}
 						/>
 						<CommandList>
-							<CommandEmpty>{facet.empty ?? "Nothing matches."}</CommandEmpty>
+							<CommandEmpty>{facet.empty ?? ui.dataTable.nothingMatches}</CommandEmpty>
 							<CommandGroup>
 								{facet.options.map((option) => {
 									const checked = selected.includes(option.value);
@@ -237,7 +239,7 @@ function FacetSubmenu({
 						{selected.length > 0 && (
 							<>
 								<DropdownMenuItem onSelect={() => onChange([])}>
-									Clear
+									{ui.dataTable.clear}
 								</DropdownMenuItem>
 								<DropdownMenuSeparator />
 							</>
@@ -287,6 +289,8 @@ export function DataTable<TRow, TSub = unknown>({
 	tableClassName,
 	storageKey,
 }: DataTableProps<TRow, TSub>) {
+	const { ui } = useDictionary();
+	const format = useFormat();
 	const [expandedIds, setExpandedIds] = useState<string[]>([]);
 	const expanded = useMemo(() => new Set(expandedIds), [expandedIds]);
 	const defaultHiddenIds = useMemo(
@@ -336,7 +340,7 @@ export function DataTable<TRow, TSub = unknown>({
 			: tabs?.options.find((option) => option.value === query.tab);
 	const activeTabLabel = activeTabOption
 		? activeTabOption.label
-		: (tabs?.allLabel ?? "All");
+		: (tabs?.allLabel ?? ui.dataTable.all);
 
 	const deferredRows = useDeferredValue(rows);
 	const anyExpandable =
@@ -378,9 +382,9 @@ export function DataTable<TRow, TSub = unknown>({
 				<div className="flex h-8 items-center gap-2">
 					<span className="truncate text-xs text-muted-foreground">
 						<span className="font-medium text-foreground tabular-nums">
-							{selection.state.count}
+							{format.number(selection.state.count)}
 						</span>{" "}
-						selected
+						{ui.dataTable.selectedSuffix}
 					</span>
 					<div className="ml-auto flex items-center gap-2">
 						{selection.actions}
@@ -389,7 +393,7 @@ export function DataTable<TRow, TSub = unknown>({
 							size="sm"
 							onClick={() => selection.state.clear()}
 						>
-							Clear
+							{ui.dataTable.clear}
 						</Button>
 					</div>
 				</div>
@@ -413,7 +417,7 @@ export function DataTable<TRow, TSub = unknown>({
 					>
 						<span className="flex items-center gap-2">
 							<Filter />
-							Filters
+							{ui.dataTable.filters}
 							{activeFilterCount > 0 && (
 								<span className="tabular-nums opacity-60">
 									({activeFilterCount})
@@ -457,7 +461,7 @@ export function DataTable<TRow, TSub = unknown>({
 									onValueChange={(value) => query.setTab(value)}
 								>
 									<DropdownMenuRadioItem value="all">
-										<span className="flex-1">{tabs.allLabel ?? "All"}</span>
+										<span className="flex-1">{tabs.allLabel ?? ui.dataTable.all}</span>
 									</DropdownMenuRadioItem>
 									{tabs.options.map((option) => {
 										if (tabCounts?.[option.value] === 0) return null;
@@ -487,7 +491,7 @@ export function DataTable<TRow, TSub = unknown>({
 										className="justify-start sm:justify-center"
 									>
 										<Filter data-icon="inline-start" />
-										Filters
+										{ui.dataTable.filters}
 										{activeFacetFilterCount > 0 && (
 											<span className="tabular-nums opacity-60">
 												({activeFacetFilterCount})
@@ -516,18 +520,18 @@ export function DataTable<TRow, TSub = unknown>({
 										className="justify-start sm:justify-center"
 									>
 										<ArrowsVertical data-icon="inline-start" />
-										Sort
+										{ui.dataTable.sort}
 									</Button>
 								</DropdownMenuTrigger>
 								<DropdownMenuContent align="end" className="min-w-48">
-									<DropdownMenuLabel>Sort by</DropdownMenuLabel>
+									<DropdownMenuLabel>{ui.dataTable.sortBy}</DropdownMenuLabel>
 									<DropdownMenuRadioGroup
 										value={query.sort}
 										onValueChange={query.setSort}
 									>
 										{anyExpandable && (
 											<DropdownMenuRadioItem value="detail">
-												Detail
+												{ui.dataTable.detail}
 											</DropdownMenuRadioItem>
 										)}
 										{sortableColumns.map((column) => (
@@ -544,10 +548,10 @@ export function DataTable<TRow, TSub = unknown>({
 										}
 									>
 										<DropdownMenuRadioItem value="asc">
-											Ascending
+											{ui.dataTable.ascending}
 										</DropdownMenuRadioItem>
 										<DropdownMenuRadioItem value="desc">
-											Descending
+											{ui.dataTable.descending}
 										</DropdownMenuRadioItem>
 									</DropdownMenuRadioGroup>
 								</DropdownMenuContent>
@@ -562,14 +566,14 @@ export function DataTable<TRow, TSub = unknown>({
 										className="justify-start sm:justify-center"
 									>
 										<Column data-icon="inline-start" />
-										Columns
+										{ui.dataTable.columns}
 										<span className="tabular-nums opacity-60">
 											({visibleColumns.length})
 										</span>
 									</Button>
 								</DropdownMenuTrigger>
 								<DropdownMenuContent align="end" className="min-w-48">
-									<DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+									<DropdownMenuLabel>{ui.dataTable.toggleColumns}</DropdownMenuLabel>
 									{hideable.map((column) => (
 										<DropdownMenuCheckboxItem
 											key={column.id}
@@ -594,7 +598,7 @@ export function DataTable<TRow, TSub = unknown>({
 										}
 										onSelect={() => setHidden(defaultHiddenIds)}
 									>
-										Reset columns
+										{ui.dataTable.resetColumns}
 									</DropdownMenuItem>
 								</DropdownMenuContent>
 							</DropdownMenu>
@@ -613,7 +617,7 @@ export function DataTable<TRow, TSub = unknown>({
 				overlay={
 					deferredRows.length === 0 ? (
 						<div className="absolute inset-x-0 top-11 bottom-0 flex items-center justify-center px-4 py-8 text-center text-muted-foreground">
-							{loading ? <Spinner /> : (empty ?? "No results found.")}
+							{loading ? <Spinner /> : (empty ?? ui.dataTable.noResults)}
 						</div>
 					) : null
 				}
@@ -634,13 +638,13 @@ export function DataTable<TRow, TSub = unknown>({
 										selection.state.toggleAll(checked === true)
 									}
 									disabled={deferredRows.length === 0}
-									aria-label="Select page"
+									aria-label={ui.dataTable.selectPage}
 								/>
 							</TableHead>
 						)}
 						{anyExpandable && (
 							<TableHead className="h-11 w-10 px-3">
-								<span className="sr-only">Detail</span>
+								<span className="sr-only">{ui.dataTable.detail}</span>
 							</TableHead>
 						)}
 						{visibleColumns.map((column) => {
@@ -731,8 +735,8 @@ export function DataTable<TRow, TSub = unknown>({
 												}
 												aria-label={
 													selection.rowLabel
-														? `Select ${selection.rowLabel(row)}`
-														: "Select row"
+														? ui.dataTable.selectRowLabel(selection.rowLabel(row))
+														: ui.dataTable.selectRow
 												}
 											/>
 										</TableCell>

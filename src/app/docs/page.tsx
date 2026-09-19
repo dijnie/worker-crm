@@ -8,16 +8,18 @@ import {
   PageShellHeading,
   PageShellTitle,
 } from "@/components/app/page-shell";
+import { getWorkspaceDictionary } from "@/lib/i18n/workspace-locale";
 import NextLink from "next/link";
 
-export default function DocsPage() {
+export default async function DocsPage() {
+  const { shell: copy } = await getWorkspaceDictionary();
   return (
     <PageShell>
       <PageShellHeader>
         <PageShellHeading>
-          <PageShellTitle>API documentation</PageShellTitle>
+          <PageShellTitle>{copy.docsPage.title}</PageShellTitle>
           <PageShellDescription>
-            Explore endpoints and send requests to this application.
+            {copy.docsPage.description}
           </PageShellDescription>
         </PageShellHeading>
       </PageShellHeader>
@@ -25,17 +27,15 @@ export default function DocsPage() {
       <PageShellContent>
         <p className="max-w-3xl text-xs/relaxed text-muted-foreground">
           <TextLink asChild variant="inline">
-            <NextLink href="/sign-in?returnTo=/docs">Sign in</NextLink>
+            <NextLink href="/sign-in?returnTo=/docs">{copy.docsPage.signIn}</NextLink>
           </TextLink>
-          , then return here to use Try it out. Your browser sends the session cookie automatically. Signed-out requests return 401;
-          role and member administration requires a system account. New accounts have no CRM access until a role is assigned.
+          {copy.docsPage.signInFollowup}
         </p>
         <p className="max-w-3xl text-xs/relaxed text-muted-foreground">
-          Changes require the configured same Origin, supplied automatically by your browser, and JSON content type for JSON bodies.
-          Activity creators and stage-change actors come from your session. Authentication flows under /api/auth/* are handled separately by Better Auth.
+          {copy.docsPage.secondParagraph}
         </p>
         <TextLink asChild variant="inline" className="self-start text-xs font-medium">
-          <NextLink href="/api/openapi">OpenAPI JSON</NextLink>
+          <NextLink href="/api/openapi">{copy.docsPage.openApiLink}</NextLink>
         </TextLink>
         <ApiDocumentation />
       </PageShellContent>

@@ -9,16 +9,18 @@ import {
   PageShellHeading,
   PageShellTitle,
 } from "@/components/app/page-shell";
+import { getWorkspaceDictionary } from "@/lib/i18n/workspace-locale";
 
-export default function ContactsPage() {
+export default async function ContactsPage() {
+  const dictionary = await getWorkspaceDictionary();
   return (
     <PermissionGate entity="contact">
       <PageShell className="min-h-0">
         <PageShellHeader>
           <PageShellHeading>
-            <PageShellTitle>Contacts</PageShellTitle>
+            <PageShellTitle>{dictionary.crm.entities.CONTACT.plural}</PageShellTitle>
             <PageShellDescription>
-              Manage your workspace records
+              {dictionary.recordList.pageDescription}
             </PageShellDescription>
           </PageShellHeading>
           <PageShellActions>

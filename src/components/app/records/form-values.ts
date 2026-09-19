@@ -1,8 +1,26 @@
 import type { CreateCompanyInput } from "@services/company.service";
 import type { CreateContactInput } from "@services/contact.service";
 import type { CreateDealInput } from "@services/deal.service";
+import type { FieldEntity } from "@/lib/db/schema/constants";
+import type { RecordFieldErrorReason } from "@/lib/i18n/dictionaries/record-sheet";
 export type RecordEntity = "company" | "contact" | "deal";
 export type RecordDraft = Record<string, string>;
+/** The `FieldEntity` (and `dictionary.crm.entities`) key for a lowercase `RecordEntity`. */
+export function recordEntityKey(entity: RecordEntity): FieldEntity {
+  return entity.toUpperCase() as FieldEntity;
+}
+/**
+ * Thrown by manual property edits and create-form submissions that fail
+ * before ever reaching the API. `message` stays the exact English text
+ * developers and tests already rely on; `reason` lets the component that
+ * catches it show the matching dictionary string for the interface language.
+ */
+export class RecordFieldError extends Error {
+  constructor(message: string, public readonly reason: RecordFieldErrorReason) {
+    super(message);
+    this.name = "RecordFieldError";
+  }
+}
 export const COMPANY_FIELDS = [
   "name",
   "domain",
@@ -49,6 +67,14 @@ export function inputDateToUtc(value: string): string {
     throw new Error("Choose a valid date.");
   return parsed.toISOString();
 }
+/** Same calendar-day validation as `inputDateToUtc`, tagged for display in the interface language. */
+function parseExpectedCloseDate(value: string): string {
+  try {
+    return inputDateToUtc(value);
+  } catch (error) {
+    throw new RecordFieldError(error instanceof Error ? error.message : "Choose a valid date.", "invalidDateValue");
+  }
+}
 export function buildCreateInput(
   entity: "company",
   draft: RecordDraft,
@@ -83,22 +109,27 @@ export function buildCreateInput(
         ? ["name", "companyId", "ownerId"]
         : ["name"];
   for (const key of required)
-    if (!values[key])
-      throw new Error(
+    if (!values[key]) {
+      const reason: RecordFieldErrorReason =
+        key === "firstName" ? "requiredFirstName" : key === "name" ? "requiredName" : key === "companyId" ? "requiredCompany" : "requiredOwner";
+      throw new RecordFieldError(
         `${key === "firstName" ? "First name" : key.replace(/Id$/, "")} is required.`,
+        reason,
       );
+    }
   if (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email))
-    throw new Error("Enter a valid email address.");
+    throw new RecordFieldError("Enter a valid email address.", "invalidEmailAddress");
   if (entity === "deal") {
     if (values.amount && !/^\d+(?:\.\d{1,2})?$/.test(values.amount))
-      throw new Error(
+      throw new RecordFieldError(
         "Amount must be nonnegative with at most two decimal places.",
+        "invalidAmountFormat",
       );
     values.currency = (values.currency ?? "USD").toUpperCase();
     if (!/^[A-Z]{3}$/.test(values.currency))
-      throw new Error("Currency must be a three-letter code.");
+      throw new RecordFieldError("Currency must be a three-letter code.", "invalidCurrencyFormat");
     if (values.expectedCloseDate)
-      values.expectedCloseDate = inputDateToUtc(values.expectedCloseDate);
+      values.expectedCloseDate = parseExpectedCloseDate(values.expectedCloseDate);
   }
   return values as unknown as
     CreateCompanyInput | CreateContactInput | CreateDealInput;

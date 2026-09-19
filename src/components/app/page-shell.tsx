@@ -139,7 +139,7 @@ function PageShellLoading() {
   );
 }
 
-function PageShellFallback() {
+function PageShellFallback({ loadingLabel }: { loadingLabel: string }) {
   return (
     <PageShell aria-busy="true">
       <div className="flex flex-col gap-6" aria-hidden="true">
@@ -154,7 +154,7 @@ function PageShellFallback() {
         </div>
       </div>
       <span role="status" className="sr-only">
-        Loading page…
+        {loadingLabel}
       </span>
     </PageShell>
   );

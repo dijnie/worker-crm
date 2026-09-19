@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppData } from "@/components/app/app-data-provider";
+import { useDictionary } from "@/components/app/i18n-provider";
 import { matchesNavigationPath } from "@/components/app/navigation-items";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
@@ -8,7 +9,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
-type SettingsNavItem = { label: string; href: string; fragment?: string };
+type NavKey = "general" | "members" | "roles" | "fields";
+type SettingsNavItem = { key: NavKey; href: string; fragment?: string };
 
 const ROOT = "/settings";
 
@@ -17,10 +19,10 @@ const ROOT = "/settings";
 const FIELDS_ID = "custom-field-settings";
 
 const ITEMS: readonly SettingsNavItem[] = [
-	{ label: "General", href: ROOT },
-	{ label: "Members", href: `${ROOT}/members` },
-	{ label: "Roles", href: `${ROOT}/roles` },
-	{ label: "Fields", href: `${ROOT}#${FIELDS_ID}`, fragment: `#${FIELDS_ID}` },
+	{ key: "general", href: ROOT },
+	{ key: "members", href: `${ROOT}/members` },
+	{ key: "roles", href: `${ROOT}/roles` },
+	{ key: "fields", href: `${ROOT}#${FIELDS_ID}`, fragment: `#${FIELDS_ID}` },
 ];
 
 function isActive(item: SettingsNavItem, pathname: string, fragment: string) {
@@ -31,11 +33,13 @@ function isActive(item: SettingsNavItem, pathname: string, fragment: string) {
 
 function NavLink({
 	item,
+	label,
 	active,
 	className,
 	onSelect,
 }: {
 	item: SettingsNavItem;
+	label: string;
 	active: boolean;
 	className: string;
 	onSelect: () => void;
@@ -58,7 +62,7 @@ function NavLink({
 				onClick={onSelect}
 				transitionTypes={["nav-lateral"]}
 			>
-				{item.label}
+				{label}
 			</Link>
 		</Button>
 	);
@@ -67,6 +71,8 @@ function NavLink({
 export function SettingsNav() {
 	const pathname = usePathname();
 	const { account } = useAppData();
+	const dictionary = useDictionary();
+	const copy = dictionary.access.nav;
 	const [fragment, setFragment] = useState("");
 
 	useEffect(() => {
@@ -84,13 +90,14 @@ export function SettingsNav() {
 		<>
 			<aside className="hidden w-56 shrink-0 border-r md:block [view-transition-name:settings-sidebar]">
 				<nav
-					aria-label="Workspace settings"
+					aria-label={copy.regionLabel}
 					className="flex flex-col gap-0.5 p-3"
 				>
 					{ITEMS.map((item) => (
 						<NavLink
-							key={item.label}
+							key={item.key}
 							item={item}
+							label={copy[item.key]}
 							active={isActive(item, pathname, fragment)}
 							className="w-full px-3"
 							onSelect={() => setFragment(item.fragment ?? "")}
@@ -100,13 +107,14 @@ export function SettingsNav() {
 			</aside>
 
 			<nav
-				aria-label="Workspace settings"
+				aria-label={copy.regionLabel}
 				className="flex gap-1 overflow-x-auto border-b p-2 md:hidden [view-transition-name:settings-mobile-sidebar]"
 			>
 				{ITEMS.map((item) => (
 					<NavLink
-						key={item.label}
+						key={item.key}
 						item={item}
+						label={copy[item.key]}
 						active={isActive(item, pathname, fragment)}
 						className="shrink-0 px-3"
 						onSelect={() => setFragment(item.fragment ?? "")}
