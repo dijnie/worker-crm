@@ -1,3 +1,4 @@
+import { getDictionary } from "@/lib/i18n/get-dictionary";
 import type { AuthEmailAdapter, AuthEmailMessage } from "./email-adapter";
 
 interface CloudflareEmailAdapterOptions {
@@ -14,11 +15,13 @@ export class CloudflareEmailAdapter implements AuthEmailAdapter {
   }
 
   sendVerification(message: AuthEmailMessage): Promise<void> {
-    return this.send(message, "Verify your email", "Verify email");
+    const { email } = getDictionary(message.locale);
+    return this.send(message, email.verificationSubject, email.verificationAction);
   }
 
   sendPasswordReset(message: AuthEmailMessage): Promise<void> {
-    return this.send(message, "Reset your password", "Reset password");
+    const { email } = getDictionary(message.locale);
+    return this.send(message, email.passwordResetSubject, email.passwordResetAction);
   }
 
   private async send(message: AuthEmailMessage, subject: string, action: string): Promise<void> {

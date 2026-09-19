@@ -23,12 +23,12 @@ export class DealContactService {
     const data = attachDealContactInput.parse(input);
     await this.requireDeal(dealId);
     if (!await this.db.query.contacts.findFirst({ where: eq(contacts.id, data.contactId), columns: { id: true } })) {
-      throw new ServiceError(400, "Referenced contact does not exist");
+      throw new ServiceError(400, "Referenced contact does not exist", "CONTACT_MISSING");
     }
     try {
       const [link] = await this.db.insert(dealContacts).values({ dealId, contactId: data.contactId, role: data.role ?? null }).returning();
       return link;
-    } catch (error) { translateDatabaseError(error, "Contact is already attached to this deal"); }
+    } catch (error) { translateDatabaseError(error, "Contact is already attached to this deal", "DEAL_CONTACT_ATTACHED"); }
   }
 
   async updateRole(dealId: string, contactId: string, input: unknown) {

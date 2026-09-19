@@ -3,6 +3,7 @@ import type { OpenAPIV3 } from "openapi-types";
 import { dealContacts, savedViews, companies, contacts, deals, activities, fieldDefinitions, fieldOptions, fieldValues, FIELD_ENTITIES, DEAL_STAGES } from "@/lib/db/schema";
 import { arrayOf, objectOf, reference, type Schema } from "./schema-helpers";
 import { permissionCatalog } from "@/lib/auth/permissions";
+import { ERROR_CODES, VALIDATION_CODES } from "@/lib/utils/error-codes";
 
 function tableSchema(table: Table): OpenAPIV3.SchemaObject {
   const properties: Record<string, Schema> = {};
@@ -76,7 +77,7 @@ const dealDetail = extend(deal, {
   activities: { ...arrayOf(reference("Activity")), maxItems: 30 },
   fieldValues: arrayOf(reference("JoinedFieldValue")),
 });
-const error = { ...objectOf({ message: { type: "string" }, code: { type: "string", description: "Optional stable code: UNAUTHENTICATED, INACTIVE_MEMBERSHIP, FORBIDDEN_ACTION, PERMISSION_REQUIRED." } }), required: ["message"] };
+const error = { ...objectOf({ message: { type: "string" }, code: { type: "string", enum: [...ERROR_CODES], description: "Stable identifier of the failure, present on every error this API raises itself; absent only on an unexpected 500. The message is English and may be reworded, so clients and translations key on the code." } }), required: ["message"] };
 const ownerSummary = objectOf({ id: { type: "string" }, name: { type: "string" }, image: { type: "string", nullable: true } });
 const companySummary = objectOf({ id: { type: "string" }, name: { type: "string" }, archivedAt: { type: "string", nullable: true } });
 function listRow(base: OpenAPIV3.SchemaObject, withCompany = false, counts = false): OpenAPIV3.SchemaObject {
@@ -97,6 +98,7 @@ export const responseSchemas = {
   Assignee: ownerSummary,
   WorkspaceSettings: objectOf({
     reportingCurrency: { type: "string", pattern: "^[A-Z]{3}$", description: "Currency the workspace reports aggregated values in." },
+    locale: { type: "string", enum: ["en", "vi"], description: "Interface language every member, the auth pages and auth emails use." },
     revision: { type: "integer", minimum: 0, description: "Optimistic-concurrency counter; send it back as expectedRevision." },
     updatedAt: { type: "string", format: "date-time" },
   }),
@@ -170,7 +172,8 @@ export const responseSchemas = {
   Error: error,
   ValidationError: {
     ...extend(error, {
-      issues: arrayOf(objectOf({ path: arrayOf({ anyOf: [{ type: "string" }, { type: "integer" }] }), message: { type: "string" } })),
+      issues: arrayOf(objectOf({ path: arrayOf({ anyOf: [{ type: "string" }, { type: "integer" }] }), message: { type: "string" },
+        code: { type: "string", description: `Identifier of the rejected rule: one the schema declares (${VALIDATION_CODES.filter(code => code === code.toUpperCase()).join(", ")}) or the validator's category, such as too_small or invalid_type.` } })),
     }),
     required: ["message"],
     description: "Invalid requests can return message only, or include Zod validation issues with field paths.",

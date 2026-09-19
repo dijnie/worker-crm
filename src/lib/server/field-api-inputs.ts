@@ -10,4 +10,4 @@ export const optionListInput = z.object({ includeArchived: z.boolean().default(f
 export const fieldValuesInput = z.object({ entity: z.enum(FIELD_ENTITIES), entityId: identifier }).strict();
 export const reorderFieldsInput = z.object({ entity: z.enum(FIELD_ENTITIES), ids: z.array(identifier) }).strict();
 export const fieldValueInput = fieldValuesInput.extend({ value: z.unknown(), expectedType: z.enum(FIELD_TYPES).optional() }).strict()
-  .refine(body => Object.hasOwn(body, "value"), { message: "Value is required", path: ["value"] });
+  .refine(body => Object.hasOwn(body, "value"), { message: "Value is required", path: ["value"], params: { code: "VALUE_REQUIRED" } });

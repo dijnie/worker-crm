@@ -110,7 +110,7 @@ export class DealService {
     if (losing && !data.reason) {
       const current = requireRecord(await this.db.query.deals.findFirst({ where: eq(deals.id, id), columns: { stage: true } }), "Deal");
       if (current.stage === data.stage) return { id, stage: data.stage, changed: false };
-      throw new z.ZodError([{ code: "custom", path: ["reason"], message: "A lost deal needs a reason" }]);
+      throw new z.ZodError([{ code: "custom", path: ["reason"], message: "A lost deal needs a reason", params: { code: "LOST_REASON_REQUIRED" } }]);
     }
     const [inserted] = await this.db.batch([
       this.db.insert(activities).select(this.db.select({
@@ -142,7 +142,7 @@ export class DealService {
 
   private async requireCompany(id: string) {
     const company = await this.db.query.companies.findFirst({ where: eq(companies.id, id), columns: { id: true } });
-    if (!company) throw new ServiceError(400, "Referenced company does not exist");
+    if (!company) throw new ServiceError(400, "Referenced company does not exist", "COMPANY_MISSING");
     return company;
   }
 

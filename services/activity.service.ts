@@ -20,13 +20,13 @@ export const activityCreateShape = {
 
 export function refineActivityCreate(input: z.output<z.ZodObject<typeof activityCreateShape>>, ctx: z.RefinementCtx): void {
   if (!input.companyId && !input.contactId && !input.dealId) {
-    ctx.addIssue({ code: "custom", message: "An activity needs a company, contact, or deal" });
+    ctx.addIssue({ code: "custom", message: "An activity needs a company, contact, or deal", params: { code: "ACTIVITY_NEEDS_ANCHOR" } });
   }
   if (input.type === "TASK" && !input.subject) {
-    ctx.addIssue({ code: "custom", path: ["subject"], message: "A task needs a subject" });
+    ctx.addIssue({ code: "custom", path: ["subject"], message: "A task needs a subject", params: { code: "TASK_NEEDS_SUBJECT" } });
   }
   if (input.type !== "TASK" && input.dueAt != null) {
-    ctx.addIssue({ code: "custom", path: ["dueAt"], message: "Only tasks have a due date" });
+    ctx.addIssue({ code: "custom", path: ["dueAt"], message: "Only tasks have a due date", params: { code: "DUE_DATE_TASK_ONLY" } });
   }
 }
 
@@ -193,7 +193,7 @@ export class ActivityService {
     id = identifier.parse(id);
     const { completed } = completeTaskInput.parse(input);
     const existing = await this.getById(id);
-    if (existing.type !== "TASK") throw new ServiceError(400, "Only tasks can be completed");
+    if (existing.type !== "TASK") throw new ServiceError(400, "Only tasks can be completed", "ACTIVITY_NOT_TASK");
     const now = new Date().toISOString();
     const [updated] = await this.db.update(activities).set({ completedAt: completed ? now : null, updatedAt: now })
       .where(and(eq(activities.id, id), eq(activities.type, "TASK"))).returning();
@@ -212,6 +212,6 @@ export class ActivityService {
 }
 
 function requireReference<T>(record: T | undefined, label: string): T {
-  if (record === undefined) throw new ServiceError(400, `Referenced ${label.toLowerCase()} does not exist`);
+  if (record === undefined) throw new ServiceError(400, `Referenced ${label.toLowerCase()} does not exist`, "REFERENCE_MISSING");
   return record;
 }

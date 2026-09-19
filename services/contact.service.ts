@@ -66,7 +66,7 @@ export class ContactService {
       const [contact] = await this.db.insert(contacts).values(data).returning();
       return requireRecord(contact, "Contact");
     } catch (error) {
-      translateDatabaseError(error, "Another active contact already uses that email address");
+      translateDatabaseError(error, "Another active contact already uses that email address", "CONTACT_EMAIL_TAKEN");
     }
   }
 
@@ -80,7 +80,7 @@ export class ContactService {
       const [contact] = await this.db.update(contacts).set(data).where(eq(contacts.id, id)).returning();
       return requireRecord(contact, "Contact");
     } catch (error) {
-      translateDatabaseError(error, "Another active contact already uses that email address");
+      translateDatabaseError(error, "Another active contact already uses that email address", "CONTACT_EMAIL_TAKEN");
     }
   }
 
@@ -102,7 +102,7 @@ export class ContactService {
         .where(eq(contacts.id, id)).returning();
       return requireRecord(contact, "Contact");
     } catch (error) {
-      translateDatabaseError(error, "Another active contact already uses that email address");
+      translateDatabaseError(error, "Another active contact already uses that email address", "CONTACT_EMAIL_TAKEN");
     }
   }
 
@@ -113,6 +113,6 @@ export class ContactService {
   private async checkCompany(id: string | null | undefined): Promise<void> {
     if (id == null) return;
     const company = await this.db.query.companies.findFirst({ where: eq(companies.id, id), columns: { id: true } });
-    if (!company) throw new ServiceError(400, "Company does not exist");
+    if (!company) throw new ServiceError(400, "Company does not exist", "COMPANY_MISSING");
   }
 }

@@ -49,9 +49,9 @@ function serialize(role: StoredRole, grants: { roleId: string; entity: string; a
 }
 function translateRoleError(error: unknown): never {
   for (let cause: unknown = error, depth = 0; cause instanceof Error && depth < 8; depth++) {
-    if (cause.message.includes("protected_system_role")) throw new ServiceError(409, "The system role is protected");
-    if (cause.message.includes("roles_name_unique")) throw new ServiceError(409, "A role with this name already exists");
-    if (cause.message.includes("FOREIGN KEY constraint failed")) throw new ServiceError(409, "The role is assigned to an account");
+    if (cause.message.includes("protected_system_role")) throw new ServiceError(409, "The system role is protected", "SYSTEM_ROLE_PROTECTED");
+    if (cause.message.includes("roles_name_unique")) throw new ServiceError(409, "A role with this name already exists", "ROLE_NAME_TAKEN");
+    if (cause.message.includes("FOREIGN KEY constraint failed")) throw new ServiceError(409, "The role is assigned to an account", "ROLE_ASSIGNED");
     cause = (cause as Error & { cause?: unknown }).cause;
   }
   throw error;
@@ -61,7 +61,7 @@ export class RoleService {
   private async requireSystem(actorId: string) {
     const actors = await this.db.select({ id: user.id }).from(user)
       .where(and(eq(user.id, actorId), systemActorCondition(actorId)));
-    if (!actors.length) throw new ServiceError(403, "Only active system accounts can manage roles");
+    if (!actors.length) throw new ServiceError(403, "Only active system accounts can manage roles", "FORBIDDEN_ACTION");
   }
   async list(inputActorId: string): Promise<RoleRecord[]> {
     const actorId = identifier.parse(inputActorId);
@@ -70,13 +70,13 @@ export class RoleService {
       this.db.select(fields).from(roles).where(systemActorCondition(actorId)).orderBy(roles.createdAt, roles.id),
       this.db.select().from(rolePermissions).where(systemActorCondition(actorId)),
     ]);
-    if (!actors.length) throw new ServiceError(403, "Only active system accounts can manage roles");
+    if (!actors.length) throw new ServiceError(403, "Only active system accounts can manage roles", "FORBIDDEN_ACTION");
     return records.map(role => serialize(role, grants));
   }
   async get(actorId: string, inputId: string): Promise<RoleRecord> {
     const id = identifier.parse(inputId);
     const role = (await this.list(actorId)).find(role => role.id === id);
-    if (!role) throw new ServiceError(404, "Role not found");
+    if (!role) throw new ServiceError(404, "Role not found", "ROLE_NOT_FOUND");
     return role;
   }
   async create(inputActorId: string, input: unknown): Promise<RoleRecord> {
@@ -95,7 +95,7 @@ export class RoleService {
     }).from(roles).where(and(eq(roles.id, id), systemActorCondition(actorId)))));
     try {
       const result = await this.db.batch([create, ...grantQueries]);
-      if (!result[0].length) throw new ServiceError(403, "Only active system accounts can manage roles");
+      if (!result[0].length) throw new ServiceError(403, "Only active system accounts can manage roles", "FORBIDDEN_ACTION");
     } catch (error) { translateRoleError(error); }
     return { id, ...data, permissions: data.permissions as Permission[], isSystem: false, revision: 0,
       memberCount: 0, createdAt: now.toISOString(), updatedAt: now.toISOString() };
@@ -104,7 +104,7 @@ export class RoleService {
     const actorId = identifier.parse(inputActorId), id = identifier.parse(inputId);
     const data = roleUpdateInput.parse(input);
     const existing = await this.get(actorId, id);
-    if (existing.isSystem) throw new ServiceError(409, "The system role is protected");
+    if (existing.isSystem) throw new ServiceError(409, "The system role is protected", "SYSTEM_ROLE_PROTECTED");
     const now = new Date();
     const mutable = and(eq(roles.id, id), eq(roles.revision, data.expectedRevision), eq(roles.isSystem, false), systemActorCondition(actorId));
     const current = exists(this.db.select({ id: roles.id }).from(roles).where(mutable));
@@ -121,7 +121,7 @@ export class RoleService {
     } catch (error) { translateRoleError(error); }
     if (!updated!.length) {
       await this.requireSystem(actorId);
-      throw new ServiceError(409, "Role changed; refresh and try again");
+      throw new ServiceError(409, "Role changed; refresh and try again", "STALE_REVISION");
     }
     return { ...existing, name: data.name, description: data.description, permissions: data.permissions as Permission[],
       revision: updated![0].revision, updatedAt: now.toISOString() };
@@ -130,7 +130,7 @@ export class RoleService {
     const actorId = identifier.parse(inputActorId), id = identifier.parse(inputId);
     const expectedRevision = revisionInput.parse(inputRevision);
     const existing = await this.get(actorId, id);
-    if (existing.isSystem) throw new ServiceError(409, "The system role is protected");
+    if (existing.isSystem) throw new ServiceError(409, "The system role is protected", "SYSTEM_ROLE_PROTECTED");
     let deleted;
     try {
       deleted = await this.db.delete(roles).where(and(eq(roles.id, id), eq(roles.revision, expectedRevision),
@@ -139,7 +139,7 @@ export class RoleService {
     } catch (error) { translateRoleError(error); }
     if (!deleted?.length) {
       await this.requireSystem(actorId);
-      throw new ServiceError(409, "Role changed or is assigned to an account; refresh and try again");
+      throw new ServiceError(409, "Role changed or is assigned to an account; refresh and try again", "ROLE_CHANGED_OR_ASSIGNED");
     }
   }
 }

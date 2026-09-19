@@ -14,7 +14,7 @@ function denied(): never { throw new ServiceError(403, "Your role does not permi
 function entityName(value: unknown): "company" | "contact" | "deal" {
   const entity = typeof value === "string" ? value.toLowerCase() : "";
   if (entity !== "company" && entity !== "contact" && entity !== "deal") {
-    throw new ServiceError(400, "Expected a valid entity");
+    throw new ServiceError(400, "Expected a valid entity", "INVALID_QUERY");
   }
   return entity;
 }
@@ -76,18 +76,18 @@ export async function authorizeApiRequest(request: Request, context: RequestCont
     if (!id || id === "values") entity = entityName(url.searchParams.get("entity"));
     else {
       const [definition] = await safeDb.select({ entity: fieldDefinitions.entity }).from(fieldDefinitions).where(eq(fieldDefinitions.id, id));
-      if (!definition) throw new ServiceError(404, "Field not found");
+      if (!definition) throw new ServiceError(404, "Field not found", "FIELD_NOT_FOUND");
       entity = entityName(definition.entity);
     }
     add(entity, method === "GET" ? "read" : "update");
-    if (operation === "value" && entityName((await readBody()).entity) !== entity) throw new ServiceError(400, "Field belongs to another entity");
+    if (operation === "value" && entityName((await readBody()).entity) !== entity) throw new ServiceError(400, "Field belongs to another entity", "FIELD_ENTITY_MISMATCH");
   } else if (resource === "saved-views") {
     let entity;
     if (!id) entity = entityName(method === "GET" ? url.searchParams.get("entity") : (await readBody()).entity);
     else {
       const [view] = await safeDb.select({ entity: savedViews.entity }).from(savedViews)
         .where(and(eq(savedViews.id, id), eq(savedViews.ownerId, context.user.id)));
-      if (!view) throw new ServiceError(404, "Saved view not found");
+      if (!view) throw new ServiceError(404, "Saved view not found", "SAVED_VIEW_NOT_FOUND");
       entity = entityName(view.entity);
     }
     add(entity, "read");

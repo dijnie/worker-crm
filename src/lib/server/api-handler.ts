@@ -1,4 +1,4 @@
-import { ZodError } from "zod/v3";
+import { ZodError, type ZodIssue } from "zod/v3";
 import { getAuthBaseUrl, requireRequestContext, type RequestContext } from "../auth/request-context";
 import { ServiceError, translateDatabaseError } from "../utils/service-error";
 import type { Page } from "../utils/validation";
@@ -25,7 +25,7 @@ export async function withApi(request: Request, handler: (context: RequestContex
       }
       const contentType = request.headers.get("Content-Type");
       if (contentType && contentType.split(";")[0].trim().toLowerCase() !== "application/json") {
-        throw new ServiceError(415, "Expected application/json");
+        throw new ServiceError(415, "Expected application/json", "UNSUPPORTED_MEDIA_TYPE");
       }
     }
     const authorized = await authorizeApiRequest(request, context);
@@ -43,11 +43,18 @@ export async function withApi(request: Request, handler: (context: RequestContex
     try { translateDatabaseError(error); } catch (translated) { failure = translated; }
     const headers = { "Cache-Control": "no-store" };
     if (failure instanceof ZodError) {
-      return finish(Response.json({ message: "Invalid request", issues: failure.issues.map(({ path, message }) => ({ path, message })) }, { status: 400, headers }));
+      return finish(Response.json({ message: "Invalid request", code: "INVALID_REQUEST", issues: failure.issues.map(issueBody) }, { status: 400, headers }));
     }
-    if (failure instanceof ServiceError) return finish(Response.json({ message: failure.message, ...(failure.code ? { code: failure.code } : failure.status === 403 ? { code: "FORBIDDEN_ACTION" } : {}) }, { status: failure.status, headers }));
+    if (failure instanceof ServiceError) return finish(Response.json({ message: failure.message, code: failure.code }, { status: failure.status, headers }));
     return finish(reportRequestFailure(request, Response.json({ message: "Internal server error" }, { status: 500, headers }), "api_unexpected"));
   }
+}
+
+// A schema names its own failure through `params.code`; any other issue is
+// identified by the validator's category so clients can translate it.
+function issueBody(issue: ZodIssue) {
+  const declared = issue.code === "custom" ? (issue.params as { code?: unknown } | undefined)?.code : undefined;
+  return { path: issue.path, message: issue.message, code: typeof declared === "string" ? declared : issue.code };
 }
 
 export async function readJson(request: Request): Promise<unknown> {
@@ -57,17 +64,17 @@ export async function readJson(request: Request): Promise<unknown> {
 export function readQuery(request: Request): Record<string, unknown> {
   const values: Record<string, unknown> = Object.create(null);
   for (const [key, value] of new URL(request.url).searchParams) {
-    if (Object.hasOwn(values, key)) throw new ServiceError(400, `Duplicate query parameter: ${key}`);
+    if (Object.hasOwn(values, key)) throw new ServiceError(400, `Duplicate query parameter: ${key}`, "INVALID_QUERY");
     if (["archived", "includeArchived", "includeSummary", "includeFields", "includeLinks"].includes(key)) {
-      if (value !== "true" && value !== "false") throw new ServiceError(400, `${key} must be true or false`);
+      if (value !== "true" && value !== "false") throw new ServiceError(400, `${key} must be true or false`, "INVALID_QUERY");
       values[key] = value === "true";
     } else if (["page", "limit", "facetPage", "facetLimit"].includes(key)) {
-      if (!/^\d+$/.test(value)) throw new ServiceError(400, `${key} must be an integer`);
+      if (!/^\d+$/.test(value)) throw new ServiceError(400, `${key} must be an integer`, "INVALID_QUERY");
       values[key] = Number(value);
     } else if (key === "filters") {
-      if (value.length > 32768) throw new ServiceError(400, "Filters are too large");
+      if (value.length > 32768) throw new ServiceError(400, "Filters are too large", "INVALID_QUERY");
       try { values[key] = JSON.parse(value); }
-      catch { throw new ServiceError(400, "Expected filters to be a JSON object"); }
+      catch { throw new ServiceError(400, "Expected filters to be a JSON object", "INVALID_QUERY"); }
     } else values[key] = value;
   }
   return values;

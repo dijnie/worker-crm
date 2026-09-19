@@ -42,7 +42,7 @@ const valueColumns = { TEXT: "text", LONG_TEXT: "text", NUMBER: "number", DATE: 
 
 function parse<T>(schema: z.ZodType<T>, input: unknown): T {
   const result = schema.safeParse(input);
-  if (!result.success) throw new ServiceError(400, result.error.issues.map(issue => issue.message).join("; "));
+  if (!result.success) throw new ServiceError(400, result.error.issues.map(issue => issue.message).join("; "), "INVALID_REQUEST");
   return result.data;
 }
 
@@ -68,12 +68,12 @@ export class FieldService {
 
   async reorder(input: unknown) {
     const { entity, ids } = parse(reorderFieldsInput, input);
-    if (new Set(ids).size !== ids.length) throw new ServiceError(400, "A field may appear only once");
+    if (new Set(ids).size !== ids.length) throw new ServiceError(400, "A field may appear only once", "DUPLICATE_ENTRY");
     // JSON keeps even large permutations below D1's bound-parameter limit.
     const encodedIds = JSON.stringify(ids);
     const requested = await this.db.select({ entity: fieldDefinitions.entity }).from(fieldDefinitions)
       .where(sql`${fieldDefinitions.id} in (select value from json_each(${encodedIds}))`);
-    if (requested.some(field => field.entity !== entity)) throw new ServiceError(400, "A field does not belong to this entity");
+    if (requested.some(field => field.entity !== entity)) throw new ServiceError(400, "A field does not belong to this entity", "FIELD_ENTITY_MISMATCH");
     const active = and(eq(fieldDefinitions.entity, entity), isNull(fieldDefinitions.archivedAt));
     // Membership is checked again inside the atomic write. Neither create nor
     // archive can interleave between this guard and position assignment.
@@ -88,7 +88,7 @@ export class FieldService {
       this.db.select({ count: sql<number>`count(*)` }).from(fieldDefinitions).where(active),
     ]);
     // The count read shares the transaction, including the empty permutation.
-    if (updated.length !== ids.length || counts[0].count !== ids.length) throw new ServiceError(409, "Active fields changed; reload before reordering");
+    if (updated.length !== ids.length || counts[0].count !== ids.length) throw new ServiceError(409, "Active fields changed; reload before reordering", "FIELD_CHANGED");
     return this.listDefinitions(entity);
   }
 
@@ -97,9 +97,9 @@ export class FieldService {
     const derivedKey = data.label.trim().toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace(/^([0-9])/, "f_$1").slice(0, 60);
     const reservedKeys = new Set(["id", "createdat", "updatedat", "fields", "owner", "ownerid", "new"]);
     const key = suppliedKey ?? (reservedKeys.has(derivedKey) ? `${derivedKey}_field` : derivedKey);
-    if (!key || !/^[a-z][a-z0-9_]*$/.test(key) || key.length > 200) throw new ServiceError(400, "The label does not produce a usable field key");
-    if (data.type === "SELECT" && !options.length) throw new ServiceError(400, "A select field needs at least one option");
-    if (data.type !== "SELECT" && options.length) throw new ServiceError(400, "Only select fields accept options");
+    if (!key || !/^[a-z][a-z0-9_]*$/.test(key) || key.length > 200) throw new ServiceError(400, "The label does not produce a usable field key", "FIELD_KEY_UNUSABLE");
+    if (data.type === "SELECT" && !options.length) throw new ServiceError(400, "A select field needs at least one option", "FIELD_OPTION_REQUIRED");
+    if (data.type !== "SELECT" && options.length) throw new ServiceError(400, "Only select fields accept options", "FIELD_OPTIONS_UNSUPPORTED");
     const id = crypto.randomUUID();
     const insert = this.db.insert(fieldDefinitions).values({ ...data, id, key, position: data.position ?? sql`(select coalesce(max(position), -1) + 1 from field_definitions where entity = ${data.entity})` });
     try {
@@ -113,7 +113,7 @@ export class FieldService {
         await this.db.batch([insert, ...inserts]);
       } else await insert;
     } catch (error) {
-      translateDatabaseError(error, "A field with that key already exists for this entity");
+      translateDatabaseError(error, "A field with that key already exists for this entity", "FIELD_KEY_TAKEN");
     }
     return this.getDefinition(id);
   }
@@ -123,13 +123,13 @@ export class FieldService {
     const { options, ...data } = parse(updateFieldInput, input);
     const existing = await this.getDefinition(id);
     const type = data.type ?? existing.type;
-    if (options && type !== "SELECT") throw new ServiceError(400, "Only select fields accept options");
-    if (type === "SELECT" && !(options ?? existing.options).length) throw new ServiceError(400, "A select field needs at least one option");
+    if (options && type !== "SELECT") throw new ServiceError(400, "Only select fields accept options", "FIELD_OPTIONS_UNSUPPORTED");
+    if (type === "SELECT" && !(options ?? existing.options).length) throw new ServiceError(400, "A select field needs at least one option", "FIELD_OPTION_REQUIRED");
     if (options) {
       const ids = options.flatMap(option => option.id ? [option.id] : []);
-      if (new Set(ids).size !== ids.length) throw new ServiceError(400, "An option may appear only once");
+      if (new Set(ids).size !== ids.length) throw new ServiceError(400, "An option may appear only once", "DUPLICATE_ENTRY");
       const owned = await this.optionsFor(id, true);
-      if (ids.some(optionId => !owned.some(option => option.id === optionId))) throw new ServiceError(400, "An option does not belong to this field");
+      if (ids.some(optionId => !owned.some(option => option.id === optionId))) throw new ServiceError(400, "An option does not belong to this field", "FIELD_OPTION_MISMATCH");
     }
     const changedType = type !== existing.type;
     const guard = and(eq(fieldDefinitions.id, id), eq(fieldDefinitions.type, existing.type), changedType ? sql`not exists (select 1 from field_values where field_id = ${id})` : undefined);
@@ -137,7 +137,7 @@ export class FieldService {
     const update = this.db.update(fieldDefinitions).set({ ...data, updatedAt }).where(guard).returning();
     if (!options) {
       const [updated] = await update;
-      if (!updated) throw new ServiceError(409, "Field type changed concurrently or already holds values");
+      if (!updated) throw new ServiceError(409, "Field type changed concurrently or already holds values", "FIELD_TYPE_LOCKED");
     } else {
       // The definition changes last. This precondition remains stable throughout
       // the atomic batch, so a stale type cannot mutate options before failing.
@@ -148,7 +148,7 @@ export class FieldService {
         : this.db.insert(fieldOptions).select(this.db.select({ id: sql<string>`${crypto.randomUUID()}`.as("id"), fieldId: sql<string>`${id}`.as("field_id"), label: sql<string>`${option.label}`.as("label"), position: sql<number>`${option.position ?? index}`.as("position"), archivedAt: sql<string | null>`null`.as("archived_at") }).from(fieldDefinitions).where(and(eq(fieldDefinitions.id, id), applied))));
       const results = await this.db.batch([archive, ...writes, update]);
       const updated = results[results.length - 1] as Definition[];
-      if (!updated.length) throw new ServiceError(409, "Field type changed concurrently or already holds values");
+      if (!updated.length) throw new ServiceError(409, "Field type changed concurrently or already holds values", "FIELD_TYPE_LOCKED");
     }
     return this.getDefinition(id);
   }
@@ -179,7 +179,7 @@ export class FieldService {
     const definition = await this.activeSelect(fieldId);
     const id = crypto.randomUUID();
     const rows = await this.db.insert(fieldOptions).select(this.db.select({ id: sql<string>`${id}`.as("id"), fieldId: sql<string>`${definition.id}`.as("field_id"), label: sql<string>`${data.label}`.as("label"), position: data.position === undefined ? sql<number>`(select coalesce(max(position), -1) + 1 from field_options where field_id = ${definition.id})`.as("position") : sql<number>`${data.position}`.as("position"), archivedAt: sql<string | null>`null`.as("archived_at") }).from(fieldDefinitions).where(and(eq(fieldDefinitions.id, definition.id), eq(fieldDefinitions.type, "SELECT"), isNull(fieldDefinitions.archivedAt)))).returning();
-    if (!rows.length) throw new ServiceError(409, "Field changed while creating the option");
+    if (!rows.length) throw new ServiceError(409, "Field changed while creating the option", "FIELD_CHANGED");
     return rows[0];
   }
 
@@ -193,13 +193,13 @@ export class FieldService {
     if (archived !== undefined) Object.assign(changes, { archivedAt: archived ? new Date().toISOString() : null });
     if (!Object.keys(changes).length) return option;
     const [updated] = await this.db.update(fieldOptions).set(changes).where(and(eq(fieldOptions.id, optionId), eq(fieldOptions.fieldId, definition.id), sql`exists (select 1 from field_definitions where id = ${definition.id} and type = 'SELECT' and archived_at is null)`)).returning();
-    if (!updated) throw new ServiceError(409, "Field changed while updating the option");
+    if (!updated) throw new ServiceError(409, "Field changed while updating the option", "FIELD_CHANGED");
     return updated;
   }
 
   private async activeSelect(id: string) {
     const definition = await this.getDefinition(id);
-    if (definition.archivedAt || definition.type !== "SELECT") throw new ServiceError(400, "Options require an active select field");
+    if (definition.archivedAt || definition.type !== "SELECT") throw new ServiceError(400, "Options require an active select field", "FIELD_OPTIONS_UNSUPPORTED");
     return definition;
   }
 
@@ -228,17 +228,17 @@ export class FieldService {
   async upsertValue(fieldId: string, entityType: FieldEntity, entityId: string, input: unknown, expectedType?: FieldType) {
     expectedType = parse(z.enum(FIELD_TYPES).optional(), expectedType);
     const definition = await this.getDefinition(fieldId);
-    if (expectedType !== undefined && definition.type !== expectedType) throw new ServiceError(409, "Field type changed; reload the field before saving");
+    if (expectedType !== undefined && definition.type !== expectedType) throw new ServiceError(409, "Field type changed; reload the field before saving", "FIELD_CHANGED");
     const target = await this.target(entityType, entityId);
-    if (definition.archivedAt || definition.entity !== target.entity) throw new ServiceError(400, "The active field must match the target entity");
+    if (definition.archivedAt || definition.entity !== target.entity) throw new ServiceError(400, "The active field must match the target entity", "FIELD_ENTITY_MISMATCH");
     const value = this.parseValue(definition, input);
     const definitionGuard = sql`exists (select 1 from field_definitions where id = ${definition.id} and entity = ${target.entity} and type = ${definition.type} ${expectedType === undefined ? sql`` : sql`and type = ${expectedType}`} and archived_at is null ${value === null ? sql`and required = 0` : sql``})`;
     if (value === null) {
       const [, valid] = await this.db.batch([this.db.delete(fieldValues).where(and(eq(fieldValues.fieldId, definition.id), eq(target.column, target.id), definitionGuard)), this.db.select({ id: fieldDefinitions.id }).from(fieldDefinitions).where(and(eq(fieldDefinitions.id, definition.id), definitionGuard))]);
-      if (!valid.length) throw new ServiceError(409, "Field changed while clearing the value");
+      if (!valid.length) throw new ServiceError(409, "Field changed while clearing the value", "FIELD_CHANGED");
       return { fieldId: definition.id, entityType: target.entity, entityId: target.id, value: null };
     }
-    if (definition.type === "SELECT" && !definition.options.some(option => option.id === value)) throw new ServiceError(400, "Select an active option belonging to this field");
+    if (definition.type === "SELECT" && !definition.options.some(option => option.id === value)) throw new ServiceError(400, "Select an active option belonging to this field", "FIELD_OPTION_MISMATCH");
     const columns = { text: null, number: null, date: null, bool: null, optionId: null, userId: null } as Record<string, string | boolean | null>;
     columns[valueColumns[definition.type]] = value;
     const targetName = sql.identifier(target.column.name);
@@ -248,13 +248,13 @@ export class FieldService {
       where ${definitionGuard} ${optionGuard} and exists (select 1 from ${targets[target.entity]} where ${targets[target.entity].id} = ${target.id})
       on conflict (field_id, ${targetName}) do update set company_id = excluded.company_id, contact_id = excluded.contact_id, deal_id = excluded.deal_id, text = excluded.text, number = excluded.number, date = excluded.date, bool = excluded.bool, option_id = excluded.option_id, user_id = excluded.user_id, updated_at = excluded.updated_at
       returning id`);
-    if (!rows.length) throw new ServiceError(409, "Field or option changed while storing the value");
+    if (!rows.length) throw new ServiceError(409, "Field or option changed while storing the value", "FIELD_CHANGED");
     return { fieldId: definition.id, entityType: target.entity, entityId: target.id, value };
   }
 
   private parseValue(definition: Definition, input: unknown): string | boolean | null {
     if (input === null || (typeof input === "string" && !input.trim())) {
-      if (definition.required) throw new ServiceError(400, "A required field cannot be cleared");
+      if (definition.required) throw new ServiceError(400, "A required field cannot be cleared", "FIELD_REQUIRED");
       return null;
     }
     const schemas: Record<FieldType, z.ZodType<string | boolean>> = {

@@ -47,7 +47,7 @@ export class SavedViewService {
     try {
       const [row] = await this.db.insert(savedViews).values({ ...data, ownerId: identifier.parse(actorId) }).returning();
       return { ...row, filters: row.filters as SavedViewFilters, mine: true };
-    } catch (error) { translateDatabaseError(error, "A view with this name already exists"); }
+    } catch (error) { translateDatabaseError(error, "A view with this name already exists", "SAVED_VIEW_NAME_TAKEN"); }
   }
   async update(actorId: string, id: string, input: unknown): Promise<SavedView> {
     const data = updateSavedViewInput.parse(input);
@@ -60,7 +60,7 @@ export class SavedViewService {
       const [row] = await this.db.update(savedViews).set({ ...data, updatedAt: new Date().toISOString() }).where(where).returning();
       requireRecord(row, "Saved view");
       return { ...row, filters: row.filters as SavedViewFilters, mine: true };
-    } catch (error) { translateDatabaseError(error, "A view with this name already exists"); }
+    } catch (error) { translateDatabaseError(error, "A view with this name already exists", "SAVED_VIEW_NAME_TAKEN"); }
   }
   async delete(actorId: string, id: string): Promise<void> {
     const [row] = await this.db.delete(savedViews).where(and(eq(savedViews.id, identifier.parse(id)),

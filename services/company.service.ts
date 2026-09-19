@@ -18,7 +18,7 @@ const domainInput = z.string().trim().max(2048).transform((value, context) => {
   } catch {
     // Invalid URLs receive the same validation message as invalid hostnames.
   }
-  context.addIssue({ code: z.ZodIssueCode.custom, message: "Expected a valid company domain" });
+  context.addIssue({ code: z.ZodIssueCode.custom, message: "Expected a valid company domain", params: { code: "COMPANY_DOMAIN_INVALID" } });
   return z.NEVER;
 }).nullable().optional();
 
@@ -84,7 +84,7 @@ export class CompanyService {
       }).returning();
       return requireRecord(company, "Company");
     } catch (error) {
-      translateDatabaseError(error, "Another company already uses that domain or primary contact");
+      translateDatabaseError(error, "Another company already uses that domain or primary contact", "COMPANY_IDENTITY_TAKEN");
     }
   }
 
@@ -108,7 +108,7 @@ export class CompanyService {
       }).where(eq(companies.id, id)).returning();
       return requireRecord(company, "Company");
     } catch (error) {
-      translateDatabaseError(error, "Another company already uses that domain or primary contact");
+      translateDatabaseError(error, "Another company already uses that domain or primary contact", "COMPANY_IDENTITY_TAKEN");
     }
   }
 
@@ -130,7 +130,7 @@ export class CompanyService {
         .where(eq(companies.id, id)).returning();
       return requireRecord(company, "Company");
     } catch (error) {
-      translateDatabaseError(error, "Another active company already uses that domain");
+      translateDatabaseError(error, "Another active company already uses that domain", "COMPANY_DOMAIN_TAKEN");
     }
   }
 
@@ -141,6 +141,6 @@ export class CompanyService {
   private async checkPrimaryContact(id: string | null | undefined): Promise<void> {
     if (id == null) return;
     const contact = await this.db.query.contacts.findFirst({ where: eq(contacts.id, id), columns: { id: true } });
-    if (!contact) throw new ServiceError(400, "Primary contact does not exist");
+    if (!contact) throw new ServiceError(400, "Primary contact does not exist", "CONTACT_MISSING");
   }
 }

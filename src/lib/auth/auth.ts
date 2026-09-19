@@ -12,6 +12,7 @@ import { reportRequestFailure } from "../server/error-reporting";
 import { readJsonBody } from "../http/json-body";
 import { inheritRequestId } from "../http/request-metadata";
 import { finalizeHttpResponse } from "../http/response";
+import { readWorkspaceLocale } from "../i18n/stored-locale";
 
 export interface AuthConfiguration {
   secret: string;
@@ -65,7 +66,7 @@ export function createAuth(db: Database, config: AuthConfiguration, emailAdapter
       resetPasswordTokenExpiresIn: 15 * 60,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
-        await send(() => emailAdapter.sendPasswordReset({ to: user.email, url: emailUrl(url) }));
+        await send(async () => emailAdapter.sendPasswordReset({ to: user.email, url: emailUrl(url), locale: await readWorkspaceLocale(db) }));
       },
     },
     emailVerification: {
@@ -74,7 +75,7 @@ export function createAuth(db: Database, config: AuthConfiguration, emailAdapter
       expiresIn: 60 * 60,
       autoSignInAfterVerification: false,
       sendVerificationEmail: async ({ user, url }) => {
-        await send(() => emailAdapter.sendVerification({ to: user.email, url: emailUrl(url) }));
+        await send(async () => emailAdapter.sendVerification({ to: user.email, url: emailUrl(url), locale: await readWorkspaceLocale(db) }));
       },
       afterEmailVerification: async (user) => { await reconcileSingletonMembership(db, user.id); },
     },
@@ -84,7 +85,7 @@ export function createAuth(db: Database, config: AuthConfiguration, emailAdapter
         if (!currentUser?.emailVerified) throw new APIError("FORBIDDEN", { message: "Email verification required" });
         try {
           const membership = await reconcileSingletonMembership(db, data.userId);
-          if (membership.status !== "active") throw new ServiceError(403, "Inactive membership");
+          if (membership.status !== "active") throw new ServiceError(403, "Inactive membership", "INACTIVE_MEMBERSHIP");
           return { data: { ...data, accessVersion: membership.accessVersion } };
         } catch (error) {
           if (!(error instanceof ServiceError) || error.status !== 403) throw error;

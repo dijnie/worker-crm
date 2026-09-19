@@ -24,7 +24,7 @@ import type { Assignee, AssigneeListInput } from "@services/assignee.service";
 import type { SavedView, CreateSavedViewInput, UpdateSavedViewInput } from "@services/saved-view.service";
 export type RoleInput = Omit<RoleUpdateInput, "expectedRevision">;
 export interface ApiRequestOptions { signal?: AbortSignal }
-export interface ApiIssue { path: (string | number)[]; message: string }
+export interface ApiIssue { path: (string | number)[]; message: string; code?: string }
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string, public readonly issues?: ApiIssue[], public readonly code?: string, public readonly requestId?: string) {
     super(message);

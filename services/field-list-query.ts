@@ -19,7 +19,7 @@ export async function validateCustomFieldFilters(db: Database, entity: RecordEnt
   )).orderBy(fieldDefinitions.position, fieldDefinitions.id);
   for (const key of keys) {
     if (!definitions.some(definition => `field:${definition.key}` === key)) {
-      throw new ServiceError(400, `Custom filter ${key} is unavailable. Repair or remove this filter.`);
+      throw new ServiceError(400, `Custom filter ${key} is unavailable. Repair or remove this filter.`, "FILTER_UNAVAILABLE");
     }
   }
   // Retired options remain valid filter identities; foreign or nonexistent options do not.
@@ -30,7 +30,7 @@ export async function validateCustomFieldFilters(db: Database, entity: RecordEnt
       FROM json_each(${JSON.stringify(selections)}) selection WHERE NOT EXISTS (
         SELECT 1 FROM ${fieldOptions} WHERE ${fieldOptions.id} = json_extract(selection.value, '$.id')
         AND ${fieldOptions.fieldId} = json_extract(selection.value, '$.fieldId')) LIMIT 1`);
-    if (invalid.length) throw new ServiceError(400, "A custom filter option is unavailable. Repair or remove this filter.");
+    if (invalid.length) throw new ServiceError(400, "A custom filter option is unavailable. Repair or remove this filter.", "FILTER_UNAVAILABLE");
   }
   return definitions;
 }

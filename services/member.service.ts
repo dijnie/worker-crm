@@ -62,9 +62,9 @@ export async function reconcileSingletonMembership(db: Database, inputUserId: st
     db.select().from(singletonMembership).where(eq(singletonMembership.userId, userId)),
     db.select({ emailVerified: user.emailVerified }).from(user).where(eq(user.id, userId)),
   ]);
-  if (!identity?.emailVerified) throw new ServiceError(403, "Verify your email before accessing the workspace");
-  if (membership?.status === "revoked") throw new ServiceError(403, "Workspace access has been revoked");
-  if (!membership) throw new ServiceError(409, "Workspace admission could not be completed");
+  if (!identity?.emailVerified) throw new ServiceError(403, "Verify your email before accessing the workspace", "FORBIDDEN_ACTION");
+  if (membership?.status === "revoked") throw new ServiceError(403, "Workspace access has been revoked", "FORBIDDEN_ACTION");
+  if (!membership) throw new ServiceError(409, "Workspace admission could not be completed", "ADMISSION_FAILED");
   return membership;
 }
 
@@ -88,7 +88,7 @@ export class MemberService {
   private async requireSystem(actorId: string) {
     const [actor] = await this.db.select({ id: singletonMembership.userId }).from(singletonMembership)
       .where(and(eq(singletonMembership.userId, actorId), systemActorCondition(actorId)));
-    if (!actor) throw new ServiceError(403, "Only active system accounts can manage members");
+    if (!actor) throw new ServiceError(403, "Only active system accounts can manage members", "FORBIDDEN_ACTION");
   }
 
   async list(inputActorId: string, input: unknown = {}): Promise<Page<MemberRecord>> {
@@ -103,7 +103,7 @@ export class MemberService {
         .limit(limit).offset((page - 1) * limit),
       this.db.select({ value: count() }).from(singletonMembership).where(where),
     ]);
-    if (!actors.length) throw new ServiceError(403, "Only active system accounts can manage members");
+    if (!actors.length) throw new ServiceError(403, "Only active system accounts can manage members", "FORBIDDEN_ACTION");
     return { items: items.map(serialize), total: total.value, page, limit };
   }
 
@@ -154,15 +154,15 @@ export class MemberService {
     } catch (error) {
       let cause: unknown = error;
       for (let depth = 0; depth < 6 && cause instanceof Error; depth++) {
-        if (cause.message.includes("last_active_system")) throw new ServiceError(409, "At least one active system account must remain");
+        if (cause.message.includes("last_active_system")) throw new ServiceError(409, "At least one active system account must remain", "LAST_SYSTEM_ACCOUNT");
         cause = (cause as Error & { cause?: unknown }).cause;
       }
       throw error;
     }
     if (!changed.length) {
       await this.requireSystem(actorId);
-      if (!rows.length) throw new ServiceError(404, "Member not found");
-      throw new ServiceError(409, "Membership changed or the requested transition is invalid; refresh and try again");
+      if (!rows.length) throw new ServiceError(404, "Member not found", "MEMBER_NOT_FOUND");
+      throw new ServiceError(409, "Membership changed or the requested transition is invalid; refresh and try again", "MEMBERSHIP_CHANGED");
     }
     return serialize(rows[0]);
   }
